@@ -6,6 +6,12 @@ import sys
 text = Path(sys.argv[1]).read_text(errors='replace')
 labels = []
 categories = {
+    'Universal slice collision': 'have the same architectures',
+    'Code signing file attributes': 'resource fork, Finder information',
+    'Code signing format failure': 'bundle format unrecognized',
+    'Code signing executable validation': 'main executable failed strict validation',
+    'Missing build path': 'No such file or directory',
+    'Build file permission failure': 'Permission denied',
     'Header unavailable': 'file not found',
     'Undeclared API': 'undeclared function',
     'Link failure': 'Undefined symbols',
