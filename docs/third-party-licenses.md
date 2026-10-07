@@ -1,6 +1,6 @@
 # Third-party notices
 
-Arko links to the operating system's libarchive; no separately downloaded libarchive, 7-Zip, UnRAR, or compressor binary is included in the application. The macOS system component's applicable notices are supplied by Apple. For project development and fixture attribution, the upstream libarchive license is reproduced in `licenses/libarchive-COPYING.txt`.
+Arko vendors the upstream libarchive 3.7.4 ABI declaration headers (`archive.h`, `archive_entry.h`) under their retained BSD notices, because current macOS SDKs omit those headers. Arko links to the operating system's libarchive; no separately downloaded libarchive, 7-Zip, UnRAR, or compressor binary is included in the application. The macOS system component's applicable notices are supplied by Apple. For project development and fixture attribution, the upstream libarchive license is reproduced in `licenses/libarchive-COPYING.txt`.
 
 `tests/fixtures/rar5-stored.rar` is decoded from libarchive's `libarchive/test/test_read_format_rar5_stored.rar.uu`, retrieved 2026-10-07. Associated test copyright: 2018 Grzegorz Antoniak, BSD 2-clause; full notice in `licenses/rar5-fixture.txt`. Fixture expected content: `hello libarchive test suite!` followed by newline. It is a test-only asset, not included in Arko.app.
 

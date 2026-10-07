@@ -19,7 +19,7 @@ open build/Arko.app
 
 Xcode command-line tools with Swift 5.9+; macOS 13+. App bundle defaults to arm64. Python 3 is needed only for developer fixture tests. No runtime Homebrew dependencies. See [release/build details](docs/release.md).
 
-The repository is already isolated in Codex cloud tasks; reuse its checkout and do not create a worktree unless requested. Linux can test ArkoCore/CArko with Swift plus libarchive development headers, but cannot validate AppKit or produce Arko.app.
+The repository is already isolated in Codex cloud tasks; reuse its checkout and do not create a worktree unless requested. Linux can test ArkoCore/CArko with Swift plus the system libarchive library, but cannot validate AppKit or produce Arko.app.
 
 - [Architecture](docs/architecture.md)
 - [Format evidence and backend research](docs/archive-formats.md)

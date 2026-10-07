@@ -1,6 +1,6 @@
 #include "ArkoArchive.h"
-#include <archive.h>
-#include <archive_entry.h>
+#include "vendor/archive.h"
+#include "vendor/archive_entry.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <stdatomic.h>
