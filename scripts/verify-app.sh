@@ -18,7 +18,8 @@ actual=$(lipo -archs "$binary")
 case "$architecture" in
   arm64|x86_64) [[ "$actual" == "$architecture" ]] || fail 'Unexpected executable architecture.' ;;
   universal)
-    lipo -verify_arch arm64 x86_64 "$binary"
+    # -verify_arch consumes all remaining arguments; input must come first.
+    lipo "$binary" -verify_arch arm64 x86_64
     [[ "$actual" == 'arm64 x86_64' || "$actual" == 'x86_64 arm64' ]] || fail 'Universal executable must contain exactly arm64 and x86_64.'
     ;;
   *) fail 'Unsupported architecture; use arm64, x86_64, or universal.' ;;

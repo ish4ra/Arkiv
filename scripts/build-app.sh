@@ -19,7 +19,7 @@ for arch in "${architectures[@]}"; do
   binary_dir=$(swift build -c release --arch "$arch" --show-bin-path)
   stage="check-slice-$arch"
   cp "$binary_dir/Arko" "$slices/Arko-$arch"
-  lipo -verify_arch "$arch" "$slices/Arko-$arch"
+  lipo "$slices/Arko-$arch" -verify_arch "$arch"
 done
 app="$PWD/build/Arko.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
