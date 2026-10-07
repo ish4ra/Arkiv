@@ -1,5 +1,6 @@
 import AppKit
 import ArkoCore
+import ArkoPresentation
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windows: [BrowserWindowController] = []
@@ -8,25 +9,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if windows.isEmpty { newWindow(nil) }
         NSApp.activate(ignoringOtherApps: true)
     }
-    @objc func newWindow(_ sender: Any?) {
+    @objc func newWindow(_ sender: Any?) { makeWindow().showWindow(nil) }
+    private func makeWindow() -> BrowserWindowController {
         let controller = BrowserWindowController()
         windows.append(controller)
         controller.onClose = { [weak self, weak controller] in
             self?.windows.removeAll { $0 === controller }
         }
-        controller.showWindow(nil)
+        controller.onOpen = { [weak self, weak controller] in self?.openArchive(controller) }
+        return controller
     }
     @objc func openArchive(_ sender: Any?) {
+        let preferred = (sender as? BrowserWindowController)?.windowID
+            ?? windows.first(where: { $0.window === NSApp.keyWindow })?.windowID
         let panel = NSOpenPanel()
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = true
         panel.message = "Open an archive to browse its contents."
         guard panel.runModal() == .OK else { return }
-        for url in panel.urls { open(url) }
+        for url in panel.urls { open(url, preferred: preferred) }
     }
-    private func open(_ url: URL) {
-        newWindow(nil)
-        windows.last?.load(url)
+    private func open(_ url: URL, preferred: UUID? = nil) {
+        let preferred = preferred ?? windows.first(where: { $0.window === NSApp.keyWindow })?.windowID
+        let id = BrowserPresentation.window(for: url, preferred: preferred, among: windows.map(\.routingState))
+        let controller = windows.first(where: { $0.windowID == id }) ?? makeWindow()
+        controller.showWindow(nil)
+        controller.window?.makeKeyAndOrderFront(nil)
+        if controller.archiveURL == nil { controller.load(url) }
+    }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            if let controller = windows.last { controller.showWindow(nil) }
+            else { newWindow(nil) }
+        }
+        return true
     }
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls { open(url) }
@@ -78,6 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+NSWindow.allowsAutomaticWindowTabbing = false
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
