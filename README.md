@@ -8,13 +8,20 @@ The first foundation contains an AppKit archive table, folder navigation, search
 
 Fixture-verified on Linux and macOS CI: stored/Deflate ZIP, TAR, one basic 7z and one stored RAR5. This is not blanket codec/encryption/multipart support. Creation, modification, passwords, preview/open, Quick Look, Finder contextual actions, drag/drop and advanced tools are not implemented yet.
 
+## Download for Mac testing
+
+Open the [macOS foundation Actions page](https://github.com/ish4ra/Arko/actions/workflows/macos.yml?query=branch%3Amain), sign in, and choose a successful `main` run with DMG artifacts. Download **`Arko-arm64-development-dmg`** for Apple Silicon or **`Arko-universal-development-dmg`** for Intel/Apple Silicon. Unzip GitHub's artifact wrapper, open the enclosed **`Arko-…-development.dmg`**, and drag **Arko.app** to the **Applications** shortcut. Eject the **Arko** volume and launch the installed app from Applications.
+
+These are **development builds**: the app is **ad-hoc signed**, the DMG is **unsigned**, and **neither is notarized**. Gatekeeper may block first launch with an Apple-could-not-verify/unidentified-developer warning. If you trust this build, attempt launch, then use **System Settings → Privacy & Security → Open Anyway** for Arko. See [exact artifact names, checksums, installation and Gatekeeper details](docs/release.md). No GitHub Release is published.
+
 ## Develop on macOS
 
 ```sh
 swift test
 scripts/test-engine.sh
 scripts/build-app.sh
-open build/Arko.app
+scripts/build-dmg.sh
+open build/Arko-arm64-development.dmg
 ```
 
 Xcode command-line tools with Swift 5.9+; macOS 13+. App bundle defaults to arm64. Python 3 is needed only for developer fixture tests. No runtime Homebrew dependencies. See [release/build details](docs/release.md).

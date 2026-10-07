@@ -7,8 +7,19 @@ permissions:
   contents: read
 jobs:
   build-and-test:
-    runs-on: macos-15
-    timeout-minutes: 20
+    name: ${{ matrix.architecture }} development (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            architecture: arm64
+          - runner: macos-15-intel
+            architecture: universal
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    env:
+      ARKO_ARCH: ${{ matrix.architecture }}
     steps:
       - uses: actions/checkout@v5
       - name: Toolchain and backend
@@ -18,14 +29,24 @@ jobs:
           uname -m
       - name: Engine security and fixture tests
         run: scripts/ci-check.sh engine scripts/test-engine.sh
-      - name: Swift tests
+      - name: Swift tests (native runner architecture)
         run: scripts/ci-check.sh swift swift test --parallel
-      - name: Apple Silicon application
+      - name: Build and verify development application
         run: scripts/ci-check.sh app scripts/build-app.sh
-      - name: Package local-build artifact
-        run: ditto -c -k --sequesterRsrc --keepParent build/Arko.app build/Arko-arm64.zip
+      - name: Create, mount, and verify development DMG
+        run: scripts/ci-check.sh dmg scripts/build-dmg.sh
+      - name: Package ZIP alternative
+        run: ditto -c -k --sequesterRsrc --keepParent build/Arko.app "build/Arko-${ARKO_ARCH}.zip"
       - uses: actions/upload-artifact@v6
         with:
-          name: Arko-arm64-development
-          path: build/Arko-arm64.zip
+          name: Arko-${{ matrix.architecture }}-development-dmg
+          path: |
+            build/Arko-${{ matrix.architecture }}-development.dmg
+            build/Arko-${{ matrix.architecture }}-development.dmg.sha256
+          if-no-files-found: error
+          compression-level: 0
+      - uses: actions/upload-artifact@v6
+        with:
+          name: Arko-${{ matrix.architecture }}-development
+          path: build/Arko-${{ matrix.architecture }}.zip
           if-no-files-found: error
