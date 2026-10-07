@@ -4,9 +4,9 @@ A native macOS archive manager in early development. `ARKO_SPEC.md` is the autho
 
 The first foundation contains an AppKit archive table, folder navigation, search, multi-selection, selected/all extraction into a new directory, progress/cancellation, and a reusable Swift engine backed by system libarchive. It does not require users to install an external compressor.
 
-**Validation:** Linux C and Swift core tests pass. macOS CI is configured, but its result has not yet been observed. The native UI, generated icon and bundle still require macOS compilation/interactive validation before this can be called a usable Mac release.
+**Validation:** [macOS CI passed](https://github.com/ish4ra/Arko/actions/runs/37608385235): engine fixtures, Swift tests, native app compilation, arm64 bundle/icon generation, ad-hoc signature verification and artifact upload. Locally, 19 C-backed fixture tests and 10 Swift tests pass (Swift debug and release). Interactive UI/accessibility, icon readability and Finder behavior still require a real Mac; this is not a production release.
 
-Fixture-verified locally: stored/Deflate ZIP, TAR, one basic 7z and one stored RAR5. This is not blanket codec/encryption/multipart support. Creation, modification, passwords, preview/open, Quick Look, Finder contextual actions, drag/drop and advanced tools are not implemented yet.
+Fixture-verified on Linux and macOS CI: stored/Deflate ZIP, TAR, one basic 7z and one stored RAR5. This is not blanket codec/encryption/multipart support. Creation, modification, passwords, preview/open, Quick Look, Finder contextual actions, drag/drop and advanced tools are not implemented yet.
 
 ## Develop on macOS
 

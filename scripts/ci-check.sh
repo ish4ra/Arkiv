@@ -7,6 +7,7 @@ mkdir -p .build/ci-logs
 log=".build/ci-logs/$label.log"
 if "$@" > "$log" 2>&1; then
   cat "$log"
+  python3 scripts/ci-warning-summary.py "$log"
 else
   result=$?
   cat "$log"

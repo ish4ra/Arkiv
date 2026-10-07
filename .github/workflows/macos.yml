@@ -24,7 +24,7 @@ jobs:
         run: scripts/ci-check.sh app scripts/build-app.sh
       - name: Package local-build artifact
         run: ditto -c -k --sequesterRsrc --keepParent build/Arko.app build/Arko-arm64.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: Arko-arm64-development
           path: build/Arko-arm64.zip
