@@ -15,6 +15,15 @@ categories = {
     'Concurrency isolation': 'actor-isolated',
     'Engine fixture assertion failure': 'AssertionError',
     'Python fixture exception': 'Traceback',
+    'Ambiguous Swift expression': 'ambiguous',
+    'Optional value mismatch': 'optional',
+    'Invalid argument': 'argument',
+    'Invalid override': 'override',
+    'Invalid pattern match': 'cannot match',
+    'Linker invocation failure': 'linker command failed',
+    'Swift test assertion failure': 'XCTAssert',
+    'Swift access control': 'inaccessible',
+    'Missing protocol conformance': 'does not conform',
 }
 for label, pattern in categories.items():
     if pattern in text: labels.append(label)
@@ -28,6 +37,20 @@ for node in ast.walk(ast.parse(Path('tests/test_engine.py').read_text())):
     if isinstance(node, ast.FunctionDef) and node.name.startswith('test_'):
         if re.search(r'(?:FAIL|ERROR): ' + re.escape(node.name) + r'\b', text):
             labels.append('Failing test: ' + node.name)
+# Referenced identifiers must occur in repository source; never emit diagnostic text.
+source_identifiers = set()
+for source in Path('Sources').rglob('*.swift'):
+    source_identifiers.update(re.findall(r'\b[A-Za-z_][A-Za-z_0-9]*\b', source.read_text()))
+for line in text.splitlines():
+    if 'error:' not in line: continue
+    for identifier in re.findall(r"'([A-Za-z_][A-Za-z_0-9]*)'", line):
+        if identifier in source_identifiers:
+            labels.append('Referenced source identifier: ' + identifier)
+for source in Path('Tests').rglob('*.swift'):
+    for test in re.findall(r'func (test[A-Za-z_0-9]+)', source.read_text()):
+        if re.search(re.escape(test) + r'.*(?:failed|error)', text):
+            labels.append('Failing Swift test: ' + test)
+labels = list(dict.fromkeys(labels))
 if not labels: labels.append('Command failed; detailed diagnostics require authenticated Actions log access.')
 for label in labels:
     print('::error title=Arko sanitized diagnostic::' + label)
