@@ -87,17 +87,17 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         guard !isBusy else { return }
         let token = begin("Reading archive…")
         worker.async { [self] in
-            let result = Result { try engine.inspect(url, cancellation: token) }
+            let result = Result { try self.engine.inspect(url, cancellation: token) }
             DispatchQueue.main.async { [self] in
-                finish()
+                self.finish()
                 switch result {
                 case .success(let value):
-                    snapshot = value; index = value.index
-                    currentPath = ""; back = []; forward = []
-                    window?.title = url.lastPathComponent
-                    window?.representedURL = url
-                    reload()
-                case .failure(let error): present(error)
+                    self.snapshot = value; self.index = value.index
+                    self.currentPath = ""; self.back = []; self.forward = []
+                    self.window?.title = url.lastPathComponent
+                    self.window?.representedURL = url
+                    self.reload()
+                case .failure(let error): self.present(error)
                 }
             }
         }
@@ -139,7 +139,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                 // C callbacks run serially on this worker. Throttle main-thread traffic.
                 let throttle = ProgressThrottle()
                 let result = Result {
-                    try engine.extract(snapshot, ids: ids, into: parent, cancellation: token) { [weak self] progress in
+                    try self.engine.extract(snapshot, ids: ids, into: parent, cancellation: token) { [weak self] progress in
                         guard throttle.shouldUpdate() else { return }
                         DispatchQueue.main.async {
                             guard let self, self.isBusy else { return }
@@ -148,12 +148,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                     }
                 }
                 DispatchQueue.main.async { [self] in
-                    finish()
+                    self.finish()
                     switch result {
                     case .success(let output):
-                        status.stringValue = "Extraction complete"
+                        self.status.stringValue = "Extraction complete"
                         NSWorkspace.shared.activateFileViewerSelecting([output])
-                    case .failure(let error): present(error)
+                    case .failure(let error): self.present(error)
                     }
                 }
             }
