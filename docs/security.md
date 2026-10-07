@@ -1,0 +1,13 @@
+# Security and data safety
+
+The engine is read-only with respect to input archives. Extraction creates a private 0700 staging directory inside the selected destination and only publishes successful output into a new uniquely named directory. Existing files are never replaced. Output files are 0600 and directories 0700; executable bits, ownership, xattrs, ACLs, resource forks and timestamps are deliberately not restored in this first milestone.
+
+Every backend-supplied path is checked for absolute paths, dot/dot-dot components, empty components, control characters, backslashes, colons and a 4096-byte length limit. ZIP backslashes may already have been normalized by libarchive; traversal after normalization is still rejected. UTF-8 conversion must succeed. Hard links, symlinks, FIFOs and devices are rejected. Each path component is opened relative to an owned directory descriptor with `O_NOFOLLOW`; files use `O_EXCL`. No string-prefix confinement checks or `archive_write_disk` are used. On case-insensitive volumes, colliding regular files fail instead of replacing data.
+
+Budgets cap entry count at 100,000 and streamed expanded output at 20 GiB. Limits are checked against metadata and actual data. No whole archive is loaded into memory. There is not yet a hard CPU-time, dictionary-memory or compression-ratio budget: extreme hostile solid archives remain a risk. Cancellation is checked before headers and between 64-KiB reads, but cannot interrupt a blocking libarchive header/skip call. Treat this as development software; hostile-input fuzzing and an isolated decoder helper are future hardening tasks.
+
+Source identity/size/mtime plus catalog are rechecked before extraction and source metadata afterward. This catches ordinary changes, but is not a cryptographic immutable-input guarantee against an actor who can rewrite a file and restore metadata concurrently. A future backend should pin a file descriptor and define concurrent-mutation handling. Nothing should claim protection from another process running with the same user's privileges.
+
+Failure/cancellation cleanup is best effort; a process crash or filesystem cleanup failure may leave a hidden `.arko-UUID` directory in the selected destination. Do not recursively remove arbitrary matches at startup. A future crash-recovery journal must establish ownership before removing stale data. Preview/open temporary workspaces are not implemented yet.
+
+No password storage, plaintext secret files, telemetry or networking. Encrypted extraction is unavailable. Error messages intentionally avoid echoing untrusted backend strings into logs. Hardened Runtime is applied to local app bundles; they are ad-hoc signed and unnotarized. This is not yet an App Sandbox build.

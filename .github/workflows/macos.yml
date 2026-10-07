@@ -1,0 +1,31 @@
+name: macOS foundation
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain and backend
+        run: |
+          swift --version
+          xcodebuild -version
+          uname -m
+      - name: Engine security and fixture tests
+        run: scripts/test-engine.sh
+      - name: Swift tests
+        run: swift test --parallel
+      - name: Apple Silicon application
+        run: scripts/build-app.sh
+      - name: Package local-build artifact
+        run: ditto -c -k --sequesterRsrc --keepParent build/Arko.app build/Arko-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Arko-arm64-development
+          path: build/Arko-arm64.zip
+          if-no-files-found: error
