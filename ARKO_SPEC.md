@@ -7,9 +7,16 @@ Application name:
 Arko
 
 IMPORTANT REPOSITORY STATE
-The repository is currently completely empty. There are no commits and no branches yet, including no main branch.
-Initialize the repository properly as part of this task. Create the native Arko macOS project from scratch, establish main as the primary branch, commit stable milestones, and push the completed work to GitHub.
-Do not treat the empty repository as an error or wait for starter code.
+
+This repository is at its initial foundation stage.
+It currently contains this implementation specification but no Arko application code yet.
+
+Treat ARKO_SPEC.md as the authoritative product and implementation brief.
+
+Initialize the native Arko macOS project from scratch in this repository.
+Preserve this specification, establish a clean production-quality project structure, implement stable milestones, commit them clearly, and push completed work to GitHub.
+
+Do not wait for starter application code.
 
 EXECUTION GOAL
 Build Arko as a serious production-quality, macOS-only archive manager.
