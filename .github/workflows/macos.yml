@@ -24,7 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Monotonic development build number
-        run: echo "ARKIV_BUILD_VERSION=$((10000 + GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))" >> "$GITHUB_ENV"
+        run: |
+          (( GITHUB_RUN_ATTEMPT < 100 ))
+          echo "ARKIV_BUILD_VERSION=$((10000 + GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))" >> "$GITHUB_ENV"
       - name: Updater metadata regression tests
         run: python3 tests/test_updates.py -v
       - name: Check for tracked signing material
@@ -104,6 +106,7 @@ jobs:
       - name: Resolve pinned Sparkle tools and verify payload
         if: steps.signing.outputs.configured == 'true'
         run: |
+          (( GITHUB_RUN_ATTEMPT < 100 ))
           echo "ARKIV_BUILD_VERSION=$((10000 + GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))" >> "$GITHUB_ENV"
           swift package resolve
           ditto -x -k build/Arkiv-universal.zip build

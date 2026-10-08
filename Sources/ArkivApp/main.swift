@@ -104,7 +104,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 // Packaging smoke test exercises dyld and the embedded Sparkle framework without starting UI.
 if CommandLine.arguments.contains("--verify-updater-bundle") {
-    print("Loaded Sparkle: \(String(describing: SPUStandardUpdaterController.self))")
+    let expected = Bundle.main.bundleURL.appendingPathComponent("Contents/Frameworks/Sparkle.framework").resolvingSymlinksInPath()
+    let loaded = Bundle(for: SPUStandardUpdaterController.self).bundleURL.resolvingSymlinksInPath()
+    guard loaded == expected else {
+        fputs("Sparkle was not loaded from the packaged app\n", stderr)
+        exit(1)
+    }
+    print("Loaded embedded Sparkle framework")
     exit(0)
 }
 

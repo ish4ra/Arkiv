@@ -29,6 +29,9 @@ framework="$app/Contents/Frameworks/Sparkle.framework"
 [[ -L "$framework/Versions/Current" && -s "$framework/Sparkle" ]] || fail "Sparkle framework or symlinks missing."
 [[ -s "$app/Contents/Resources/Sparkle-LICENSE.txt" ]] || fail "Sparkle license missing."
 lipo "$framework/Sparkle" -verify_arch arm64 x86_64
+for executable in "$framework/Versions/B/Autoupdate" "$framework/Versions/B/Updater.app/Contents/MacOS/Updater" "$framework"/Versions/B/XPCServices/*.xpc/Contents/MacOS/*; do
+  lipo "$executable" -verify_arch arm64 x86_64
+done
 for component in "$framework"/Versions/B/XPCServices/*.xpc "$framework/Versions/B/Updater.app" "$framework/Versions/B/Autoupdate" "$framework"; do
   codesign --verify --strict --all-architectures "$component"
 done

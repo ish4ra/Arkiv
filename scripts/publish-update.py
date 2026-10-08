@@ -6,6 +6,8 @@ import plistlib
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+import urllib.error
+import urllib.request
 
 key = os.environ.pop('SPARKLE_PRIVATE_ED_KEY', '').strip()
 if not key or not os.environ.get('SPARKLE_PUBLIC_ED_KEY', '').strip():
@@ -52,9 +54,21 @@ sign(['--verify', str(feed)])
 # replacing a newer feed. Any unexpected network/API error fails closed.
 repo = 'ish4ra/Arkiv'
 channel = 'development-updates'
-releases = subprocess.check_output(['gh', 'release', 'list', '--repo', repo, '--limit', '1000', '--json', 'tagName'], text=True)
-import json
-exists = any(r['tagName'] == channel for r in json.loads(releases))
+request = urllib.request.Request(
+    f'https://api.github.com/repos/{repo}/releases/tags/{channel}',
+    headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+             'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
+try:
+    with urllib.request.urlopen(request, timeout=30) as response:
+        exists = response.status == 200
+        if not exists:
+            raise SystemExit('Unexpected channel lookup response; publication refused')
+except urllib.error.HTTPError as error:
+    if error.code != 404:
+        raise SystemExit('Channel lookup failed; publication refused') from None
+    exists = False
+except urllib.error.URLError:
+    raise SystemExit('Channel lookup unavailable; publication refused') from None
 if exists:
     old = Path('build/previous-feed')
     old.mkdir(exist_ok=True)
