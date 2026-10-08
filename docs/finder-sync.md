@@ -196,8 +196,9 @@ This test also runs against the mounted DMG and copied installation. Metadata
 regressions explicitly reject absent/wrong-type attributes and unqualified names.
 
 A CI-only PlugInKit diagnostic registers the built appex with `pluginkit -a`, then
-checks discovery with `pluginkit -m -A -D -i xyz.isharalakshan.arkiv.finder-sync`.
-It never enables the extension or resets caches. Raw diagnostic output remains
+checks discovery with `pluginkit -m -A -D -v -v -i xyz.isharalakshan.arkiv.finder-sync`.
+The check requires both the identifier and this build’s resolved appex path, so
+an older installed copy cannot satisfy it. It never enables the extension or resets caches. Raw diagnostic output remains
 in local CI logs. Users do not need terminal commands. These checks establish
 bundle/class discovery, not interactive Settings visibility or user approval.
 
