@@ -137,14 +137,14 @@ apps and local paths; review it before sharing. Tool options/output can vary wit
 macOS releases. Do not build application logic around them.
 
 CI runs the strict metadata verifier against the built app, mounted DMG, and
-copied installation. A separate macOS-only diagnostic runs `pbs -read_bundle`
-on the built app, registers that build-directory bundle with Launch Services,
-refreshes Services, and checks `pbs -dump` for all four titles. Explicit indexing
-is a CI fixture step because the build directory is outside normal installation
-locations; no registration tool is called by Arkiv itself. The check fails if commands
-fail or titles are absent; raw system output stays in local build logs, while
-only fixed status/count diagnostics are printed. This is stronger than checking
-source XML, but it still does not establish Finder menu visibility on a user's Mac.
+copied installation. A separate macOS-only check runs `pbs -read_bundle` on the
+actual built app and requires the system parser to report all four direct titles.
+A command failure or missing title fails CI. The subsequent `pbs -dump` is an
+informational cache snapshot only: an app in a CI build directory is not an
+installed application in an interactive Finder session. CI does not force global
+registration or reset caches. Raw system output stays in local build logs;
+only fixed status/count diagnostics are printed. Parsing the bundle does not
+establish actual Finder menu visibility, which still requires the real-Mac retest.
 
 ## Real-Mac acceptance checklist
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Development/CI-only Services database diagnostic. Never called by Arkiv itself.
+"""Development/CI-only bundle parseability check using macOS Services tooling.
 
-The system pbs tool is an implementation detail, not an app runtime dependency.
-Raw system output stays in local build logs; only fixed diagnostics are printed.
+Never called by Arkiv. A CI build directory is not an installed application, so
+reading the global Services cache is informational, not a Finder discovery test.
+Raw system output stays in local logs; only fixed diagnostics are printed.
 """
 from pathlib import Path
 import plistlib
@@ -18,42 +19,37 @@ if not pbs.is_file():
     raise SystemExit('System Services diagnostic unavailable: pbs is missing on this runner.')
 
 
-def run(label, args):
+def run(label, args, required=True):
     try:
         result = subprocess.run([str(pbs), *args], capture_output=True, text=True, errors='replace', timeout=45)
     except subprocess.TimeoutExpired:
-        raise SystemExit('System Services diagnostic timed out: ' + label)
-    (logs / ('services-' + label + '.log')).write_text(result.stdout + result.stderr)
+        if required:
+            raise SystemExit('System Services bundle parsing timed out.')
+        print('::notice title=Arkiv Services cache::Global cache diagnostic timed out; bundle parsing is checked separately.')
+        return ''
+    output = result.stdout + result.stderr
+    (logs / ('services-' + label + '.log')).write_text(output)
     print('pbs ' + label + ' exit code: ' + str(result.returncode))
     if result.returncode:
-        raise SystemExit('System Services diagnostic failed: ' + label)
-    return result.stdout + result.stderr
-
-
-def normalized(output):
+        if required:
+            raise SystemExit('System Services bundle parsing failed.')
+        print('::notice title=Arkiv Services cache::Global cache diagnostic unavailable; bundle parsing is checked separately.')
+        return ''
     return output.replace('\\U2026', '…').replace('\\u2026', '…')
 
 
+# -read_bundle is the explicit bundle parser. It reports Services even when the
+# bundle is outside Applications and absent from the current user's global cache.
+parsed = run('read-bundle', ['-read_bundle', str(app)])
 titles = [s['NSMenuItem']['default'] for s in info['NSServices']]
-parsed = normalized(run('read-bundle', ['-read_bundle', str(app)]))
-before = normalized(run('dump-before', ['-dump']))
-print('::notice title=Arkiv Services diagnostic::Before indexing: ' +
-      str(sum(title in before for title in titles)) + '/4 titles; read_bundle output: ' +
-      str(sum(title in parsed for title in titles)) + '/4 titles.')
-
-# A CI build directory is not an automatically indexed installation location.
-# Register the actual built bundle, then ask Services to refresh its database.
-# This is a test fixture operation only, never an application startup hook.
-register = Path('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister')
-result = subprocess.run([str(register), '-f', str(app)], capture_output=True, text=True, errors='replace', timeout=45)
-(logs / 'services-launchservices.log').write_text(result.stdout + result.stderr)
-if result.returncode:
-    raise SystemExit('Launch Services registration failed for the built app.')
-run('refresh', [])
-dump = normalized(run('dump', ['-dump']))
-found = sum(title in dump for title in titles)
-print('::notice title=Arkiv Services diagnostic::After indexing: ' + str(found) + '/4 direct titles; bundle path present: ' + str(str(app) in dump) + '.')
-if found != 4:
-    print('::error title=Arkiv Services registration::System Services dump is missing one or more Arkiv actions.')
+found = sum(title in parsed for title in titles)
+if len(titles) != 4 or found != 4:
+    print('::error title=Arkiv Services registration::System bundle parser did not report all four direct Arkiv service titles.')
     raise SystemExit(1)
-print('::notice title=Arkiv Services registration::System Services tooling accepted the bundle and lists all four direct Arkiv actions.')
+print('::notice title=Arkiv Services registration::pbs read_bundle parsed all four direct Arkiv actions from the built app.')
+
+# Do not register or launch an app, reset caches, or equate this dump with Finder
+# visibility. That requires a real installation and an interactive user session.
+dump = run('dump', ['-dump'], required=False)
+count = sum(title in dump for title in titles)
+print('::notice title=Arkiv Services cache::Informational global cache snapshot: ' + str(count) + '/4 titles. This is not the bundle parseability result.')
