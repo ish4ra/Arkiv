@@ -129,7 +129,7 @@ private final class FinderOperationWindow: NSWindowController, NSWindowDelegate 
         window.contentView = content
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
-    @objc private func cancelOperation(_ sender: Any?) { cancelling = true; cancellation.cancel(); status.stringValue = "Cancelling…" }
+    override func cancelOperation(_ sender: Any?) { cancelling = true; cancellation.cancel(); status.stringValue = "Cancelling…" }
     func showProgress(_ progress: ArchiveProgress) {
         guard running && !cancelling else { return }
         status.stringValue = "\(progress.files) entries · \(ByteCountFormatter.string(fromByteCount: Int64(progress.bytes), countStyle: .file))"
