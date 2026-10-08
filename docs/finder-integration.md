@@ -12,7 +12,7 @@ custom URL scheme, shared command file, or duplicated archive engine.
 | Action extensions / Finder Quick Actions | A supported host/extension model with activation rules and item-provider input, but host-controlled presentation and extension request lifetimes. A container-app handoff and extension signing/access handling would be needed for long extraction and destination UI. Does not provide a guaranteed arbitrary dynamic Finder submenu. Deferred. |
 | AppKit Services | Native selected-file actions, type restrictions, menu names, and launch/delivery directly to the app's Services provider. The app owns the chooser, progress, cancellation, and existing engine. Chosen as the smallest supported architecture for the current macOS 13+ target. |
 | Automator Quick Actions | User-installed workflows can appear as Finder Quick Actions, but require separate workflow installation and usually a script/app handoff. Not bundled as a pretend app extension. |
-| App Intents / Shortcuts | Modern automation entry points; a user-configured shortcut can be exposed as a Quick Action. They do not by themselves install this four-action Finder submenu. A future automation feature, not needed for this milestone. |
+| App Intents / Shortcuts | Modern automation entry points; a user-configured shortcut can be exposed as a Quick Action. They do not by themselves install these four Finder Services. A future automation feature, not needed for this milestone. |
 
 Research inspected these published Apple SDK interfaces through accessible SDK
 mirrors: [macOS 15.5 NSApplication Services APIs](https://github.com/alexey-lysiuk/macos-sdk/blob/master/MacOSX15.5.sdk/System/Library/Frameworks/AppKit.framework/Versions/C/Headers/NSApplication.h),
@@ -33,24 +33,36 @@ are additional references. Direct requests to developer.apple.com were blocked b
 the development environment's network policy; those web pages were not fetched.
 SDK evidence is not a substitute for testing Finder's actual menu presentation.
 
+## Registration correction
+
+The first implementation passed source/plist checks but failed discovery on a real
+M1 Mac: no Arkiv entries appeared in Services settings or Finder. That was a
+registration defect, not a user configuration problem. Its validator incorrectly
+required pasteboard `NSSendTypes`, a file-type context filter, and legacy slash
+submenu titles. The corrected declarations use **`NSSendFileTypes`** with
+`public.zip-archive` and `public.tar-archive`, an empty `NSRequiredContext`, direct
+service titles, and no `NSSendTypes` or unused `NSReturnTypes`. The existing
+selector, port, action data, and provider-side validation are preserved. Bundle
+build version is incremented to 2 so the corrected app is identified as an update.
+
 ## Actions and scope
 
 Right-click one `.zip` or **uncompressed** `.tar` file in Finder, then use
-**Services → Arkiv**:
+**Services** and choose a direct action:
 
 - **Open in Arkiv**: existing browser/window-reuse workflow; no extraction.
-- **Extract Here**: place the archive's top-level items beside the archive.
-- **Extract to Archive Folder**: create `<ArchiveName>/` beside it, or
+- **Extract Here with Arkiv**: place the archive's top-level items beside the archive.
+- **Extract to Folder with Arkiv**: create `<ArchiveName>/` beside it, or
   `<ArchiveName> (2)/`, `(3)/`, etc. if the name is occupied.
-- **Extract To…**: Arkiv opens a native folder chooser, then creates an
+- **Extract To… with Arkiv**: Arkiv opens a native folder chooser, then creates an
   archive-named folder inside the chosen directory, using the same conflict rule.
 
-The plist requests a compact `Arkiv/…` submenu. macOS controls its final placement
-and may present the service labels differently. Services titles are static: the
-menu cannot display the selected archive's actual name. The destination folder
-still uses that name. The folder name is sanitized and bounded in UTF-8 length.
+There is no Arkiv submenu: slash-separated titles are not supported by modern
+macOS Services. macOS controls Finder placement and eligibility. Titles are static;
+the menu cannot display the selected archive's actual name. The destination folder
+still uses that name, sanitized and bounded in UTF-8 length.
 
-Only ZIP and uncompressed TAR types are advertised via `NSTextContentFileTypes`.
+Only ZIP and uncompressed TAR types are advertised via `NSSendFileTypes`.
 The provider revalidates one local regular file and its suffix; it rejects links,
 directories, remote URLs, unknown actions, and multiple selections before any
 extraction. Corrupt/encrypted/unsupported contents still fail engine validation.
@@ -88,20 +100,48 @@ Arkiv allows one Finder extraction at a time. A compact operation window provide
 Cancel; closing it requests cancellation, and quitting is blocked until cleanup
 finishes. Regular browser operations remain unchanged.
 
-## Install and enable on a real Mac
+## Install and retest on a real Mac
 
-1. Download a successful current arm64 or Universal development DMG as described
-   in [release.md](release.md). Drag **Arkiv.app** to **Applications**, eject the
-   DMG, and launch the installed app once. Complete the documented development
-   Gatekeeper approval if needed. Avoid keeping duplicate installed copies.
-2. In macOS 13+, open **System Settings → Keyboard → Keyboard Shortcuts… →
-   Services → Files and Folders**. Enable the four Arkiv services if unchecked.
-   The Services pane may group or display the full `Arkiv/…` labels differently
-   between OS releases. Finder's **Finder → Services → Services Settings…** also
-   leads to the relevant settings.
-3. In Finder, select one ZIP/TAR file and right-click → **Services → Arkiv**.
-   If registration is stale, quit/relaunch Arkiv and Finder; log out/in if needed.
-   There is **no extension checkbox** under Login Items & Extensions to enable.
+1. Quit the previous Arkiv build. Download a successful current arm64 or Universal
+   development DMG as described in [release.md](release.md). Replace
+   **/Applications/Arkiv.app**, eject the DMG, and launch the installed app once.
+   Complete the documented development Gatekeeper approval if needed.
+2. Open **System Settings → Keyboard → Keyboard Shortcuts… → Services → Files
+   and Folders**. Confirm all four direct titles appear: **Open in Arkiv**,
+   **Extract Here with Arkiv**, **Extract to Folder with Arkiv**, and
+   **Extract To… with Arkiv**. Enable them if unchecked. There is no Finder
+   extension checkbox or expected Arkiv submenu.
+3. Select one ZIP or uncompressed TAR in Finder. Right-click → **Services** and
+   confirm the actions are available according to macOS Services policy. Test
+   each action as listed below, including launching Arkiv while it is quit.
+4. If the corrected build is still absent from Services settings, report that as
+   a remaining registration bug with macOS version and app build information.
+   Normal installation/use does not require terminal commands or cache resets.
+
+## Optional developer registration diagnostics
+
+These are diagnostics for investigating a registration failure, **not normal-user
+setup instructions**. `pbs` is system tooling, not a supported app runtime API or
+an Arkiv dependency. On a development Mac, inspect the installed bundle with:
+
+```sh
+/System/Library/CoreServices/pbs -read_bundle /Applications/Arkiv.app
+/System/Library/CoreServices/pbs
+/System/Library/CoreServices/pbs -dump
+```
+
+The first command asks the system Services tool to read the bundle, the second
+refreshes its Services information, and the third dumps the registered Services.
+Look for all four direct titles and their file UTIs. A dump may include unrelated
+apps and local paths; review it before sharing. Tool options/output can vary with
+macOS releases. Do not build application logic around them.
+
+CI runs the strict metadata verifier against the built app, mounted DMG, and
+copied installation. A separate macOS-only diagnostic runs `pbs -read_bundle`
+on the built app and checks `pbs -dump` for all four titles. It fails if commands
+fail or titles are absent; raw system output stays in local build logs, while
+only fixed status/count diagnostics are printed. This is stronger than checking
+source XML, but it still does not establish Finder menu visibility on a user's Mac.
 
 ## Real-Mac acceptance checklist
 
@@ -112,9 +152,9 @@ finishes. Regular browser operations remain unchanged.
   Confirm direct placement, no extra wrapper, and an unchanged source archive.
 - Repeat with an existing output file, folder, and dangling symlink. Confirm no
   overwrite/merge, a clear error, and usable recovery files.
-- Run Extract to Archive Folder twice; confirm `<name>` and `<name> (2)`. Occupy a
+- Run Extract to Folder with Arkiv twice; confirm `<name>` and `<name> (2)`. Occupy a
   candidate with a file or symlink and confirm it is preserved.
-- Run Extract To…, cancel the chooser, then retry with a writable destination;
+- Run Extract To… with Arkiv, cancel the chooser, then retry with a writable destination;
   confirm only the chosen destination receives a new archive-named folder.
 - Test a permission-denied destination, corrupt ZIP, hostile traversal/link archive,
   and cancelling a large archive. Confirm errors/cleanup and that quitting waits.

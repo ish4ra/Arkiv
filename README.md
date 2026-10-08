@@ -40,4 +40,4 @@ Next: confirm/fix macOS CI and real-Mac browser behavior, then implement owned p
 
 ## Finder extraction
 
-Right-click one ZIP or uncompressed TAR archive → **Services → Arkiv** for Open in Arkiv, Extract Here, Extract to Archive Folder, or Extract To…. Enable these under **System Settings → Keyboard → Keyboard Shortcuts → Services** if needed. Extraction never overwrites or merges existing items. Single selection only; no archive creation. See [Finder setup, limitations, and test steps](docs/finder-integration.md).
+Right-click one ZIP or uncompressed TAR archive → **Services** for **Open in Arkiv**, **Extract Here with Arkiv**, **Extract to Folder with Arkiv**, or **Extract To… with Arkiv**. Enable these under **System Settings → Keyboard → Keyboard Shortcuts → Services** if needed. Extraction never overwrites or merges existing items. Single selection only; no archive creation. See [Finder setup, limitations, and test steps](docs/finder-integration.md).

@@ -66,3 +66,5 @@ The bundle identifier is `xyz.isharalakshan.arkiv`. Configure legitimate Develop
 ## Finder Services
 
 The four Finder Services are contained in the app executable and `Info.plist`; no separate extension/helper installation is needed. Launch the installed app once and enable the services in Keyboard Shortcuts settings if necessary. See [Finder integration](finder-integration.md) for exact actions, type restrictions, conflict/recovery behavior, setup, and interactive acceptance checks. App/DMG verification also checks the packaged Services declarations.
+
+The corrected file-Service registration is in app build **2**. It uses `NSSendFileTypes` and direct action titles, not a submenu. Replace the previous installed app and confirm the four titles appear in Services → Files and Folders; terminal registration commands are optional developer diagnostics, not installation requirements.

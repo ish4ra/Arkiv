@@ -29,6 +29,8 @@ jobs:
           uname -m
       - name: Engine security and fixture tests
         run: scripts/ci-check.sh engine scripts/test-engine.sh
+      - name: File Services registration regression tests
+        run: scripts/ci-check.sh services-tests python3 tests/test_finder_services.py -v
       - name: Swift tests (native runner architecture)
         run: scripts/ci-check.sh swift swift test --parallel
       - name: Validate branding dimensions, transparency, and checksums
@@ -37,6 +39,8 @@ jobs:
           (cd branding && shasum -a 256 -c SHA256SUMS)
       - name: Build and verify development application
         run: scripts/ci-check.sh app scripts/build-app.sh
+      - name: System Services registration diagnostic (packaged app)
+        run: scripts/ci-check.sh services python3 scripts/diagnose-finder-services.py build/Arkiv.app
       - name: Create, mount, and verify development DMG
         run: scripts/ci-check.sh dmg scripts/build-dmg.sh
       - name: Package ZIP alternative

@@ -7,7 +7,7 @@
 <key>CFBundleExecutable</key><string>Arkiv</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.1.0</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleVersion</key><string>2</string>
 <key>CFBundleIconFile</key><string>Arkiv</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
@@ -19,40 +19,36 @@
 </array>
 <key>NSServices</key><array>
 <dict>
-<key>NSMenuItem</key><dict><key>default</key><string>Arkiv/Open in Arkiv</string></dict>
+<key>NSMenuItem</key><dict><key>default</key><string>Open in Arkiv</string></dict>
 <key>NSMessage</key><string>performFinderAction</string>
 <key>NSPortName</key><string>Arkiv</string>
 <key>NSUserData</key><string>open</string>
-<key>NSSendTypes</key><array><string>public.file-url</string><string>NSFilenamesPboardType</string></array>
-<key>NSRequiredContext</key><dict><key>NSTextContentFileTypes</key><array><string>public.zip-archive</string><string>public.tar-archive</string></array></dict>
-<key>NSReturnTypes</key><array/>
+<key>NSSendFileTypes</key><array><string>public.zip-archive</string><string>public.tar-archive</string></array>
+<key>NSRequiredContext</key><dict/>
 </dict>
 <dict>
-<key>NSMenuItem</key><dict><key>default</key><string>Arkiv/Extract Here</string></dict>
+<key>NSMenuItem</key><dict><key>default</key><string>Extract Here with Arkiv</string></dict>
 <key>NSMessage</key><string>performFinderAction</string>
 <key>NSPortName</key><string>Arkiv</string>
 <key>NSUserData</key><string>extractHere</string>
-<key>NSSendTypes</key><array><string>public.file-url</string><string>NSFilenamesPboardType</string></array>
-<key>NSRequiredContext</key><dict><key>NSTextContentFileTypes</key><array><string>public.zip-archive</string><string>public.tar-archive</string></array></dict>
-<key>NSReturnTypes</key><array/>
+<key>NSSendFileTypes</key><array><string>public.zip-archive</string><string>public.tar-archive</string></array>
+<key>NSRequiredContext</key><dict/>
 </dict>
 <dict>
-<key>NSMenuItem</key><dict><key>default</key><string>Arkiv/Extract to Archive Folder</string></dict>
+<key>NSMenuItem</key><dict><key>default</key><string>Extract to Folder with Arkiv</string></dict>
 <key>NSMessage</key><string>performFinderAction</string>
 <key>NSPortName</key><string>Arkiv</string>
 <key>NSUserData</key><string>extractFolder</string>
-<key>NSSendTypes</key><array><string>public.file-url</string><string>NSFilenamesPboardType</string></array>
-<key>NSRequiredContext</key><dict><key>NSTextContentFileTypes</key><array><string>public.zip-archive</string><string>public.tar-archive</string></array></dict>
-<key>NSReturnTypes</key><array/>
+<key>NSSendFileTypes</key><array><string>public.zip-archive</string><string>public.tar-archive</string></array>
+<key>NSRequiredContext</key><dict/>
 </dict>
 <dict>
-<key>NSMenuItem</key><dict><key>default</key><string>Arkiv/Extract To…</string></dict>
+<key>NSMenuItem</key><dict><key>default</key><string>Extract To… with Arkiv</string></dict>
 <key>NSMessage</key><string>performFinderAction</string>
 <key>NSPortName</key><string>Arkiv</string>
 <key>NSUserData</key><string>extractTo</string>
-<key>NSSendTypes</key><array><string>public.file-url</string><string>NSFilenamesPboardType</string></array>
-<key>NSRequiredContext</key><dict><key>NSTextContentFileTypes</key><array><string>public.zip-archive</string><string>public.tar-archive</string></array></dict>
-<key>NSReturnTypes</key><array/>
+<key>NSSendFileTypes</key><array><string>public.zip-archive</string><string>public.tar-archive</string></array>
+<key>NSRequiredContext</key><dict/>
 </dict>
 </array>
 </dict></plist>
