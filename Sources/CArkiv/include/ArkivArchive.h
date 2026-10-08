@@ -1,0 +1,25 @@
+#ifndef ARKIV_ARCHIVE_H
+#define ARKIV_ARCHIVE_H
+#include <stdint.h>
+#include <stddef.h>
+
+typedef struct arkiv_cancel arkiv_cancel;
+arkiv_cancel *arkiv_cancel_new(void);
+void arkiv_cancel_set(arkiv_cancel *token);
+void arkiv_cancel_free(arkiv_cancel *token);
+
+typedef struct {
+    uint64_t max_entries;
+    uint64_t max_bytes;
+} arkiv_limits;
+/* Callback strings are borrowed and valid only during the callback. */
+typedef int (*arkiv_entry_callback)(void *, int64_t, const char *, int64_t, int);
+typedef void (*arkiv_progress_callback)(void *, uint64_t, uint64_t);
+/* Return 0 success, 1 error, 2 cancellation. Error buffer never contains archive data. */
+int arkiv_list(const char *, arkiv_limits, arkiv_cancel *, arkiv_entry_callback, void *, char *, size_t);
+/* Root must be a private, caller-owned directory. Never overwrites. IDs are sorted, unique archive ordinals;
+   NULL IDs means all entries. Only regular files/directories; no links or special entries. */
+int arkiv_extract(const char *, const char *, const int64_t *, size_t, arkiv_limits,
+                 arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
+const char *arkiv_backend_version(void);
+#endif

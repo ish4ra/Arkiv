@@ -19,7 +19,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     env:
-      ARKO_ARCH: ${{ matrix.architecture }}
+      ARKIV_ARCH: ${{ matrix.architecture }}
     steps:
       - uses: actions/checkout@v5
       - name: Toolchain and backend
@@ -31,22 +31,26 @@ jobs:
         run: scripts/ci-check.sh engine scripts/test-engine.sh
       - name: Swift tests (native runner architecture)
         run: scripts/ci-check.sh swift swift test --parallel
+      - name: Validate branding dimensions, transparency, and checksums
+        run: |
+          scripts/ci-check.sh branding swift branding/verify-assets.swift branding
+          (cd branding && shasum -a 256 -c SHA256SUMS)
       - name: Build and verify development application
         run: scripts/ci-check.sh app scripts/build-app.sh
       - name: Create, mount, and verify development DMG
         run: scripts/ci-check.sh dmg scripts/build-dmg.sh
       - name: Package ZIP alternative
-        run: ditto -c -k --sequesterRsrc --keepParent build/Arko.app "build/Arko-${ARKO_ARCH}.zip"
+        run: ditto -c -k --sequesterRsrc --keepParent build/Arkiv.app "build/Arkiv-${ARKIV_ARCH}.zip"
       - uses: actions/upload-artifact@v6
         with:
-          name: Arko-${{ matrix.architecture }}-development-dmg
+          name: Arkiv-${{ matrix.architecture }}-development-dmg
           path: |
-            build/Arko-${{ matrix.architecture }}-development.dmg
-            build/Arko-${{ matrix.architecture }}-development.dmg.sha256
+            build/Arkiv-${{ matrix.architecture }}-development.dmg
+            build/Arkiv-${{ matrix.architecture }}-development.dmg.sha256
           if-no-files-found: error
           compression-level: 0
       - uses: actions/upload-artifact@v6
         with:
-          name: Arko-${{ matrix.architecture }}-development
-          path: build/Arko-${{ matrix.architecture }}.zip
+          name: Arkiv-${{ matrix.architecture }}-development
+          path: build/Arkiv-${{ matrix.architecture }}.zip
           if-no-files-found: error

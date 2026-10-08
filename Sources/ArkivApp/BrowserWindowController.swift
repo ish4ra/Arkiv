@@ -1,6 +1,6 @@
 import AppKit
-import ArkoCore
-import ArkoPresentation
+import ArkivCore
+import ArkivPresentation
 
 final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, NSToolbarDelegate, NSMenuItemValidation, NSToolbarItemValidation {
@@ -34,20 +34,20 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     private var forward: [String] = []
     private var cancellation: ArchiveCancellation?
     private let engine = LibArchiveEngine()
-    private let worker = DispatchQueue(label: "app.arko.archive", qos: .userInitiated)
+    private let worker = DispatchQueue(label: "xyz.isharalakshan.arkiv.archive", qos: .userInitiated)
 
     init() {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 920, height: 580),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init(window: window)
-        window.title = "Arko"
+        window.title = "Arkiv"
         window.minSize = NSSize(width: 640, height: 360)
         window.center()
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
         window.contentView = makeContent()
-        let toolbar = NSToolbar(identifier: "ArkoBrowser")
+        let toolbar = NSToolbar(identifier: "ArkivBrowser")
         toolbar.delegate = self
         toolbar.displayMode = .iconAndLabel
         toolbar.allowsUserCustomization = true
@@ -128,7 +128,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         icon.setAccessibilityElement(false)
         icon.widthAnchor.constraint(equalToConstant: 64).isActive = true
         icon.heightAnchor.constraint(equalToConstant: 64).isActive = true
-        let title = NSTextField(labelWithString: "Arko")
+        let title = NSTextField(labelWithString: "Arkiv")
         title.font = .systemFont(ofSize: 20, weight: .semibold)
         let description = NSTextField(labelWithString: "Browse an archive and choose what to extract.")
         description.font = .systemFont(ofSize: 13); description.textColor = .secondaryLabelColor
@@ -230,7 +230,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         let panel = NSOpenPanel()
         panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.canCreateDirectories = true
         panel.prompt = "Extract Here"
-        panel.message = "Arko creates a new folder here. Existing files are never replaced. Links and special files are rejected."
+        panel.message = "Arkiv creates a new folder here. Existing files are never replaced. Links and special files are rejected."
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let parent = panel.url, let self else { return }
             let token = self.begin("Extracting…")

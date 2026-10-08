@@ -1,4 +1,4 @@
-# Arko identity study
+# Arkiv identity study
 
 Three original object directions were considered before selecting the first implementation:
 

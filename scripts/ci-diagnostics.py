@@ -59,4 +59,4 @@ for source in Path('Tests').rglob('*.swift'):
 labels = list(dict.fromkeys(labels))
 if not labels: labels.append('Command failed; detailed diagnostics require authenticated Actions log access.')
 for label in labels:
-    print('::error title=Arko sanitized diagnostic::' + label)
+    print('::error title=Arkiv sanitized diagnostic::' + label)

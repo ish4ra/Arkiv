@@ -1,32 +1,32 @@
-ARKO — GPT-6 ASTRA MASTER IMPLEMENTATION BRIEF
+ARKIV — GPT-6 ASTRA MASTER IMPLEMENTATION BRIEF
 
 Repository:
-https://github.com/ish4ra/Arko
+https://github.com/ish4ra/Arkiv
 
 Application name:
-Arko
+Arkiv
 
 IMPORTANT REPOSITORY STATE
 
 This repository is at its initial foundation stage.
-It currently contains this implementation specification but no Arko application code yet.
+It currently contains this implementation specification but no Arkiv application code yet.
 
-Treat ARKO_SPEC.md as the authoritative product and implementation brief.
+Treat ARKIV_SPEC.md as the authoritative product and implementation brief.
 
-Initialize the native Arko macOS project from scratch in this repository.
+Initialize the native Arkiv macOS project from scratch in this repository.
 Preserve this specification, establish a clean production-quality project structure, implement stable milestones, commit them clearly, and push completed work to GitHub.
 
 Do not wait for starter application code.
 
 EXECUTION GOAL
-Build Arko as a serious production-quality, macOS-only archive manager.
+Build Arkiv as a serious production-quality, macOS-only archive manager.
 Do not only plan, explain, or create mockups. Research first, then implement, build, test, debug, commit, and push stable work.
 
 PRODUCT VISION
-Arko should provide the depth and workflow of serious desktop archive managers such as 7-Zip File Manager and WinRAR, but redesigned properly for modern macOS.
+Arkiv should provide the depth and workflow of serious desktop archive managers such as 7-Zip File Manager and WinRAR, but redesigned properly for modern macOS.
 It must NOT be a simple “drop archive -> extract everything” app.
 
-When a user opens an archive, it must open inside Arko as a browsable container. Users should be able to:
+When a user opens an archive, it must open inside Arkiv as a browsable container. Users should be able to:
 - browse folders and files inside archives
 - inspect metadata
 - sort/search/filter
@@ -70,7 +70,7 @@ Avoid:
 - glassmorphism without purpose
 - generic SwiftUI sample-project appearance
 
-Arko is a desktop file/archive management utility.
+Arkiv is a desktop file/archive management utility.
 The UI should be information-dense, keyboard-friendly, practical, and visually refined.
 
 Design direction:
@@ -505,7 +505,7 @@ Evaluate:
 Do not blindly force Finder Sync if a more appropriate current approach exists.
 
 For archive files, target:
-- Open in Arko
+- Open in Arkiv
 - Extract Here
 - Extract to "<ArchiveName>/"
 - Extract To...
@@ -524,8 +524,8 @@ Support multiple selected Finder items.
 
 FILE ASSOCIATIONS
 Register proper UTTypes/document types.
-Users should be able to set Arko as default for supported archives.
-Double-click should open archive in Arko, NOT automatically extract it.
+Users should be able to set Arkiv as default for supported archives.
+Double-click should open archive in Arkiv, NOT automatically extract it.
 
 FINDER QUICK LOOK
 Investigate a Quick Look extension for archive files showing compact metadata and a limited file tree/list:
@@ -696,12 +696,12 @@ Keep settings purposeful and use smart defaults.
 CLI COMPANION
 Architect the engine so GUI and CLI can reuse it.
 If practical, create a CLI target:
-arko list archive.7z
-arko extract archive.7z
-arko extract archive.7z --output ~/Downloads
-arko test archive.7z
-arko create output.7z files...
-arko hash file.iso
+arkiv list archive.7z
+arkiv extract archive.7z
+arkiv extract archive.7z --output ~/Downloads
+arkiv test archive.7z
+arkiv create output.7z files...
+arkiv hash file.iso
 If CLI risks the primary GUI foundation, defer implementation but keep architecture ready.
 
 ACCESSIBILITY
@@ -731,7 +731,7 @@ Do NOT copy:
 - branding
 - object concept
 
-ARKO APP ICON — EXTREMELY IMPORTANT
+ARKIV APP ICON — EXTREMELY IMPORTANT
 Do NOT create a generic archive utility icon.
 
 Do NOT use:
@@ -778,7 +778,7 @@ Create a coherent family for:
 - GZ
 - XZ
 - ZST
-These may use subtle format labels and should share Arko's visual language without becoming the app icon.
+These may use subtle format labels and should share Arkiv's visual language without becoming the app icon.
 
 BRAND SYSTEM
 Keep branding restrained:
@@ -827,7 +827,7 @@ Add GitHub Actions suitable for macOS:
 - tests
 - useful static analysis/lint if justified
 Prepare release tooling for:
-- Arko.app
+- Arkiv.app
 - DMG
 - optional ZIP bundle
 Prefer Universal binaries if practical.
@@ -887,7 +887,7 @@ docs/finder-integration.md
 docs/release.md
 docs/third-party-licenses.md
 
-README should explain what Arko is, status, verified formats, major features, build instructions, architecture overview, release state, and screenshots when useful.
+README should explain what Arkiv is, status, verified formats, major features, build instructions, architecture overview, release state, and screenshots when useful.
 Avoid marketing fluff.
 
 FEATURE MATRIX
@@ -1051,10 +1051,10 @@ Provide concise factual report:
 - exact next recommended phase
 
 MOST IMPORTANT:
-Do not spend the task merely explaining how Arko could be built.
+Do not spend the task merely explaining how Arkiv could be built.
 
 Actually work in:
-https://github.com/ish4ra/Arko
+https://github.com/ish4ra/Arkiv
 
 Research.
 Implement.
@@ -1064,4 +1064,4 @@ Debug.
 Commit.
 Push.
 
-Create a strong stable foundation for Arko as a genuine native modern macOS archive manager with serious archive-management capabilities and its own recognizable product identity.
+Create a strong stable foundation for Arkiv as a genuine native modern macOS archive manager with serious archive-management capabilities and its own recognizable product identity.

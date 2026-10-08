@@ -1,6 +1,6 @@
 import XCTest
-import ArkoCore
-@testable import ArkoPresentation
+import ArkivCore
+@testable import ArkivPresentation
 
 final class BrowserPresentationTests: XCTestCase {
     private let archive = URL(fileURLWithPath: "/tmp/example.zip")

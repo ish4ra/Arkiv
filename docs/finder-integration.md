@@ -1,6 +1,6 @@
 # Finder integration decision
 
-No Finder extension or contextual extraction actions are implemented in this milestone. ZIP and TAR are declared as Viewer document types with `LSHandlerRank=Alternate`; Arko must not silently become the default. Opening a document routes to the native browser, never automatic extraction.
+No Finder extension or contextual extraction actions are implemented in this milestone. ZIP and TAR are declared as Viewer document types with `LSHandlerRank=Alternate`; Arkiv must not silently become the default. Opening a document routes to the native browser, never automatic extraction.
 
 Next research: [Services](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/SysServices/introduction.html), [Finder Sync](https://developer.apple.com/library/archive/documentation/General/Conceptual/ExtensibilityPG/Finder.html), [Quick Look extensions](https://developer.apple.com/documentation/quicklook), and current App Extension/sandbox requirements on the shipping macOS SDK. Finder Sync's principal purpose is synchronization/status of monitored folders; do not install an always-monitoring extension just to obtain a global archive context menu. Prefer Services/Quick Actions for initial selected-file commands after testing their discoverability and multi-selection semantics. The Apple API comparison and interactive tests remain pending; these links are research targets, not a claim that current API documentation was validated in this Linux task.
 

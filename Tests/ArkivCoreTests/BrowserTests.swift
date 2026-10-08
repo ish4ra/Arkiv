@@ -1,5 +1,5 @@
 import XCTest
-@testable import ArkoCore
+@testable import ArkivCore
 
 final class BrowserTests: XCTestCase {
     let entries = [

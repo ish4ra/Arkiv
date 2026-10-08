@@ -1,6 +1,6 @@
 import AppKit
 import UniformTypeIdentifiers
-import ArkoCore
+import ArkivCore
 
 /// Keep the context menu attached to the row under the pointer without losing a multi-selection.
 final class ArchiveTableView: NSTableView {

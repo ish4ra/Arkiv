@@ -2,18 +2,18 @@
 import AppKit
 let directory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
 let assets: [(String, Int)] = [
-    ("Arko-AppIcon-1024.png", 1024), ("Arko-AppIcon-512.png", 512),
-    ("Arko-AppIcon-256.png", 256), ("Arko-AppIcon-128.png", 128),
-    ("Arko-Mark-Transparent-1024.png", 1024), ("Arko-Mark-Transparent-512.png", 512)
+    ("Arkiv-AppIcon-1024.png", 1024), ("Arkiv-AppIcon-512.png", 512),
+    ("Arkiv-AppIcon-256.png", 256), ("Arkiv-AppIcon-128.png", 128),
+    ("Arkiv-Mark-Transparent-1024.png", 1024), ("Arkiv-Mark-Transparent-512.png", 512)
 ]
 func require(_ condition: Bool, _ message: String) throws {
-    if !condition { throw NSError(domain: "ArkoBranding", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+    if !condition { throw NSError(domain: "ArkivBranding", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
 }
 for (name, size) in assets {
     let data = try Data(contentsOf: directory.appendingPathComponent(name))
     try require(data.starts(with: [137, 80, 78, 71, 13, 10, 26, 10]), "\(name): not a PNG")
     guard let bitmap = NSBitmapImageRep(data: data) else {
-        throw NSError(domain: "ArkoBranding", code: 2, userInfo: [NSLocalizedDescriptionKey: "\(name): cannot decode PNG"])
+        throw NSError(domain: "ArkivBranding", code: 2, userInfo: [NSLocalizedDescriptionKey: "\(name): cannot decode PNG"])
     }
     try require(bitmap.pixelsWide == size && bitmap.pixelsHigh == size, "\(name): incorrect dimensions")
     try require(bitmap.hasAlpha, "\(name): missing alpha channel")
@@ -33,7 +33,7 @@ for (name, size) in assets {
     print("\(name): \(size) × \(size), transparent corners, opaque artwork, partial alpha verified")
 }
 for size in [1024, 512] {
-    let app = try Data(contentsOf: directory.appendingPathComponent("Arko-AppIcon-\(size).png"))
-    let mark = try Data(contentsOf: directory.appendingPathComponent("Arko-Mark-Transparent-\(size).png"))
+    let app = try Data(contentsOf: directory.appendingPathComponent("Arkiv-AppIcon-\(size).png"))
+    let mark = try Data(contentsOf: directory.appendingPathComponent("Arkiv-Mark-Transparent-\(size).png"))
     try require(app == mark, "\(size): mark must be byte-identical to the app-icon export")
 }

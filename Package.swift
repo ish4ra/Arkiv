@@ -1,16 +1,16 @@
 // swift-tools-version: 5.9
 import PackageDescription
-var products: [Product] = [.library(name: "ArkoCore", targets: ["ArkoCore"])]
+var products: [Product] = [.library(name: "ArkivCore", targets: ["ArkivCore"])]
 var targets: [Target] = [
-    .target(name: "CArko", linkerSettings: [.linkedLibrary("archive")]),
-    .target(name: "ArkoCore", dependencies: ["CArko"]),
-    .testTarget(name: "ArkoCoreTests", dependencies: ["ArkoCore"]),
-    .target(name: "ArkoPresentation", dependencies: ["ArkoCore"]),
-    .testTarget(name: "ArkoPresentationTests", dependencies: ["ArkoPresentation"])
+    .target(name: "CArkiv", linkerSettings: [.linkedLibrary("archive")]),
+    .target(name: "ArkivCore", dependencies: ["CArkiv"]),
+    .testTarget(name: "ArkivCoreTests", dependencies: ["ArkivCore"]),
+    .target(name: "ArkivPresentation", dependencies: ["ArkivCore"]),
+    .testTarget(name: "ArkivPresentationTests", dependencies: ["ArkivPresentation"])
 ]
 #if os(macOS)
-products.append(.executable(name: "Arko", targets: ["ArkoApp"]))
-targets.append(.executableTarget(name: "ArkoApp", dependencies: ["ArkoCore", "ArkoPresentation"]))
-targets.append(.testTarget(name: "ArkoAppTests", dependencies: ["ArkoApp"]))
+products.append(.executable(name: "Arkiv", targets: ["ArkivApp"]))
+targets.append(.executableTarget(name: "ArkivApp", dependencies: ["ArkivCore", "ArkivPresentation"]))
+targets.append(.testTarget(name: "ArkivAppTests", dependencies: ["ArkivApp"]))
 #endif
-let package = Package(name: "Arko", platforms: [.macOS(.v13)], products: products, targets: targets)
+let package = Package(name: "Arkiv", platforms: [.macOS(.v13)], products: products, targets: targets)

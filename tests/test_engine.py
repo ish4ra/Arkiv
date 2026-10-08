@@ -8,16 +8,16 @@ import tempfile
 import unittest
 import zipfile
 
-LIB = C.CDLL(os.environ['ARKO_TEST_LIBRARY'])
+LIB = C.CDLL(os.environ['ARKIV_TEST_LIBRARY'])
 class Limits(C.Structure):
     _fields_ = [('entries', C.c_uint64), ('bytes', C.c_uint64)]
 ENTRY = C.CFUNCTYPE(C.c_int, C.c_void_p, C.c_int64, C.c_char_p, C.c_int64, C.c_int)
 PROGRESS = C.CFUNCTYPE(None, C.c_void_p, C.c_uint64, C.c_uint64)
-LIB.arko_list.argtypes = [C.c_char_p, Limits, C.c_void_p, ENTRY, C.c_void_p, C.c_char_p, C.c_size_t]
-LIB.arko_extract.argtypes = [C.c_char_p, C.c_char_p, C.POINTER(C.c_int64), C.c_size_t, Limits, C.c_void_p, PROGRESS, C.c_void_p, C.c_char_p, C.c_size_t]
-LIB.arko_cancel_new.restype = C.c_void_p
-LIB.arko_cancel_set.argtypes = [C.c_void_p]
-LIB.arko_cancel_free.argtypes = [C.c_void_p]
+LIB.arkiv_list.argtypes = [C.c_char_p, Limits, C.c_void_p, ENTRY, C.c_void_p, C.c_char_p, C.c_size_t]
+LIB.arkiv_extract.argtypes = [C.c_char_p, C.c_char_p, C.POINTER(C.c_int64), C.c_size_t, Limits, C.c_void_p, PROGRESS, C.c_void_p, C.c_char_p, C.c_size_t]
+LIB.arkiv_cancel_new.restype = C.c_void_p
+LIB.arkiv_cancel_set.argtypes = [C.c_void_p]
+LIB.arkiv_cancel_free.argtypes = [C.c_void_p]
 
 class EngineTests(unittest.TestCase):
     def setUp(self):
@@ -26,10 +26,10 @@ class EngineTests(unittest.TestCase):
         self.archive = self.base / 'input'
         self.out = self.base / 'out'
         self.out.mkdir(mode=0o700)
-        self.token = LIB.arko_cancel_new()
+        self.token = LIB.arkiv_cancel_new()
         self.limits = Limits(10000, 8 * 1024 * 1024)
     def tearDown(self):
-        LIB.arko_cancel_free(self.token)
+        LIB.arkiv_cancel_free(self.token)
         self.tmp.cleanup()
     def zip(self, entries):
         with zipfile.ZipFile(self.archive, 'w', compression=zipfile.ZIP_DEFLATED) as z:
@@ -41,7 +41,7 @@ class EngineTests(unittest.TestCase):
         def entry(_, index, name, size, kind):
             rows.append((index, name.decode('utf-8'), size, kind)); return 0
         error = C.create_string_buffer(256)
-        result = LIB.arko_list(bytes(self.archive), self.limits, self.token, entry, None, error, 256)
+        result = LIB.arkiv_list(bytes(self.archive), self.limits, self.token, entry, None, error, 256)
         return result, rows, error.value
     def extract(self, ids=None, progress=None):
         error = C.create_string_buffer(256)
@@ -49,7 +49,7 @@ class EngineTests(unittest.TestCase):
         @PROGRESS
         def callback(_, files, size):
             if progress: progress(files, size)
-        result = LIB.arko_extract(bytes(self.archive), bytes(self.out), array, len(ids or []), self.limits, self.token, callback, None, error, 256)
+        result = LIB.arkiv_extract(bytes(self.archive), bytes(self.out), array, len(ids or []), self.limits, self.token, callback, None, error, 256)
         return result, error.value
     def test_zip_unicode_nested_and_selective(self):
         self.zip([('folder/hello 🦊.txt', b'hello'), ('other.txt', b'other')])
@@ -105,7 +105,7 @@ class EngineTests(unittest.TestCase):
         self.assertNotEqual(self.listing()[0], 0)
     def test_cancel_before_start(self):
         self.zip([('file', b'data')])
-        LIB.arko_cancel_set(self.token)
+        LIB.arkiv_cancel_set(self.token)
         self.assertEqual(self.extract()[0], 2)
         self.assertEqual(self.listing()[0], 2)
         self.assertEqual(list(self.out.iterdir()), [])
@@ -113,14 +113,14 @@ class EngineTests(unittest.TestCase):
         self.zip([('file', b'data')])
         @ENTRY
         def callback(*args):
-            LIB.arko_cancel_set(self.token)
+            LIB.arkiv_cancel_set(self.token)
             return 0
         error = C.create_string_buffer(256)
-        result = LIB.arko_list(bytes(self.archive), self.limits, self.token, callback, None, error, 256)
+        result = LIB.arkiv_list(bytes(self.archive), self.limits, self.token, callback, None, error, 256)
         self.assertEqual(result, 2)
     def test_cancel_while_streaming(self):
         self.zip([('large', b'a' * 1000000)])
-        self.assertEqual(self.extract(progress=lambda f, b: LIB.arko_cancel_set(self.token))[0], 2)
+        self.assertEqual(self.extract(progress=lambda f, b: LIB.arkiv_cancel_set(self.token))[0], 2)
     def test_corrupt_archive(self):
         self.archive.write_bytes(b'not an archive')
         self.assertNotEqual(self.listing()[0], 0)
@@ -141,7 +141,7 @@ class EngineTests(unittest.TestCase):
         self.archive.write_bytes((Path(__file__).parent / 'fixtures/basic.7z').read_bytes())
         self.assertEqual(self.listing()[0], 0)
         self.assertEqual(self.extract()[0], 0)
-        self.assertEqual((self.out / 'folder/hello.txt').read_bytes(), b'hello from Arko\n' * 100)
+        self.assertEqual((self.out / 'folder/hello.txt').read_bytes(), b'hello from Arkiv\n' * 100)
     def test_rar5_stored_fixture(self):
         self.archive.write_bytes((Path(__file__).parent / 'fixtures/rar5-stored.rar').read_bytes())
         self.assertEqual(self.listing()[0], 0)

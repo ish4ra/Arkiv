@@ -1,14 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-[[ $(uname -s) == Darwin ]] || { echo 'Arko.app requires macOS and Xcode command line tools.' >&2; exit 1; }
-architecture=${ARKO_ARCH:-arm64}
+[[ $(uname -s) == Darwin ]] || { echo 'Arkiv.app requires macOS and Xcode command line tools.' >&2; exit 1; }
+architecture=${ARKIV_ARCH:-arm64}
 stage=prepare
-trap 'echo "::error title=Arko packaging stage::Failed at $stage" >&2' ERR
+trap 'echo "::error title=Arkiv packaging stage::Failed at $stage" >&2' ERR
 case "$architecture" in
   arm64|x86_64) architectures=("$architecture") ;;
   universal) architectures=(arm64 x86_64) ;;
-  *) echo 'ARKO_ARCH must be arm64, x86_64, or universal.' >&2; exit 1 ;;
+  *) echo 'ARKIV_ARCH must be arm64, x86_64, or universal.' >&2; exit 1 ;;
 esac
 mkdir -p build
 slices=$(mktemp -d "$PWD/build/app-slices.XXXXXX")
@@ -18,22 +18,22 @@ for arch in "${architectures[@]}"; do
   swift build -c release --arch "$arch"
   binary_dir=$(swift build -c release --arch "$arch" --show-bin-path)
   stage="check-slice-$arch"
-  cp "$binary_dir/Arko" "$slices/Arko-$arch"
-  lipo "$slices/Arko-$arch" -verify_arch "$arch"
+  cp "$binary_dir/Arkiv" "$slices/Arkiv-$arch"
+  lipo "$slices/Arkiv-$arch" -verify_arch "$arch"
 done
-app="$PWD/build/Arko.app"
+app="$PWD/build/Arkiv.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 if [[ "$architecture" == universal ]]; then
   stage=combine-universal
-  lipo -create "$slices/Arko-arm64" "$slices/Arko-x86_64" -output "$app/Contents/MacOS/Arko"
+  lipo -create "$slices/Arkiv-arm64" "$slices/Arkiv-x86_64" -output "$app/Contents/MacOS/Arkiv"
 else
-  cp "$slices/Arko-$architecture" "$app/Contents/MacOS/Arko"
+  cp "$slices/Arkiv-$architecture" "$app/Contents/MacOS/Arkiv"
 fi
 stage=resources
 cp Resources/Info.plist "$app/Contents/Info.plist"
 stage=render-icon
-swift scripts/render-icon.swift "$PWD/build/Arko.iconset"
-iconutil -c icns build/Arko.iconset -o "$app/Contents/Resources/Arko.icns"
+swift scripts/render-icon.swift "$PWD/build/Arkiv.iconset"
+iconutil -c icns build/Arkiv.iconset -o "$app/Contents/Resources/Arkiv.icns"
 cp docs/third-party-licenses.md "$app/Contents/Resources/ThirdPartyNotices.txt"
 mkdir -p "$app/Contents/Resources/licenses"
 cp licenses/libarchive-COPYING.txt "$app/Contents/Resources/licenses/"

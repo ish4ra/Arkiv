@@ -1,6 +1,6 @@
 import AppKit
 import XCTest
-@testable import ArkoApp
+@testable import ArkivApp
 
 final class BrowserWindowTests: XCTestCase {
     private func descendants(_ view: NSView) -> [NSView] {

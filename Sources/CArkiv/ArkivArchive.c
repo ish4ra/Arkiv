@@ -1,4 +1,4 @@
-#include "ArkoArchive.h"
+#include "ArkivArchive.h"
 #include "vendor/archive.h"
 #include "vendor/archive_entry.h"
 #include <errno.h>
@@ -10,16 +10,16 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-struct arko_cancel { atomic_int value; };
-arko_cancel *arko_cancel_new(void) {
-    arko_cancel *p = malloc(sizeof(*p));
+struct arkiv_cancel { atomic_int value; };
+arkiv_cancel *arkiv_cancel_new(void) {
+    arkiv_cancel *p = malloc(sizeof(*p));
     if (p) atomic_init(&p->value, 0);
     return p;
 }
-void arko_cancel_set(arko_cancel *p) { if (p) atomic_store(&p->value, 1); }
-void arko_cancel_free(arko_cancel *p) { free(p); }
-static int cancelled(arko_cancel *p) { return p && atomic_load(&p->value); }
-const char *arko_backend_version(void) { return archive_version_string(); }
+void arkiv_cancel_set(arkiv_cancel *p) { if (p) atomic_store(&p->value, 1); }
+void arkiv_cancel_free(arkiv_cancel *p) { free(p); }
+static int cancelled(arkiv_cancel *p) { return p && atomic_load(&p->value); }
+const char *arkiv_backend_version(void) { return archive_version_string(); }
 static int fail(char *error, size_t capacity, const char *message) {
     if (error && capacity) snprintf(error, capacity, "%s", message);
     return 1;
@@ -64,8 +64,8 @@ static int entry_kind(struct archive_entry *e) {
     if (archive_entry_filetype(e) == AE_IFDIR) return 2;
     return 0;
 }
-int arko_list(const char *path, arko_limits limits, arko_cancel *token,
-              arko_entry_callback callback, void *context, char *error, size_t capacity) {
+int arkiv_list(const char *path, arkiv_limits limits, arkiv_cancel *token,
+              arkiv_entry_callback callback, void *context, char *error, size_t capacity) {
     if (cancelled(token)) return 2;
     struct archive *a = reader(path);
     if (!a) return fail(error, capacity, "Cannot read archive: unsupported, encrypted, corrupt, or inaccessible.");
@@ -128,8 +128,8 @@ static int selected(int64_t id, const int64_t *ids, size_t count) {
     }
     return 0;
 }
-int arko_extract(const char *path, const char *root_path, const int64_t *ids, size_t selected_count,
-                 arko_limits limits, arko_cancel *token, arko_progress_callback progress,
+int arkiv_extract(const char *path, const char *root_path, const int64_t *ids, size_t selected_count,
+                 arkiv_limits limits, arkiv_cancel *token, arkiv_progress_callback progress,
                  void *context, char *error, size_t capacity) {
     if (cancelled(token)) return 2;
     for (size_t i = 0; i < selected_count; i++) {

@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleIdentifier</key><string>app.arko.archive-manager</string>
-<key>CFBundleName</key><string>Arko</string>
-<key>CFBundleDisplayName</key><string>Arko</string>
-<key>CFBundleExecutable</key><string>Arko</string>
+<key>CFBundleIdentifier</key><string>xyz.isharalakshan.arkiv</string>
+<key>CFBundleName</key><string>Arkiv</string>
+<key>CFBundleDisplayName</key><string>Arkiv</string>
+<key>CFBundleExecutable</key><string>Arkiv</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.1.0</string>
 <key>CFBundleVersion</key><string>1</string>
-<key>CFBundleIconFile</key><string>Arko</string>
+<key>CFBundleIconFile</key><string>Arkiv</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 <key>NSHighResolutionCapable</key><true/>
-<key>NSHumanReadableCopyright</key><string>Arko contributors</string>
+<key>NSHumanReadableCopyright</key><string>Arkiv contributors</string>
 <key>CFBundleDocumentTypes</key><array>
 <dict><key>CFBundleTypeName</key><string>ZIP Archive</string><key>CFBundleTypeRole</key><string>Viewer</string><key>LSHandlerRank</key><string>Alternate</string><key>LSItemContentTypes</key><array><string>public.zip-archive</string></array></dict>
 <dict><key>CFBundleTypeName</key><string>TAR Archive</string><key>CFBundleTypeRole</key><string>Viewer</string><key>LSHandlerRank</key><string>Alternate</string><key>LSItemContentTypes</key><array><string>public.tar-archive</string></array></dict>

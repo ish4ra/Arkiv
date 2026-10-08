@@ -1,5 +1,5 @@
 import Foundation
-import ArkoCore
+import ArkivCore
 
 public struct ArchiveWindowState {
     public let id: UUID

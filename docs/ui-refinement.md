@@ -10,7 +10,7 @@ pipeline are unchanged.
   another window only when no idle empty window exists. Pending loads reserve
   their window immediately. New Window (⌘N) always creates an independent window.
   Automatic window tabbing is disabled.
-- The initial view shows the original Arko icon, a short description, and Open
+- The initial view shows the original Arkiv icon, a short description, and Open
   Archive. There is no initial table. Drop-to-open is deferred; no drop hint is
   displayed.
 - The native toolbar contains Open Archive, Extract Selected, Extract All, and

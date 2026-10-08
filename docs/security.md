@@ -8,6 +8,6 @@ Budgets cap entry count at 100,000 and streamed expanded output at 20 GiB. Limit
 
 Source identity/size/mtime plus catalog are rechecked before extraction and source metadata afterward. This catches ordinary changes, but is not a cryptographic immutable-input guarantee against an actor who can rewrite a file and restore metadata concurrently. A future backend should pin a file descriptor and define concurrent-mutation handling. Nothing should claim protection from another process running with the same user's privileges.
 
-Failure/cancellation cleanup is best effort; a process crash or filesystem cleanup failure may leave a hidden `.arko-UUID` directory in the selected destination. Do not recursively remove arbitrary matches at startup. A future crash-recovery journal must establish ownership before removing stale data. Preview/open temporary workspaces are not implemented yet.
+Failure/cancellation cleanup is best effort; a process crash or filesystem cleanup failure may leave a hidden `.arkiv-UUID` directory in the selected destination. Do not recursively remove arbitrary matches at startup. A future crash-recovery journal must establish ownership before removing stale data. Preview/open temporary workspaces are not implemented yet.
 
 No password storage, plaintext secret files, telemetry or networking. Encrypted extraction is unavailable. Error messages intentionally avoid echoing untrusted backend strings into logs. Hardened Runtime is applied to local app bundles; they are ad-hoc signed and unnotarized. This is not yet an App Sandbox build.

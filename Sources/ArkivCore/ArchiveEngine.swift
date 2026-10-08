@@ -1,11 +1,11 @@
 import Foundation
-import CArko
+import CArkiv
 
 public final class ArchiveCancellation: @unchecked Sendable {
     let pointer: OpaquePointer
-    public init() { pointer = arko_cancel_new()! }
-    deinit { arko_cancel_free(pointer) }
-    public func cancel() { arko_cancel_set(pointer) }
+    public init() { pointer = arkiv_cancel_new()! }
+    deinit { arkiv_cancel_free(pointer) }
+    public func cancel() { arkiv_cancel_set(pointer) }
 }
 public struct ArchiveProgress: Sendable {
     public let files: UInt64
@@ -56,9 +56,9 @@ private final class ProgressReceiver {
 }
 public struct LibArchiveEngine: ArchiveEngine {
     public init() {}
-    public static var version: String { String(cString: arko_backend_version()) }
+    public static var version: String { String(cString: arkiv_backend_version()) }
     // Conservative initial safety budgets. No silent unlimited mode.
-    private var limits: arko_limits { arko_limits(max_entries: 100_000, max_bytes: 20 * 1024 * 1024 * 1024) }
+    private var limits: arkiv_limits { arkiv_limits(max_entries: 100_000, max_bytes: 20 * 1024 * 1024 * 1024) }
     private func check(_ result: Int32, _ error: [CChar]) throws {
         if result == 2 { throw ArchiveFailure.cancelled }
         if result != 0 { throw ArchiveFailure.message(String(cString: error)) }
@@ -68,7 +68,7 @@ public struct LibArchiveEngine: ArchiveEngine {
         let collector = EntryCollector()
         let context = Unmanaged.passUnretained(collector).toOpaque()
         var error = [CChar](repeating: 0, count: 256)
-        let result = arko_list(url.path, limits, cancellation.pointer, { context, id, path, size, kind in
+        let result = arkiv_list(url.path, limits, cancellation.pointer, { context, id, path, size, kind in
             guard let context, let path, let name = String(validatingUTF8: path) else { return 1 }
             let collector = Unmanaged<EntryCollector>.fromOpaque(context).takeUnretainedValue()
             collector.entries.append(ArchiveEntry(id: id, path: name, size: size,
@@ -91,7 +91,7 @@ public struct LibArchiveEngine: ArchiveEngine {
             throw ArchiveFailure.message("Archive contents changed. Reopen it.")
         }
         let manager = FileManager.default
-        let staging = parent.appendingPathComponent(".arko-" + UUID().uuidString, isDirectory: true)
+        let staging = parent.appendingPathComponent(".arkiv-" + UUID().uuidString, isDirectory: true)
         try manager.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? manager.removeItem(at: staging) }
         let receiver = ProgressReceiver(progress)
@@ -99,7 +99,7 @@ public struct LibArchiveEngine: ArchiveEngine {
         defer { retainedReceiver.release() }
         let context = retainedReceiver.toOpaque()
         var error = [CChar](repeating: 0, count: 256)
-        let callback: arko_progress_callback = { context, files, bytes in
+        let callback: arkiv_progress_callback = { context, files, bytes in
             guard let context else { return }
             Unmanaged<ProgressReceiver>.fromOpaque(context).takeUnretainedValue()
                 .callback(ArchiveProgress(files: files, bytes: bytes))
@@ -107,18 +107,18 @@ public struct LibArchiveEngine: ArchiveEngine {
         let result: Int32
         if let ids {
             result = ids.sorted().withUnsafeBufferPointer { buffer in
-                arko_extract(snapshot.url.path, staging.path, buffer.baseAddress, buffer.count,
+                arkiv_extract(snapshot.url.path, staging.path, buffer.baseAddress, buffer.count,
                     limits, cancellation.pointer, callback, context, &error, error.count)
             }
         } else {
-            result = arko_extract(snapshot.url.path, staging.path, nil, 0,
+            result = arkiv_extract(snapshot.url.path, staging.path, nil, 0,
                 limits, cancellation.pointer, callback, context, &error, error.count)
         }
         try check(result, error)
         guard try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed during extraction. Output discarded.")
         }
-        let destination = parent.appendingPathComponent("Arko Extracted " + UUID().uuidString, isDirectory: true)
+        let destination = parent.appendingPathComponent("Arkiv Extracted " + UUID().uuidString, isDirectory: true)
         try manager.moveItem(at: staging, to: destination)
         return destination
     }

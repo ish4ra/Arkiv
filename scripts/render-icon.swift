@@ -1,4 +1,4 @@
-// Original Arko "Tension Seal" artwork. No third-party assets or symbols.
+// Original Arkiv "Tension Seal" artwork. No third-party assets or symbols.
 import AppKit
 let output = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
 try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)

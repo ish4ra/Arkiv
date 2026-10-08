@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Copy original PNG representations from an installed Arko.icns; never redraw them.
+"""Copy original PNG representations from an installed Arkiv.icns; never redraw them.
 
 Requires Pillow for decoded dimension/alpha validation only. PNG bytes are not
-re-encoded. Usage: python3 branding/extract-icns.py /path/to/Arko.icns [output-dir]
+re-encoded. Usage: python3 branding/extract-icns.py /path/to/Arkiv.icns [output-dir]
 """
 import argparse
 import hashlib
@@ -48,9 +48,9 @@ def extract(source, output):
                 raise ValueError(f"{size}: missing transparent, opaque, or partial-alpha pixels")
             print(f"{size} × {size}: transparent={histogram[0]}, "
                   f"partial={sum(histogram[1:255])}, opaque={histogram[255]}")
-        exports[f"Arko-AppIcon-{size}.png"] = png
+        exports[f"Arkiv-AppIcon-{size}.png"] = png
         if size in (1024, 512):
-            exports[f"Arko-Mark-Transparent-{size}.png"] = png
+            exports[f"Arkiv-Mark-Transparent-{size}.png"] = png
 
     # Validate every source representation before writing any assets.
     output.mkdir(parents=True, exist_ok=True)

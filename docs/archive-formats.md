@@ -1,6 +1,6 @@
 # Format evidence
 
-These are **fixture results on Linux with libarchive 3.7.4 and in [macOS CI](https://github.com/ish4ra/Arko/actions/runs/37608385235) with the system backend**, not blanket interoperability or release claims.
+These are **fixture results on Linux with libarchive 3.7.4 and in [macOS CI](https://github.com/ish4ra/Arkiv/actions/runs/37608385235) with the system backend**, not blanket interoperability or release claims.
 
 | Format | Browse/extract evidence | Create/modify | Encryption/multipart/comments/integrity command |
 | --- | --- | --- | --- |

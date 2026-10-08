@@ -1,18 +1,18 @@
-# Arko branding — Tension Seal
+# Arkiv branding — Tension Seal
 
-**Tension Seal is the official Arko app icon and brand mark.** The original
+**Tension Seal is the official Arkiv app icon and brand mark.** The original
 ceramic clasp, three folded ribbons, green seal, colors, gradients, shadow, and
 transparent padding are one design. [scripts/render-icon.swift](../scripts/render-icon.swift)
 is the authoritative artwork. These exports do not introduce a separate logo.
 
 | Asset | Recommended use |
 | --- | --- |
-| `Arko-AppIcon-1024.png` | High-resolution app identity and social-card composition |
-| `Arko-AppIcon-512.png` | README headers, documentation covers, support pages |
-| `Arko-AppIcon-256.png` | Compact README/docs illustrations; up to 128 CSS px at 2× density |
-| `Arko-AppIcon-128.png` | Small app badges; up to 64 CSS px at 2× density |
-| `Arko-Mark-Transparent-1024.png` | Website hero artwork and large marketing compositions |
-| `Arko-Mark-Transparent-512.png` | Website headers, support pages, and smaller compositions |
+| `Arkiv-AppIcon-1024.png` | High-resolution app identity and social-card composition |
+| `Arkiv-AppIcon-512.png` | README headers, documentation covers, support pages |
+| `Arkiv-AppIcon-256.png` | Compact README/docs illustrations; up to 128 CSS px at 2× density |
+| `Arkiv-AppIcon-128.png` | Small app badges; up to 64 CSS px at 2× density |
+| `Arkiv-Mark-Transparent-1024.png` | Website hero artwork and large marketing compositions |
+| `Arkiv-Mark-Transparent-512.png` | Website headers, support pages, and smaller compositions |
 
 All six PNGs retain the renderer's transparent background. The two transparent
 mark files are **byte-identical** to the corresponding app-icon PNGs; the names
@@ -28,8 +28,8 @@ Do not add shadows, outlines, or filters. Check contrast on the intended backgro
 
 ## Source and verification
 
-The committed PNGs were extracted byte-for-byte from the installed `Arko.icns`
-uploaded in [commit 3ffeef7](https://github.com/ish4ra/Arko/commit/3ffeef7f6de0d65828378fec7fa5773a1614648e).
+The committed PNGs were extracted byte-for-byte from the installed app icon
+uploaded in [commit 3ffeef7](https://github.com/ish4ra/Arkiv/commit/3ffeef7f6de0d65828378fec7fa5773a1614648e).
 That supplied icon is authoritative for this asset export; the unchanged Swift
 renderer remains the source of truth for the artwork. The temporary root ICNS
 is not retained in the final repository tree.
@@ -45,7 +45,7 @@ To repeat the extraction from an installed app on any platform with Python 3
 and Pillow installed:
 
 ```sh
-python3 branding/extract-icns.py /path/to/Arko.icns
+python3 branding/extract-icns.py /path/to/Arkiv.icns
 ```
 
 This validates decoded dimensions, transparent corners, opaque artwork, and

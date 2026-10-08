@@ -1,6 +1,6 @@
 import AppKit
-import ArkoCore
-import ArkoPresentation
+import ArkivCore
+import ArkivPresentation
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windows: [BrowserWindowController] = []
@@ -60,10 +60,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildMenus() {
         let main = NSMenu()
         let application = NSMenu()
-        application.addItem(withTitle: "About Arko", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        application.addItem(withTitle: "About Arkiv", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         application.addItem(.separator())
-        application.addItem(withTitle: "Hide Arko", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        application.addItem(withTitle: "Quit Arko", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        application.addItem(withTitle: "Hide Arkiv", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        application.addItem(withTitle: "Quit Arkiv", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let file = NSMenu(title: "File")
         let new = file.addItem(withTitle: "New Window", action: #selector(newWindow(_:)), keyEquivalent: "n"); new.target = self
         let open = file.addItem(withTitle: "Open Archive…", action: #selector(openArchive(_:)), keyEquivalent: "o"); open.target = self
@@ -86,7 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
         NSApp.windowsMenu = windowMenu
-        for (title, menu) in [("Arko", application), ("File", file), ("Edit", edit), ("Go", go), ("Window", windowMenu)] {
+        for (title, menu) in [("Arkiv", application), ("File", file), ("Edit", edit), ("Go", go), ("Window", windowMenu)] {
             let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             item.submenu = menu; main.addItem(item)
         }
