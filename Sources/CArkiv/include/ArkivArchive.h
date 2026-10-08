@@ -22,4 +22,11 @@ int arkiv_list(const char *, arkiv_limits, arkiv_cancel *, arkiv_entry_callback,
 int arkiv_extract(const char *, const char *, const int64_t *, size_t, arkiv_limits,
                  arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 const char *arkiv_backend_version(void);
+
+/* Publish validated output beside its private staging directory. Never replaces or
+   merges existing items. 3 = conflict. On failure, published counts committed
+   top-level items; remaining output stays in staging for recovery. */
+int arkiv_publish_extracted(const char *parent, const char *staging, const char *name,
+                           int here, arkiv_cancel *, size_t *published, char *, size_t);
+
 #endif

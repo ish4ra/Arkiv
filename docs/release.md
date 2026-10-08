@@ -62,3 +62,7 @@ Real-Mac release gates remain: first-launch/Gatekeeper behavior from an actual b
 ## Future public distribution
 
 The bundle identifier is `xyz.isharalakshan.arkiv`. Configure legitimate Developer ID signing securely, sign all nested components with Hardened Runtime, submit with `notarytool`, staple and validate the app and distribution image, and test Gatekeeper on a clean Mac. Apple credentials belong in secure CI secrets/Keychain and are not part of this development workflow. App Sandbox/Mac App Store distribution remains a separate decision involving bookmarks, selected-folder access, extensions and codec licensing. Public release is not authorized by this task.
+
+## Finder Services
+
+The four Finder Services are contained in the app executable and `Info.plist`; no separate extension/helper installation is needed. Launch the installed app once and enable the services in Keyboard Shortcuts settings if necessary. See [Finder integration](finder-integration.md) for exact actions, type restrictions, conflict/recovery behavior, setup, and interactive acceptance checks. App/DMG verification also checks the packaged Services declarations.

@@ -4,6 +4,10 @@ import ArkivPresentation
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windows: [BrowserWindowController] = []
+    private lazy var finderServices = FinderServiceProvider { [weak self] url in self?.open(url) }
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSApp.servicesProvider = finderServices
+    }
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenus()
         if windows.isEmpty { newWindow(nil) }
@@ -48,7 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for url in urls { open(url) }
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if windows.contains(where: \.isBusy) {
+        if finderServices.isBusy || windows.contains(where: \.isBusy) {
             let alert = NSAlert()
             alert.messageText = "An archive operation is still running"
             alert.informativeText = "Cancel it and wait for cleanup before quitting."

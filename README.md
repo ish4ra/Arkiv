@@ -4,9 +4,9 @@ A native macOS archive manager in early development. `ARKIV_SPEC.md` is the auth
 
 The first foundation contains an AppKit archive table, folder navigation, search, multi-selection, selected/all extraction into a new directory, progress/cancellation, and a reusable Swift engine backed by system libarchive. It does not require users to install an external compressor.
 
-**Validation:** [macOS CI passed](https://github.com/ish4ra/Arkiv/actions/runs/37608385235): engine fixtures, Swift tests, native app compilation, arm64 bundle/icon generation, ad-hoc signature verification and artifact upload. Locally, 19 C-backed fixture tests and 10 Swift tests pass (Swift debug and release). Interactive UI/accessibility, icon readability and Finder behavior still require a real Mac; this is not a production release.
+**Validation:** [macOS CI](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml) runs engine/security fixtures, Swift/AppKit tests, branding checks, arm64 and Universal app verification, and mounted DMG verification. Interactive Finder discovery, UI/accessibility, and Gatekeeper behavior still require a real Mac; this is not a production release.
 
-Fixture-verified on Linux and macOS CI: stored/Deflate ZIP, TAR, one basic 7z and one stored RAR5. This is not blanket codec/encryption/multipart support. Creation, modification, passwords, preview/open, Quick Look, Finder contextual actions, drag/drop and advanced tools are not implemented yet.
+Fixture-verified on Linux and macOS CI: stored/Deflate ZIP, TAR, one basic 7z and one stored RAR5. This is not blanket codec/encryption/multipart support. Creation, modification, passwords, preview/open, Quick Look, drag/drop and advanced tools are not implemented yet.
 
 ## Download for Mac testing
 
@@ -37,3 +37,7 @@ The repository is already isolated in Codex cloud tasks; reuse its checkout and 
 - [Third-party notices](docs/third-party-licenses.md)
 
 Next: confirm/fix macOS CI and real-Mac browser behavior, then implement owned preview workspaces, single-entry Open/Quick Look and basic ZIP/TAR creation with round-trip tests. Complete those Priority A slices before encryption or modification.
+
+## Finder extraction
+
+Right-click one ZIP or uncompressed TAR archive → **Services → Arkiv** for Open in Arkiv, Extract Here, Extract to Archive Folder, or Extract To…. Enable these under **System Settings → Keyboard → Keyboard Shortcuts → Services** if needed. Extraction never overwrites or merges existing items. Single selection only; no archive creation. See [Finder setup, limitations, and test steps](docs/finder-integration.md).

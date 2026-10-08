@@ -13,6 +13,7 @@ binary="$app/Contents/MacOS/Arkiv"
 [[ -s "$app/Contents/Resources/ThirdPartyNotices.txt" ]] || fail 'Third-party notices are missing.'
 [[ -s "$app/Contents/Resources/licenses/libarchive-COPYING.txt" ]] || fail 'Libarchive license is missing.'
 plutil -lint "$app/Contents/Info.plist"
+python3 scripts/verify-finder-services.py "$app/Contents/Info.plist"
 cmp Resources/Info.plist "$app/Contents/Info.plist" || fail 'Bundle metadata differs from the source metadata.'
 actual=$(lipo -archs "$binary")
 case "$architecture" in

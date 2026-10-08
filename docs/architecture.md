@@ -9,3 +9,5 @@ Extraction writes to a private sibling staging directory, with a 100,000-entry/2
 System libarchive is the initial backend to avoid distributing an unreviewed binary dependency. It is independently replaceable; a future bundled/pinned backend must have a documented patch/update process, redistributable sources and licenses. GUI and future CLI can share ArkivCore. No network services, accounts, telemetry, or runtime package managers.
 
 Deferred boundaries: capability negotiation for write/encryption options, private temporary preview workspaces, secure persistence/bookmarks, richer errors, creation and mutation transactions. Do not add those directly to the window controller.
+
+Finder selected-file Services are an AppKit adapter to `FinderRequest` and `FinderExtractor` in ArkivCore. The existing engine performs inspection/extraction unchanged; a C helper publishes verified staged output using fd-relative atomic no-replace moves. The app owns destination selection, progress, cancellation, and recovery UI. No extension/helper or untrusted command transport is introduced.

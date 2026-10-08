@@ -192,3 +192,80 @@ int arkiv_extract(const char *path, const char *root_path, const int64_t *ids, s
     close(root);
     return result;
 }
+
+#include <dirent.h>
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
+
+/* Both platforms provide an atomic no-replace rename. Never substitute rename(),
+   which could overwrite a file created after the conflict preflight. */
+static int move_exclusive(int from, const char *source, int to, const char *destination) {
+#ifdef __APPLE__
+    return renameatx_np(from, source, to, destination, RENAME_EXCL);
+#elif defined(__linux__) && defined(SYS_renameat2)
+    return (int)syscall(SYS_renameat2, from, source, to, destination, 1 /* RENAME_NOREPLACE */);
+#else
+    errno = ENOTSUP;
+    return -1;
+#endif
+}
+static int component(const char *name) {
+    return safe_path(name) && !strchr(name, '/');
+}
+int arkiv_publish_extracted(const char *parent_path, const char *staging, const char *name,
+                           int here, arkiv_cancel *token, size_t *published, char *error, size_t capacity) {
+    *published = 0;
+    if (!component(staging) || !component(name) || !strcmp(staging, name))
+        return fail(error, capacity, "Invalid output folder name.");
+    if (cancelled(token)) return 2;
+    int parent = open(parent_path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (parent < 0) return fail(error, capacity, "Destination directory is unavailable or unsafe.");
+    int source = openat(parent, staging, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (source < 0) { close(parent); return fail(error, capacity, "Extracted output is unavailable or unsafe."); }
+    int result = 0;
+    if (!here) {
+        if (cancelled(token)) result = 2;
+        else if (move_exclusive(parent, staging, parent, name) != 0) {
+            result = errno == EEXIST ? 3 : 1;
+            fail(error, capacity, "Cannot place the archive folder; check conflicts and permissions.");
+        }
+        close(source); close(parent); return result;
+    }
+    DIR *directory = fdopendir(source);
+    if (!directory) { close(source); close(parent); return fail(error, capacity, "Cannot read extracted output."); }
+    struct dirent *entry;
+    /* A conflict known before publication leaves the destination completely untouched.
+       Directories also conflict: never merge existing trees. Include hidden entries. */
+    errno = 0;
+    while ((entry = readdir(directory))) {
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
+        if (cancelled(token)) { result = 2; break; }
+        struct stat existing;
+        if (!component(entry->d_name) || fstatat(parent, entry->d_name, &existing, AT_SYMLINK_NOFOLLOW) == 0) {
+            result = 3; fail(error, capacity, "An output name already exists; folders are not merged."); break;
+        }
+        if (errno != ENOENT) { result = fail(error, capacity, "Cannot check destination conflicts."); break; }
+        errno = 0;
+    }
+    if (!result && errno) result = fail(error, capacity, "Cannot enumerate extracted output.");
+    if (!result) {
+        rewinddir(directory);
+        errno = 0;
+        while ((entry = readdir(directory))) {
+            if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
+            if (cancelled(token)) { result = 2; break; }
+            if (move_exclusive(source, entry->d_name, parent, entry->d_name) != 0) {
+                result = fail(error, capacity, "Placement stopped because of a conflict or filesystem error."); break;
+            }
+            (*published)++;
+            errno = 0;
+        }
+        if (!result && errno) result = fail(error, capacity, "Cannot enumerate extracted output.");
+    }
+    closedir(directory);
+    if (!result && unlinkat(parent, staging, AT_REMOVEDIR) != 0)
+        result = fail(error, capacity, "Files were placed, but the empty staging folder could not be removed.");
+    close(parent);
+    return result;
+}
