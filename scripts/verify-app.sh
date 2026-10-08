@@ -35,6 +35,7 @@ done
 for component in "$framework"/Versions/B/XPCServices/*.xpc "$framework/Versions/B/Updater.app" "$framework/Versions/B/Autoupdate" "$framework"; do
   codesign --verify --strict --all-architectures "$component"
 done
+scripts/verify-finder-extension.sh "$app" "$architecture"
 codesign --verify --deep --strict --all-architectures "$app"
 "$binary" --verify-updater-bundle
 echo "Verified Arkiv.app ($actual)."

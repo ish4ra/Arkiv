@@ -77,3 +77,11 @@ installing a key-configured build, use **Arkiv → Check for Updates…**. CI as
 monotonically increasing development build numbers and publishes signed Universal
 updates only when both key settings are configured and all matrix jobs pass.
 Only development prereleases are published, never stable production releases.
+
+## Embedded Finder Sync extension
+
+Development apps now include a sandboxed, ad-hoc-signed `ArkivFinderSync.appex`.
+Both arm64 and Universal packaging verify its metadata, matching build version,
+architectures and signed entitlements inside the app and mounted DMG. Sparkle
+continues to distribute the complete Universal app, including this extension.
+User enablement is required; see [Finder integration setup](finder-sync.md).

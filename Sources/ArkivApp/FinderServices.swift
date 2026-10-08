@@ -1,8 +1,9 @@
 import AppKit
 import ArkivCore
+import ArkivFinderIntegration
 
-/// AppKit delivers the Finder selection directly to this in-process Services provider.
-/// No shell, custom URL protocol, shared command file, or extension IPC is involved.
+/// One main-app routing/operation owner shared by Services and Finder Sync.
+/// Services retain direct AppKit delivery; URL handoffs require extraction consent.
 final class FinderServiceProvider: NSObject {
     private let openArchive: (URL) -> Void
     private(set) var isBusy = false
@@ -30,17 +31,32 @@ final class FinderServiceProvider: NSObject {
         guard Thread.isMainThread else { error.pointee = "Arkiv could not receive this Finder request."; return }
         do {
             let request = try Self.request(from: pasteboard, userData: userData)
-            if request.action == .open {
-                NSApp.activate(ignoringOtherApps: true)
-                openArchive(request.archive)
-                return
-            }
-            guard !isBusy else { throw ArchiveFailure.message("Arkiv is already handling a Finder extraction. Wait or cancel it before starting another.") }
-            isBusy = true
-            // Return from the Services callback promptly. Destination UI and progress
-            // belong to Arkiv, and may outlive the Services request timeout.
-            DispatchQueue.main.async { [self] in self.start(request) }
+            try perform(request)
         } catch let failure { error.pointee = failure.localizedDescription as NSString }
+    }
+
+    /// No engine work or writes happen until the main app has validated the request.
+    func perform(_ request: FinderRequest) throws {
+        guard Thread.isMainThread else { throw FinderHandoffError.invalidRequest }
+        if request.action == .open {
+            NSApp.activate(ignoringOtherApps: true)
+            openArchive(request.archive)
+            return
+        }
+        guard !isBusy else { throw ArchiveFailure.message("Arkiv is already handling a Finder extraction. Wait or cancel it before starting another.") }
+        isBusy = true
+        DispatchQueue.main.async { [self] in self.start(request) }
+    }
+
+    /// URLs are untrusted input even when the extension normally sends them.
+    /// Injectable consent keeps cancellation/no-write behavior testable.
+    func receive(_ url: URL, consent: (FinderRequest) -> Bool) throws {
+        let handoff = try FinderHandoff(url: url)
+        guard let action = FinderAction(rawValue: handoff.command.rawValue) else { throw FinderHandoffError.invalidRequest }
+        let request = try FinderRequest(action: action, urls: [handoff.archive])
+        guard request.action == .open || consent(request) else { return }
+        // Revalidate after a potentially modal confirmation before dispatching work.
+        try perform(FinderRequest(action: action, urls: [handoff.archive]))
     }
 
     private func start(_ request: FinderRequest) {

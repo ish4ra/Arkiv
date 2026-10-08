@@ -2,8 +2,41 @@ import AppKit
 import XCTest
 @testable import ArkivApp
 import ArkivCore
+import ArkivFinderIntegration
 
 final class FinderServiceTests: XCTestCase {
+    func testFinderURLRoutesOpenAndCancelledExtractionDoesNotWrite() async throws {
+        try await MainActor.run {
+            _ = NSApplication.shared
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+            defer { try? FileManager.default.removeItem(at: root) }
+            let archive = root.appendingPathComponent("Example.zip")
+            try Data().write(to: archive)
+            var opened: URL?
+            let provider = FinderServiceProvider { opened = $0 }
+            let open = try FinderHandoff(command: .open, archive: archive)
+            try provider.receive(open.url) { _ in XCTFail("Open does not require extraction consent"); return false }
+            XCTAssertEqual(opened, archive)
+            for command in [FinderCommand.extractHere, .extractFolder, .extractTo] {
+                var asked = false
+                try provider.receive(FinderHandoff(command: command, archive: archive).url) { request in
+                    asked = true
+                    XCTAssertEqual(request.archive, archive)
+                    return false
+                }
+                XCTAssertTrue(asked)
+                XCTAssertFalse(provider.isBusy)
+                XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.path), ["Example.zip"])
+            }
+            let link = root.appendingPathComponent("link.zip")
+            try FileManager.default.createSymbolicLink(at: link, withDestinationURL: archive)
+            XCTAssertThrowsError(try provider.receive(FinderHandoff(command: .extractHere, archive: link).url) { _ in
+                XCTFail("Invalid requests must fail before consent"); return true
+            })
+        }
+    }
+
     func testServiceOpenRoutesFileURLAndRejectsMultiSelection() async throws {
         try await MainActor.run {
             _ = NSApplication.shared

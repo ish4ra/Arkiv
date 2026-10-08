@@ -50,3 +50,11 @@ public key is required. Subsequent development updates use a signed Universal ZI
 and signed GitHub prerelease feed. See [updater setup and testing](docs/updates.md)
 for the one-time EdDSA key/Actions secret setup. Builds remain ad-hoc signed and
 not notarized; keyless builds clearly report that updates are not configured.
+
+### Direct Finder menu
+
+Enable **Arkiv → Finder Integration…** for a direct **Arkiv** submenu when
+right-clicking one ZIP or uncompressed TAR in your home folder. Actions include
+Open, Extract Here, Extract to an archive-named folder, and Extract To. Extraction
+requests are confirmed in Arkiv; Services remain the fallback outside this scope.
+See [Finder Sync setup and real-Mac tests](docs/finder-sync.md).

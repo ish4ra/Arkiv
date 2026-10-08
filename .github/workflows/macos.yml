@@ -38,6 +38,8 @@ jobs:
           uname -m
       - name: Engine security and fixture tests
         run: scripts/ci-check.sh engine scripts/test-engine.sh
+      - name: Finder extension metadata regression tests
+        run: scripts/ci-check.sh finder-extension-tests python3 tests/test_finder_extension.py -v
       - name: File Services registration regression tests
         run: scripts/ci-check.sh services-tests python3 tests/test_finder_services.py -v
       - name: Swift tests (native runner architecture)

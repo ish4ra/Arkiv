@@ -1,5 +1,7 @@
 import AppKit
 import Sparkle
+import FinderSync
+import ArkivFinderIntegration
 import ArkivCore
 import ArkivPresentation
 
@@ -52,8 +54,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls { open(url) }
+        for url in urls {
+            if url.scheme == FinderHandoff.scheme {
+                do { try finderServices.receive(url, consent: confirmFinderExtraction) }
+                catch { NSAlert(error: error).runModal() }
+            } else if url.isFileURL { open(url) }
+        }
     }
+    private func confirmFinderExtraction(_ request: FinderRequest) -> Bool {
+        NSApp.activate(ignoringOtherApps: true)
+        // Extract To presents its own destination chooser before any extraction.
+        if request.action == .extractTo { return true }
+        let alert = NSAlert()
+        alert.messageText = request.action == .extractHere ? "Extract Here?" : "Extract to “\(request.folderName)/”?"
+        alert.informativeText = "Archive: \(request.archive.path)\n\nDestination: \(request.parent.path)\n\nExisting items will never be overwritten."
+        alert.addButton(withTitle: "Extract")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    @objc private func showFinderIntegration(_ sender: Any?) {
+        let enabled = FIFinderSyncController.isExtensionEnabled
+        let alert = NSAlert()
+        alert.messageText = enabled ? "Arkiv Finder is enabled" : "Enable Arkiv Finder"
+        alert.informativeText = "For direct right-click actions, enable Arkiv Finder in macOS extension settings. The menu supports one ZIP or uncompressed TAR in your home folder, including Desktop, Downloads and Documents. Arkiv’s Services remain available as a fallback."
+        alert.addButton(withTitle: "Open Extension Settings")
+        alert.addButton(withTitle: "Done")
+        if alert.runModal() == .alertFirstButtonReturn { FIFinderSyncController.showExtensionManagementInterface() }
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if finderServices.isBusy || windows.contains(where: \.isBusy) {
             let alert = NSAlert()
@@ -69,6 +98,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let application = NSMenu()
         application.addItem(withTitle: "About Arkiv", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         updates.addMenuItems(to: application)
+        let finder = application.addItem(withTitle: "Finder Integration…", action: #selector(showFinderIntegration(_:)), keyEquivalent: "")
+        finder.target = self
         application.addItem(.separator())
         application.addItem(withTitle: "Hide Arkiv", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         application.addItem(withTitle: "Quit Arkiv", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")

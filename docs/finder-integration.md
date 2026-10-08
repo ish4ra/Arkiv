@@ -1,10 +1,14 @@
-# Finder extraction through AppKit Services
+# Finder extraction through AppKit Services (fallback)
 
-Arkiv provides four native file Services, declared inside `Arkiv.app`. There is no
-Finder Sync extension, background folder monitor, Automator installer, helper,
-custom URL scheme, shared command file, or duplicated archive engine.
+Arkiv retains four native file Services, declared inside `Arkiv.app`, as a fallback.
+The primary direct-menu workflow is now the [Finder Sync extension](finder-sync.md).
+The Services path itself still uses direct AppKit delivery and the same archive engine.
 
-## API research and decision (2026-10-08)
+## Initial Services milestone research and decision (2026-10-08)
+
+This records the earlier Services-only decision. The direct-menu milestone now
+accepts scoped home-directory coverage and extension enablement; see the current
+[Finder Sync design and research](finder-sync.md).
 
 | Approach | Fit for this milestone |
 | --- | --- |
@@ -169,5 +173,5 @@ establish actual Finder menu visibility, which still requires the real-Mac retes
 CI checks actual AppKit pasteboard routing and the exported selector, core path and
 publication decisions, existing engine/security tests, and the service metadata in
 the built app, mounted DMG, and copied installation. It builds/signs/verifies arm64
-and Universal with no nested extension to sign. Finder discovery/enablement and
+and Universal, including the separately documented Finder Sync extension. Finder discovery/enablement and
 interactive invocation remain real-Mac acceptance checks, not claimed CI coverage.

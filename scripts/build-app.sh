@@ -44,6 +44,8 @@ iconutil -c icns build/Arkiv.iconset -o "$app/Contents/Resources/Arkiv.icns"
 cp docs/third-party-licenses.md "$app/Contents/Resources/ThirdPartyNotices.txt"
 mkdir -p "$app/Contents/Resources/licenses"
 cp licenses/libarchive-COPYING.txt "$app/Contents/Resources/licenses/"
+stage=finder-extension
+scripts/build-finder-extension.sh "$app" "$architecture"
 stage=sign
 sparkle="$app/Contents/Frameworks/Sparkle.framework/Versions/B"
 # Sign nested code inside-out; preserve downloader sandbox entitlements.

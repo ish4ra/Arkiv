@@ -1,5 +1,6 @@
 import Foundation
 import CArkiv
+import ArkivFinderIntegration
 
 public enum FinderAction: String, CaseIterable, Sendable {
     case open, extractHere, extractFolder, extractTo
@@ -23,18 +24,7 @@ public struct FinderRequest: Sendable {
         self.action = action; archive = url.standardizedFileURL
     }
     public var parent: URL { archive.deletingLastPathComponent() }
-    public var folderName: String {
-        let base = String(archive.lastPathComponent.dropLast(4)) // Both accepted extensions have three characters.
-        let invalid = CharacterSet.controlCharacters.union(CharacterSet(charactersIn: "/\\:"))
-        let clean = base.components(separatedBy: invalid).joined(separator: "_")
-            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
-        var result = ""
-        for character in clean {
-            guard (result + String(character)).utf8.count <= 180 else { break }
-            result.append(character)
-        }
-        return result.isEmpty ? "Archive" : result
-    }
+    public var folderName: String { FinderHandoff.folderName(for: archive) }
 }
 
 public struct FinderExtractionFailure: Error, LocalizedError {
