@@ -20,8 +20,15 @@ jobs:
     timeout-minutes: 25
     env:
       ARKIV_ARCH: ${{ matrix.architecture }}
+      SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
     steps:
       - uses: actions/checkout@v5
+      - name: Monotonic development build number
+        run: echo "ARKIV_BUILD_VERSION=$((10000 + GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))" >> "$GITHUB_ENV"
+      - name: Updater metadata regression tests
+        run: python3 tests/test_updates.py -v
+      - name: Check for tracked signing material
+        run: python3 scripts/check-update-secrets.py
       - name: Toolchain and backend
         run: |
           swift --version
@@ -45,6 +52,11 @@ jobs:
         run: scripts/ci-check.sh dmg scripts/build-dmg.sh
       - name: Package ZIP alternative
         run: ditto -c -k --sequesterRsrc --keepParent build/Arkiv.app "build/Arkiv-${ARKIV_ARCH}.zip"
+      - name: Validate update archive and appcast generation
+        if: matrix.architecture == 'universal'
+        run: |
+          python3 scripts/update-feed.py build/Arkiv.app/Contents/Info.plist build/Arkiv-universal.zip build/appcast-draft.xml --draft
+          python3 tests/test_update_signing.py
       - uses: actions/upload-artifact@v6
         with:
           name: Arkiv-${{ matrix.architecture }}-development-dmg
@@ -58,3 +70,47 @@ jobs:
           name: Arkiv-${{ matrix.architecture }}-development
           path: build/Arkiv-${{ matrix.architecture }}.zip
           if-no-files-found: error
+
+  publish-development-update:
+    name: Publish signed development update
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: macos-15
+    permissions:
+      contents: write
+    concurrency:
+      group: arkiv-development-feed
+      cancel-in-progress: false
+    env:
+      SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check signing configuration
+        id: signing
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: |
+          if [[ -n "$SPARKLE_PRIVATE_ED_KEY" && -n "$SPARKLE_PUBLIC_ED_KEY" ]]; then
+            echo 'configured=true' >> "$GITHUB_OUTPUT"
+          else
+            echo '::notice::Signed update publishing skipped. Set SPARKLE_PRIVATE_ED_KEY secret and SPARKLE_PUBLIC_ED_KEY variable; regular builds remain available.'
+          fi
+      - uses: actions/download-artifact@v6
+        if: steps.signing.outputs.configured == 'true'
+        with:
+          name: Arkiv-universal-development
+          path: build
+      - name: Resolve pinned Sparkle tools and verify payload
+        if: steps.signing.outputs.configured == 'true'
+        run: |
+          echo "ARKIV_BUILD_VERSION=$((10000 + GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))" >> "$GITHUB_ENV"
+          swift package resolve
+          ditto -x -k build/Arkiv-universal.zip build
+      - name: Verify and publish signed Universal update
+        if: steps.signing.outputs.configured == 'true'
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: |
+          scripts/verify-app.sh build/Arkiv.app universal
+          python3 scripts/publish-update.py

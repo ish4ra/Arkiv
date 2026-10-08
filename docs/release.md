@@ -68,3 +68,12 @@ The bundle identifier is `xyz.isharalakshan.arkiv`. Configure legitimate Develop
 The four Finder Services are contained in the app executable and `Info.plist`; no separate extension/helper installation is needed. Launch the installed app once and enable the services in Keyboard Shortcuts settings if necessary. See [Finder integration](finder-integration.md) for exact actions, type restrictions, conflict/recovery behavior, setup, and interactive acceptance checks. App/DMG verification also checks the packaged Services declarations.
 
 The corrected file-Service registration is in app build **2**. It uses `NSSendFileTypes` and direct action titles, not a submenu. Replace the previous installed app and confirm the four titles appear in Services → Files and Folders; terminal registration commands are optional developer diagnostics, not installation requirements.
+
+## Sparkle development update channel
+
+See [updates.md](updates.md) for one-time EdDSA key setup and in-app update testing.
+The existing arm64 and Universal DMGs remain the bootstrap installation; after
+installing a key-configured build, use **Arkiv → Check for Updates…**. CI assigns
+monotonically increasing development build numbers and publishes signed Universal
+updates only when both key settings are configured and all matrix jobs pass.
+Only development prereleases are published, never stable production releases.

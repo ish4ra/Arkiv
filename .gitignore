@@ -6,3 +6,6 @@ build/
 *.xcuserstate
 __pycache__/
 .superpowers/
+# Never store exported updater signing keys in the repository.
+*.private-key
+sparkle-private-key*

@@ -22,6 +22,7 @@ for arch in "${architectures[@]}"; do
   lipo "$slices/Arkiv-$arch" -verify_arch "$arch"
 done
 app="$PWD/build/Arkiv.app"
+rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 if [[ "$architecture" == universal ]]; then
   stage=combine-universal
@@ -30,7 +31,13 @@ else
   cp "$slices/Arkiv-$architecture" "$app/Contents/MacOS/Arkiv"
 fi
 stage=resources
-cp Resources/Info.plist "$app/Contents/Info.plist"
+python3 scripts/update-metadata.py write "$app/Contents/Info.plist"
+stage=sparkle
+framework=$(find .build/artifacts -type d -path "*/macos-arm64_x86_64/Sparkle.framework" -print -quit)
+[[ -n "$framework" ]] || { echo "Sparkle framework not found" >&2; exit 1; }
+mkdir -p "$app/Contents/Frameworks"
+ditto "$framework" "$app/Contents/Frameworks/Sparkle.framework"
+cp .build/checkouts/Sparkle/LICENSE "$app/Contents/Resources/Sparkle-LICENSE.txt"
 stage=render-icon
 swift scripts/render-icon.swift "$PWD/build/Arkiv.iconset"
 iconutil -c icns build/Arkiv.iconset -o "$app/Contents/Resources/Arkiv.icns"
@@ -38,7 +45,13 @@ cp docs/third-party-licenses.md "$app/Contents/Resources/ThirdPartyNotices.txt"
 mkdir -p "$app/Contents/Resources/licenses"
 cp licenses/libarchive-COPYING.txt "$app/Contents/Resources/licenses/"
 stage=sign
-codesign --force --sign - --options runtime "$app"
+sparkle="$app/Contents/Frameworks/Sparkle.framework/Versions/B"
+# Sign nested code inside-out; preserve downloader sandbox entitlements.
+for component in "$sparkle"/XPCServices/*.xpc "$sparkle/Updater.app" "$sparkle/Autoupdate"; do
+  codesign --force --sign - --preserve-metadata=entitlements --options runtime "$component"
+done
+codesign --force --sign - --options runtime "$app/Contents/Frameworks/Sparkle.framework"
+codesign --force --sign - --options runtime --entitlements Resources/Development.entitlements "$app"
 stage=verify
 scripts/verify-app.sh "$app" "$architecture"
 echo "Built $app ($architecture; ad-hoc signed, not notarized)"

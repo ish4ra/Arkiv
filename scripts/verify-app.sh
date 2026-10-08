@@ -14,7 +14,7 @@ binary="$app/Contents/MacOS/Arkiv"
 [[ -s "$app/Contents/Resources/licenses/libarchive-COPYING.txt" ]] || fail 'Libarchive license is missing.'
 plutil -lint "$app/Contents/Info.plist"
 python3 scripts/verify-finder-services.py "$app/Contents/Info.plist"
-cmp Resources/Info.plist "$app/Contents/Info.plist" || fail 'Bundle metadata differs from the source metadata.'
+python3 scripts/update-metadata.py verify "$app/Contents/Info.plist"
 actual=$(lipo -archs "$binary")
 case "$architecture" in
   arm64|x86_64) [[ "$actual" == "$architecture" ]] || fail 'Unexpected executable architecture.' ;;
@@ -25,5 +25,13 @@ case "$architecture" in
     ;;
   *) fail 'Unsupported architecture; use arm64, x86_64, or universal.' ;;
 esac
-codesign --verify --strict --all-architectures "$app"
+framework="$app/Contents/Frameworks/Sparkle.framework"
+[[ -L "$framework/Versions/Current" && -s "$framework/Sparkle" ]] || fail "Sparkle framework or symlinks missing."
+[[ -s "$app/Contents/Resources/Sparkle-LICENSE.txt" ]] || fail "Sparkle license missing."
+lipo "$framework/Sparkle" -verify_arch arm64 x86_64
+for component in "$framework"/Versions/B/XPCServices/*.xpc "$framework/Versions/B/Updater.app" "$framework/Versions/B/Autoupdate" "$framework"; do
+  codesign --verify --strict --all-architectures "$component"
+done
+codesign --verify --deep --strict --all-architectures "$app"
+"$binary" --verify-updater-bundle
 echo "Verified Arkiv.app ($actual)."

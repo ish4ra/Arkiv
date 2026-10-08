@@ -1,5 +1,6 @@
 // swift-tools-version: 5.9
 import PackageDescription
+var dependencies: [Package.Dependency] = []
 var products: [Product] = [.library(name: "ArkivCore", targets: ["ArkivCore"])]
 var targets: [Target] = [
     .target(name: "CArkiv", linkerSettings: [.linkedLibrary("archive")]),
@@ -9,8 +10,10 @@ var targets: [Target] = [
     .testTarget(name: "ArkivPresentationTests", dependencies: ["ArkivPresentation"])
 ]
 #if os(macOS)
+dependencies.append(.package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"))
 products.append(.executable(name: "Arkiv", targets: ["ArkivApp"]))
-targets.append(.executableTarget(name: "ArkivApp", dependencies: ["ArkivCore", "ArkivPresentation"]))
+targets.append(.executableTarget(name: "ArkivApp", dependencies: ["ArkivCore", "ArkivPresentation", .product(name: "Sparkle", package: "Sparkle")],
+    linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]))
 targets.append(.testTarget(name: "ArkivAppTests", dependencies: ["ArkivApp"]))
 #endif
-let package = Package(name: "Arkiv", platforms: [.macOS(.v13)], products: products, targets: targets)
+let package = Package(name: "Arkiv", platforms: [.macOS(.v13)], products: products, dependencies: dependencies, targets: targets)

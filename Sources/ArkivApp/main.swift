@@ -1,14 +1,17 @@
 import AppKit
+import Sparkle
 import ArkivCore
 import ArkivPresentation
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let updates = UpdateController()
     private var windows: [BrowserWindowController] = []
     private lazy var finderServices = FinderServiceProvider { [weak self] url in self?.open(url) }
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.servicesProvider = finderServices
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
+        updates.start()
         buildMenus()
         if windows.isEmpty { newWindow(nil) }
         NSApp.activate(ignoringOtherApps: true)
@@ -65,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let main = NSMenu()
         let application = NSMenu()
         application.addItem(withTitle: "About Arkiv", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        updates.addMenuItems(to: application)
         application.addItem(.separator())
         application.addItem(withTitle: "Hide Arkiv", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         application.addItem(withTitle: "Quit Arkiv", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -96,6 +100,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.mainMenu = main
     }
+}
+
+// Packaging smoke test exercises dyld and the embedded Sparkle framework without starting UI.
+if CommandLine.arguments.contains("--verify-updater-bundle") {
+    print("Loaded Sparkle: \(String(describing: SPUStandardUpdaterController.self))")
+    exit(0)
 }
 
 NSWindow.allowsAutomaticWindowTabbing = false

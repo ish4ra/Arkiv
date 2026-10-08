@@ -41,3 +41,12 @@ Next: confirm/fix macOS CI and real-Mac browser behavior, then implement owned p
 ## Finder extraction
 
 Right-click one ZIP or uncompressed TAR archive → **Services** for **Open in Arkiv**, **Extract Here with Arkiv**, **Extract to Folder with Arkiv**, or **Extract To… with Arkiv**. Enable these under **System Settings → Keyboard → Keyboard Shortcuts → Services** if needed. Extraction never overwrites or merges existing items. Single selection only; no archive creation. See [Finder setup, limitations, and test steps](docs/finder-integration.md).
+
+### Development self-updates
+
+Arkiv integrates Sparkle 2 with **Arkiv → Check for Updates…** and optional
+background checks. One manual installation of a build containing your configured
+public key is required. Subsequent development updates use a signed Universal ZIP
+and signed GitHub prerelease feed. See [updater setup and testing](docs/updates.md)
+for the one-time EdDSA key/Actions secret setup. Builds remain ad-hoc signed and
+not notarized; keyless builds clearly report that updates are not configured.
