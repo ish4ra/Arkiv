@@ -3,7 +3,7 @@ import FinderSync
 import Darwin
 import ArkivFinderIntegration
 
-@objc(ArkivFinderSync)
+@objc
 final class ArkivFinderSync: FIFinderSync {
     private let home: URL?
 

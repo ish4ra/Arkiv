@@ -85,3 +85,8 @@ Both arm64 and Universal packaging verify its metadata, matching build version,
 architectures and signed entitlements inside the app and mounted DMG. Sparkle
 continues to distribute the complete Universal app, including this extension.
 User enablement is required; see [Finder integration setup](finder-sync.md).
+
+Finder registration validation now requires empty `NSExtensionAttributes` and the
+runtime-resolved principal class `ArkivFinderSync.ArkivFinderSync`. CI checks
+PlugInKit discovery as well as signed bundles. First-run setup guides approval;
+no user terminal commands or cache resets are required.

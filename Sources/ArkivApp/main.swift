@@ -7,6 +7,7 @@ import ArkivPresentation
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let updates = UpdateController()
+    private lazy var finderSetup = FinderSetupWindowController()
     private var windows: [BrowserWindowController] = []
     private lazy var finderServices = FinderServiceProvider { [weak self] url in self?.open(url) }
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -17,6 +18,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildMenus()
         if windows.isEmpty { newWindow(nil) }
         NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async { [weak self] in self?.finderSetup.presentIfNeeded() }
+    }
+    func applicationDidBecomeActive(_ notification: Notification) {
+        finderSetup.refresh()
     }
     @objc func newWindow(_ sender: Any?) { makeWindow().showWindow(nil) }
     private func makeWindow() -> BrowserWindowController {
@@ -74,13 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showFinderIntegration(_ sender: Any?) {
-        let enabled = FIFinderSyncController.isExtensionEnabled
-        let alert = NSAlert()
-        alert.messageText = enabled ? "Arkiv Finder is enabled" : "Enable Arkiv Finder"
-        alert.informativeText = "For direct right-click actions, enable Arkiv Finder in macOS extension settings. The menu supports one ZIP or uncompressed TAR in your home folder, including Desktop, Downloads and Documents. Arkiv’s Services remain available as a fallback."
-        alert.addButton(withTitle: "Open Extension Settings")
-        alert.addButton(withTitle: "Done")
-        if alert.runModal() == .alertFirstButtonReturn { FIFinderSyncController.showExtensionManagementInterface() }
+        finderSetup.showSetup()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

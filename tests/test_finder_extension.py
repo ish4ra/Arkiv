@@ -26,6 +26,26 @@ class FinderExtensionMetadataTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 metadata['validate'](info, self.app)
 
+    def test_exact_apple_extension_dictionary(self):
+        self.assertEqual(self.extension['NSExtension'], {
+            'NSExtensionAttributes': {},
+            'NSExtensionPointIdentifier': 'com.apple.FinderSync',
+            'NSExtensionPrincipalClass': 'ArkivFinderSync.ArkivFinderSync',
+        })
+
+    def test_rejects_old_unqualified_principal_and_missing_attributes(self):
+        for mutation in ['principal', 'missing', 'wrong-type']:
+            info = copy.deepcopy(self.extension)
+            extension = info['NSExtension']
+            if mutation == 'principal':
+                extension['NSExtensionPrincipalClass'] = 'ArkivFinderSync'
+            elif mutation == 'missing':
+                extension.pop('NSExtensionAttributes')
+            else:
+                extension['NSExtensionAttributes'] = []
+            with self.assertRaises(ValueError):
+                metadata['validate'](info, self.app)
+
     def test_rejects_missing_handoff_registration(self):
         self.app.pop('CFBundleURLTypes')
         with self.assertRaises(ValueError):

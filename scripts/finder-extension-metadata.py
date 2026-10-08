@@ -17,7 +17,8 @@ def validate(info, app_info):
         raise ValueError('Packaged Finder Sync metadata does not match its source and app version')
     if info['CFBundleIdentifier'] != app_info['CFBundleIdentifier'] + '.finder-sync':
         raise ValueError('Extension must use its containing app identifier prefix')
-    if info['NSExtension'] != {'NSExtensionPointIdentifier': 'com.apple.FinderSync', 'NSExtensionPrincipalClass': 'ArkivFinderSync'}:
+    if info['NSExtension'] != {'NSExtensionAttributes': {}, 'NSExtensionPointIdentifier': 'com.apple.FinderSync',
+                               'NSExtensionPrincipalClass': 'ArkivFinderSync.ArkivFinderSync'}:
         raise ValueError('Invalid Finder Sync extension point or principal class')
     if info['CFBundlePackageType'] != 'XPC!' or info['LSMinimumSystemVersion'] != '13.0':
         raise ValueError('Invalid extension bundle type or deployment target')

@@ -20,10 +20,12 @@ for arch in "${architectures[@]}"; do
     -module-name ArkivFinderIntegration -emit-module -emit-object \
     -emit-module-path "$slice/ArkivFinderIntegration.swiftmodule" \
     Sources/ArkivFinderIntegration/*.swift -o "$slice/routing.o"
+  xcrun clang -fobjc-arc -fapplication-extension -isysroot "$sdk" -target "$arch-apple-macosx13.0" \
+    -c Sources/ArkivFinderSync/PrincipalClassCheck.m -o "$slice/principal-check.o"
   xcrun swiftc -O -parse-as-library -emit-executable -application-extension \
     -sdk "$sdk" -target "$arch-apple-macosx13.0" \
     -module-name ArkivFinderSync -I "$slice" \
-    Sources/ArkivFinderSync/*.swift "$slice/routing.o" \
+    Sources/ArkivFinderSync/*.swift "$slice/routing.o" "$slice/principal-check.o" \
     -framework FinderSync -framework AppKit -Xlinker -e -Xlinker _NSExtensionMain \
     -o "$slice/ArkivFinderSync"
   lipo "$slice/ArkivFinderSync" -verify_arch "$arch"

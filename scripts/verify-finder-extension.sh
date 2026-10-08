@@ -36,4 +36,5 @@ text = Path(sys.argv[1]).read_text().lower()
 if any(name in text for name in ['libarchive', 'sparkle', 'arkivcore']):
     raise SystemExit('Unexpected extension dependency')
 PYCODE
+"$binary" --verify-principal-class
 echo "Verified sandboxed Finder Sync extension ($actual)"

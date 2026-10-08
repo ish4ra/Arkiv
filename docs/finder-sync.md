@@ -76,10 +76,23 @@ AppKit delivery and behavior.
 
 ## Enablement (requires user approval)
 
-Install/update Arkiv in **/Applications** and launch it once. In Arkiv choose
-**Arkiv → Finder Integration…**. This reports the actual enabled state from
-`FIFinderSyncController.isExtensionEnabled`; **Open Extension Settings** calls
-Apple's supported `showExtensionManagementInterface()`.
+On first launch with the extension disabled, Arkiv shows a compact native
+**Enable Finder Integration** setup window. It explains the four actions and
+always displays the manual Settings path below, even if Apple's settings button
+opens an unrelated Services pane on that macOS release.
+
+**Open Extension Settings…** calls Apple's supported
+`FIFinderSyncController.showExtensionManagementInterface()`. It does not grant
+permission. Each time Arkiv becomes active again, the window re-reads
+`FIFinderSyncController.isExtensionEnabled`. If enabled, it shows **Arkiv Finder
+Enabled** and an Enabled success state; if still disabled, it says so.
+
+**Not Now** (or closing the window) is remembered across launches. Once Arkiv has
+observed the extension enabled, it also stops automatic setup prompts, including
+if you later deliberately disable it. **Arkiv → Finder Integration…** always
+reopens the same management window with current status, manual instructions,
+settings button, and Services fallback information. Services visibility is a
+separate macOS setting; Arkiv does not claim to detect or enable Services here.
 
 Manual paths:
 
@@ -155,3 +168,45 @@ On your M1 Mac:
 8. Repeat on Intel using the Universal app. Check both light/dark menus and
    keyboard/accessibility navigation. Report macOS version, build number and
    tested location if Finder does not expose the menu; do not assume CI proves it.
+
+## Registration correction after build 12401
+
+Build 12401 did not appear in Finder extension settings on a real M1 Mac. Treat
+that as a registration defect, not a user configuration error. The extension now
+includes the complete Finder Sync `NSExtension` dictionary:
+
+```xml
+<key>NSExtensionAttributes</key><dict/>
+<key>NSExtensionPointIdentifier</key><string>com.apple.FinderSync</string>
+<key>NSExtensionPrincipalClass</key><string>ArkivFinderSync.ArkivFinderSync</string>
+```
+
+The Swift class no longer overrides its Objective-C runtime name with the old
+unqualified `@objc(ArkivFinderSync)` alias. It uses the actual module-qualified
+Swift class name. The identifier remains `xyz.isharalakshan.arkiv.finder-sync`,
+versions are copied from the containing app, and placement remains
+`Contents/PlugIns/ArkivFinderSync.appex`.
+
+CI now runs `--verify-principal-class` in the **actual signed extension executable**
+on each native runner. A small Objective-C startup probe resolves the packaged
+plist's name using `NSClassFromString`, checks its exact `NSStringFromClass` name,
+and verifies it subclasses `FIFinderSync`. Normal extension startup still uses
+Apple's `NSExtensionMain`; the probe does not instantiate the Finder extension.
+This test also runs against the mounted DMG and copied installation. Metadata
+regressions explicitly reject absent/wrong-type attributes and unqualified names.
+
+A CI-only PlugInKit diagnostic registers the built appex with `pluginkit -a`, then
+checks discovery with `pluginkit -m -A -D -i xyz.isharalakshan.arkiv.finder-sync`.
+It never enables the extension or resets caches. Raw diagnostic output remains
+in local CI logs. Users do not need terminal commands. These checks establish
+bundle/class discovery, not interactive Settings visibility or user approval.
+
+Retest the new Sparkle development build on your M1 Mac: confirm the first-run
+setup appears, follow its manual path if the settings button opens Services,
+verify Arkiv Finder is listed and enable it, then return to Arkiv and confirm
+**Arkiv Finder Enabled**. Quit/relaunch to confirm no repeated onboarding. Test
+**Not Now** on a fresh user profile with the extension disabled; relaunch should
+stay quiet and the menu must still reopen management. Re-run the direct menu,
+extraction/conflict/cancellation and Services checks above. If the new build is
+still absent from Settings, report it as an unresolved registration bug with the
+macOS version; do not reset caches as a normal setup step.
