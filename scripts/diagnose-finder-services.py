@@ -30,14 +30,29 @@ def run(label, args):
     return result.stdout + result.stderr
 
 
-run('read-bundle', ['-read_bundle', str(app)])
-dump = run('dump', ['-dump'])
-# pbs may escape Unicode in an OpenStep plist dump. Do not emit its contents,
-# which also describe unrelated installed applications on the build machine.
-dump = dump.replace('\\U2026', '…').replace('\\u2026', '…')
+def normalized(output):
+    return output.replace('\\U2026', '…').replace('\\u2026', '…')
+
+
 titles = [s['NSMenuItem']['default'] for s in info['NSServices']]
+parsed = normalized(run('read-bundle', ['-read_bundle', str(app)]))
+before = normalized(run('dump-before', ['-dump']))
+print('::notice title=Arkiv Services diagnostic::Before indexing: ' +
+      str(sum(title in before for title in titles)) + '/4 titles; read_bundle output: ' +
+      str(sum(title in parsed for title in titles)) + '/4 titles.')
+
+# A CI build directory is not an automatically indexed installation location.
+# Register the actual built bundle, then ask Services to refresh its database.
+# This is a test fixture operation only, never an application startup hook.
+register = Path('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister')
+result = subprocess.run([str(register), '-f', str(app)], capture_output=True, text=True, errors='replace', timeout=45)
+(logs / 'services-launchservices.log').write_text(result.stdout + result.stderr)
+if result.returncode:
+    raise SystemExit('Launch Services registration failed for the built app.')
+run('refresh', [])
+dump = normalized(run('dump', ['-dump']))
 found = sum(title in dump for title in titles)
-print('Arkiv service titles present in the system Services dump: ' + str(found) + '/4')
+print('::notice title=Arkiv Services diagnostic::After indexing: ' + str(found) + '/4 direct titles; bundle path present: ' + str(str(app) in dump) + '.')
 if found != 4:
     print('::error title=Arkiv Services registration::System Services dump is missing one or more Arkiv actions.')
     raise SystemExit(1)
