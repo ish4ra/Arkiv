@@ -17,13 +17,13 @@ final class CreationHandoffTests: XCTestCase {
         for command in [CreationCommand.addArchive, .zip] {
             let request = try CreationHandoff(command: command, sources: [file, folder])
             let decoded = try CreationHandoff(url: request.url)
-            XCTAssertEqual(decoded.command, command); XCTAssertEqual(decoded.sources, [file, folder])
+            XCTAssertEqual(decoded.command, command); XCTAssertEqual(decoded.sources, request.sources)
             XCTAssertEqual(CreationCommand(menuTag: command.menuTag), command)
             XCTAssertThrowsError(try CreationHandoff(url: URL(string: request.url.absoluteString + "&destination=/tmp")!))
             XCTAssertThrowsError(try CreationHandoff(url: URL(string: request.url.absoluteString + "&command=zip")!))
             XCTAssertThrowsError(try FinderHandoff(url: request.url))
         }
-        XCTAssertEqual(CreationHandoff.selection([file, folder], within: root), [file, folder])
+        XCTAssertEqual(CreationHandoff.selection([file, folder], within: root), [file, folder].map(\.standardizedFileURL))
         XCTAssertNil(CreationHandoff.selection([file], within: folder))
         XCTAssertThrowsError(try CreationHandoff(command: .zip, sources: [file, file]))
         XCTAssertThrowsError(try CreationHandoff(command: .zip, sources: []))
