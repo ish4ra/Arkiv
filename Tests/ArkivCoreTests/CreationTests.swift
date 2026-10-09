@@ -72,4 +72,23 @@ final class CreationTests: XCTestCase {
         XCTAssertThrowsError(try ArchiveCreator().create(.init(sources: [file], destination: root, name: "Cancelled"), cancellation: token, progress: { _ in token.cancel() }))
         XCTAssertEqual(try manager.contentsOfDirectory(atPath: root.path), ["large"])
     }
+    func testLaterSourceDisappearingDuringCreationFailsWithoutPublication() throws {
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try manager.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? manager.removeItem(at: root) }
+        let first = root.appendingPathComponent("first")
+        let second = root.appendingPathComponent("second")
+        let output = root.appendingPathComponent("output")
+        try manager.createDirectory(at: output, withIntermediateDirectories: false)
+        try Data(repeating: 7, count: 100_000).write(to: first)
+        try Data("later".utf8).write(to: second)
+        XCTAssertThrowsError(try ArchiveCreator().create(
+            .init(sources: [first, second], destination: output, name: "Incomplete"),
+            cancellation: ArchiveCancellation(), progress: { _ in
+                try? FileManager.default.removeItem(at: second)
+            }))
+        XCTAssertEqual(try manager.contentsOfDirectory(atPath: output.path), [])
+    }
+
 }

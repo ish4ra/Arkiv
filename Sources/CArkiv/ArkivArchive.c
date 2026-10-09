@@ -395,6 +395,8 @@ int arkiv_create_zip(const char *const *sources, size_t count, const char *paren
     if (fstat(stagefd, &stage_stat)) goto done;
     struct create_state state = { writer, limits, token, progress, context, 0, 0, error, capacity, stage_stat.st_dev, stage_stat.st_ino };
     for (size_t i = 0; i < count; i++) {
+        /* Each new root begins in failure state until it is fully written. */
+        status = 1;
         int fd = create_open(sources[i]);
         if (fd < 0) goto done;
         const char *base = strrchr(sources[i], '/');
