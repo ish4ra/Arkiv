@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><link>https://raw.githubusercontent.com/ish4ra/Arkiv/updates/appcast.xml</link><title>Arkiv Development Updates</title><item><title>Arkiv 0.1.0 Development (12901)</title><description>Development/testing build 12901. Ad-hoc signed, not notarized. Includes the latest Arkiv changes. https://github.com/ish4ra/Arkiv/releases/tag/dev-12901</description><sparkle:version>12901</sparkle:version><sparkle:shortVersionString>0.1.0 Development</sparkle:shortVersionString><sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion><enclosure url="https://github.com/ish4ra/Arkiv/releases/download/dev-12901/Arkiv-universal.zip" length="2103641" type="application/octet-stream" sparkle:edSignature="VbkWp+31LM20DXrXjVBDhHsagdvV49xBTizy2zEbmEbIljChOqiiQtj3ozOSi3qNfg69kuLyw95mtKppL7atBQ=="></enclosure></item></channel></rss><!-- sparkle-signatures:
+edSignature: mxKhjt4X3TSo1rffjkuQChXHoEaZxpjj4Mk66qwjCyG0gdNjnjfAVYlEA/GWj6ZOTKnqpNmMPeeGXju4oz6YCg==
+length: 1208
+-->
