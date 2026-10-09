@@ -52,18 +52,18 @@ final class FinderServiceTests: XCTestCase {
         // Extract To's chooser is always in start(), independent of this URL consent gate.
     }
 
-    func testAuthenticationBindsOSTokenToExactURLAndRejectsBrokeredEvents() {
+    func testAuthenticationBindsOSTokenToExactURLAndRejectsBrokeredEvents() throws {
         let url = URL(string: "arkiv-finder://action/v1?command=extractHere")!
-        let event = NSAppleEventDescriptor(eventClass: AEEventClass(kInternetEventClass),
-            eventID: AEEventID(kAEGetURL), targetDescriptor: nil, returnID: AEReturnID(kAutoGenerateReturnID), transactionID: AETransactionID(kAnyTransactionID))
+        let event = try XCTUnwrap(NSAppleEventDescriptor(eventClass: AEEventClass(kInternetEventClass),
+            eventID: AEEventID(kAEGetURL), targetDescriptor: nil, returnID: AEReturnID(kAutoGenerateReturnID), transactionID: AETransactionID(kAnyTransactionID)))
         event.setParam(NSAppleEventDescriptor(string: url.absoluteString), forKeyword: keyDirectObject)
         XCTAssertFalse(FinderEventAuthenticator.isTrusted(url, event: event) { _ in XCTFail("Missing OS token"); return true })
         let token = Data(repeating: 1, count: 32)
-        event.setAttribute(NSAppleEventDescriptor(descriptorType: typeAuditToken, data: token), forKeyword: keySenderAuditTokenAttr)
+        event.setAttribute(try XCTUnwrap(NSAppleEventDescriptor(descriptorType: typeAuditToken, data: token)), forKeyword: keySenderAuditTokenAttr)
         XCTAssertTrue(FinderEventAuthenticator.isTrusted(url, event: event) { $0 == token })
         XCTAssertFalse(FinderEventAuthenticator.isTrusted(url, event: event) { _ in false })
         XCTAssertFalse(FinderEventAuthenticator.isTrusted(URL(string: url.absoluteString + "&trusted=true")!, event: event) { _ in true })
-        event.setAttribute(NSAppleEventDescriptor(descriptorType: typeAuditToken, data: Data(repeating: 2, count: 32)), forKeyword: keyActualSenderAuditToken)
+        event.setAttribute(try XCTUnwrap(NSAppleEventDescriptor(descriptorType: typeAuditToken, data: Data(repeating: 2, count: 32))), forKeyword: keyActualSenderAuditToken)
         XCTAssertFalse(FinderEventAuthenticator.isTrusted(url, event: event) { _ in XCTFail("Broker mismatch"); return true })
         XCTAssertFalse(FinderEventAuthenticator.matchesCode(Data(), at: URL(fileURLWithPath: "/missing")))
     }
