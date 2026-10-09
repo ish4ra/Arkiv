@@ -5,6 +5,12 @@ import ArkivCore
 import ArkivFinderIntegration
 
 final class FinderServiceTests: XCTestCase {
+    func testColdFinderLaunchDoesNotCreateBrowser() {
+        XCTAssertFalse(AppDelegate.shouldShowInitialBrowser(arguments: ["Arkiv", "--finder-action"], handledRequest: false))
+        XCTAssertFalse(AppDelegate.shouldShowInitialBrowser(arguments: ["Arkiv"], handledRequest: true))
+        XCTAssertTrue(AppDelegate.shouldShowInitialBrowser(arguments: ["Arkiv"], handledRequest: false))
+    }
+
     func testNearbyExtractionDoesNotRevealOrNavigateFinder() async {
         await MainActor.run {
             let output = URL(fileURLWithPath: "/Users/test/Downloads/Compressed")

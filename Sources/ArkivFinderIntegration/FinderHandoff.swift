@@ -7,7 +7,7 @@ public enum FinderCommand: String, CaseIterable, Sendable {
 
 public enum FinderHandoffError: Error, LocalizedError {
     case invalidRequest
-    public var errorDescription: String? { "Select one local ZIP or uncompressed TAR archive for Arkiv." }
+    public var errorDescription: String? { "Select supported local files or folders for Arkiv." }
 }
 
 public struct FinderHandoff: Sendable {

@@ -22,7 +22,7 @@ public enum FinderRelayError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .unknownAction: return "Finder returned an unrecognized Arkiv action."
-        case .unavailableSelection: return "Arkiv could not read the selected archive. Select one ZIP or uncompressed TAR in your home folder and try again."
+        case .unavailableSelection: return "Arkiv could not read the selected archive. Select supported files or folders in one home directory and try again."
         case .containingApp: return "Arkiv could not locate its containing application. Make sure Arkiv is installed in Applications."
         }
     }
@@ -65,14 +65,22 @@ public final class FinderActionRelay {
 
     public func perform(tag: Int, selectedURLs: [URL]) {
         do {
-            guard let command = FinderCommand(menuTag: tag) else { throw FinderRelayError.unknownAction }
-            guard let home, let archive = FinderHandoff.selection(selectedURLs, within: home) else {
-                throw FinderRelayError.unavailableSelection
+            let requestURL: URL
+            if let command = CreationCommand(menuTag: tag) {
+                guard let home, let sources = CreationHandoff.selection(selectedURLs, within: home) else {
+                    throw FinderRelayError.unavailableSelection
+                }
+                requestURL = try CreationHandoff(command: command, sources: sources).url
+            } else {
+                guard let command = FinderCommand(menuTag: tag) else { throw FinderRelayError.unknownAction }
+                guard let home, let archive = FinderHandoff.selection(selectedURLs, within: home) else {
+                    throw FinderRelayError.unavailableSelection
+                }
+                requestURL = try FinderHandoff(command: command, archive: archive).url
             }
-            let request = try FinderHandoff(command: command, archive: archive)
             let app = try Self.containingApp(for: extensionURL)
             guard try identifier(app) == "xyz.isharalakshan.arkiv" else { throw FinderRelayError.containingApp }
-            transport(request.url, app) { [failure] error in
+            transport(requestURL, app) { [failure] error in
                 if let error { failure(error) }
             }
         } catch { failure(error) }

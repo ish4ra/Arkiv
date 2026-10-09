@@ -9,6 +9,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let updates = UpdateController()
     private let finderDeliveryDiagnostic = FinderDeliveryDiagnostic.fromArguments()
     private lazy var finderSetup = FinderSetupWindowController()
+    private let creation = ArchiveCreationController()
+    private var handledLaunchRequest = false
+    private var startedInteractiveSession = false
     private var windows: [BrowserWindowController] = []
     private lazy var finderServices = FinderServiceProvider { [weak self] url in
         self?.open(url)
@@ -17,17 +20,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.servicesProvider = finderServices
     }
+    static func shouldShowInitialBrowser(arguments: [String], handledRequest: Bool) -> Bool {
+        !arguments.contains("--finder-action") && !handledRequest
+    }
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if finderDeliveryDiagnostic == nil { updates.start() }
         buildMenus()
-        if windows.isEmpty { newWindow(nil) }
-        NSApp.activate(ignoringOtherApps: true)
-        if finderDeliveryDiagnostic == nil {
-            DispatchQueue.main.async { [weak self] in self?.finderSetup.presentIfNeeded() }
+        if Self.shouldShowInitialBrowser(arguments: CommandLine.arguments, handledRequest: handledLaunchRequest) {
+            if windows.isEmpty { newWindow(nil) }
+            NSApp.activate(ignoringOtherApps: true)
+            beginInteractiveSession()
         }
+    }
+    private func beginInteractiveSession() {
+        guard !startedInteractiveSession, finderDeliveryDiagnostic == nil else { return }
+        startedInteractiveSession = true
+        updates.start()
+        DispatchQueue.main.async { [weak self] in self?.finderSetup.presentIfNeeded() }
     }
     func applicationDidBecomeActive(_ notification: Notification) {
         finderSetup.refresh()
+        if !windows.isEmpty { beginInteractiveSession() }
     }
     @objc func newWindow(_ sender: Any?) { makeWindow().showWindow(nil) }
     private func makeWindow() -> BrowserWindowController {
@@ -55,6 +67,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = windows.first(where: { $0.windowID == id }) ?? makeWindow()
         controller.showWindow(nil)
         controller.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        beginInteractiveSession()
         if controller.archiveURL == nil { controller.load(url) }
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -62,16 +76,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let controller = windows.last { controller.showWindow(nil) }
             else { newWindow(nil) }
         }
+        beginInteractiveSession()
         return true
     }
     func application(_ application: NSApplication, open urls: [URL]) {
+        handledLaunchRequest = true
         for url in urls {
-            if url.scheme == FinderHandoff.scheme {
+            if url.scheme == FinderHandoff.scheme && url.host == "create" {
+                do {
+                    let request = try CreationHandoff(url: url)
+                    if let diagnostic = finderDeliveryDiagnostic {
+                        diagnostic.recordCommand(request.command.rawValue, browserWindows: windows.count)
+                    } else if request.command == .zip { try creation.compress(request.sources) }
+                    else { creation.present(request.sources, parent: windows.first(where: { $0.window === NSApp.keyWindow })?.window) }
+                } catch { NSAlert(error: error).runModal() }
+            } else if url.scheme == FinderHandoff.scheme {
                 do {
                     if let diagnostic = finderDeliveryDiagnostic {
                         try finderServices.receive(url) { request in
                             if request.action == .open { try self.finderServices.perform(request) }
-                            else { diagnostic.record(request.action) } // Read-only CI; never extract.
+                            else { diagnostic.recordCommand(request.action.rawValue, browserWindows: self.windows.count) } // Read-only CI; never extract.
                         }
                     } else { try finderServices.receive(url) }
                 }
@@ -79,12 +103,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else if url.isFileURL { open(url) }
         }
     }
+    @objc private func createArchive(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true; panel.canChooseDirectories = true; panel.allowsMultipleSelection = true
+        panel.prompt = "Add"; panel.message = "Choose files and folders for a new ZIP archive."
+        guard panel.runModal() == .OK else { return }
+        creation.present(panel.urls, parent: windows.first(where: { $0.window === NSApp.keyWindow })?.window)
+    }
+
     @objc private func showFinderIntegration(_ sender: Any?) {
         finderSetup.showSetup()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if finderServices.isBusy || windows.contains(where: \.isBusy) {
+        if finderServices.isBusy || creation.isBusy || windows.contains(where: \.isBusy) {
             let alert = NSAlert()
             alert.messageText = "An archive operation is still running"
             alert.informativeText = "Cancel it and wait for cleanup before quitting."
@@ -105,6 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         application.addItem(withTitle: "Quit Arkiv", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let file = NSMenu(title: "File")
         let new = file.addItem(withTitle: "New Window", action: #selector(newWindow(_:)), keyEquivalent: "n"); new.target = self
+        let create = file.addItem(withTitle: "Create Archive…", action: #selector(createArchive(_:)), keyEquivalent: "N"); create.target = self
         let open = file.addItem(withTitle: "Open Archive…", action: #selector(openArchive(_:)), keyEquivalent: "o"); open.target = self
         file.addItem(.separator())
         file.addItem(withTitle: "Extract Selected…", action: #selector(BrowserWindowController.extractSelected(_:)), keyEquivalent: "e")

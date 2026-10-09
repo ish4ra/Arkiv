@@ -8,7 +8,7 @@ final class FinderDeliveryDiagnostic {
     private let nonce: String
 
     static func fromArguments(_ arguments: [String] = CommandLine.arguments) -> FinderDeliveryDiagnostic? {
-        guard arguments.count == 3, arguments[1] == "--verify-finder-url-delivery",
+        guard (arguments.count == 3 || (arguments.count == 4 && arguments[3] == "--finder-action")), arguments[1] == "--verify-finder-url-delivery",
               UUID(uuidString: arguments[2]) != nil else { return nil }
         return FinderDeliveryDiagnostic(nonce: arguments[2])
     }
@@ -20,7 +20,12 @@ final class FinderDeliveryDiagnostic {
     }
 
     func record(_ action: FinderAction) {
+        recordCommand(action.rawValue)
+    }
+    func recordCommand(_ command: String, browserWindows: Int? = nil) {
+        var info: [String: Any] = ["command": command]
+        if let browserWindows { info["browserWindows"] = browserWindows }
         DistributedNotificationCenter.default().postNotificationName(Self.notification,
-            object: nonce, userInfo: ["command": action.rawValue], deliverImmediately: true)
+            object: nonce, userInfo: info, deliverImmediately: true)
     }
 }

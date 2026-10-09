@@ -36,11 +36,11 @@ The repository is already isolated in Codex cloud tasks; reuse its checkout and 
 - [Original icon direction](docs/branding.md)
 - [Third-party notices](docs/third-party-licenses.md)
 
-Next: confirm/fix macOS CI and real-Mac browser behavior, then implement owned preview workspaces, single-entry Open/Quick Look and basic ZIP/TAR creation with round-trip tests. Complete those Priority A slices before encryption or modification.
+Next: confirm/fix macOS CI and real-Mac browser behavior, then implement owned preview workspaces, single-entry Open/Quick Look and TAR creation with round-trip tests. ZIP creation is implemented. Complete those Priority A slices before encryption or modification.
 
 ## Finder extraction
 
-Right-click one ZIP or uncompressed TAR archive → **Services** for **Open in Arkiv**, **Extract Here with Arkiv**, **Extract to Folder with Arkiv**, or **Extract To… with Arkiv**. Enable these under **System Settings → Keyboard → Keyboard Shortcuts → Services** if needed. Extraction never overwrites or merges existing items. Single selection only; no archive creation. See [Finder setup, limitations, and test steps](docs/finder-integration.md).
+Right-click one ZIP or uncompressed TAR archive → **Services** for **Open in Arkiv**, **Extract Here with Arkiv**, **Extract to Folder with Arkiv**, or **Extract To… with Arkiv**. Enable these under **System Settings → Keyboard → Keyboard Shortcuts → Services** if needed. Extraction never overwrites or merges existing items. Services support single-archive extraction; creation is available through the direct Finder menu or File → Create Archive…. See [Finder setup, limitations, and test steps](docs/finder-integration.md).
 
 ### Development self-updates
 
@@ -63,3 +63,11 @@ See [Finder Sync setup and real-Mac tests](docs/finder-sync.md).
 
 Finder setup shows the manual macOS Settings path and refreshes enabled status
 when you return. **Not Now** is remembered; setup remains available from the menu.
+
+### ZIP creation
+
+Select files/folders in Finder for **Add to Archive…** or direct **Compress to ZIP**.
+The File menu also offers **Create Archive…**. Store/Deflate, mixed selections,
+nested/empty folders, Unicode, progress and cancellation are supported with
+transactional no-overwrite publication. Password and 7z creation remain unavailable.
+See [creation behavior, safety and real-Mac tests](docs/creation.md).

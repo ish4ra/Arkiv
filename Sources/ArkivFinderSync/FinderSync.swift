@@ -10,7 +10,9 @@ final class ArkivFinderSync: FIFinderSync {
         extensionURL: Bundle(for: ArkivFinderSync.self).bundleURL,
         transport: { url, app, completion in
             let configuration = NSWorkspace.OpenConfiguration()
-            configuration.activates = true
+            let command = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "command" }?.value
+            configuration.activates = ["open", "extractTo", "addArchive"].contains(command ?? "")
+            configuration.arguments = ["--finder-action"]
             configuration.addsToRecentItems = false
             NSWorkspace.shared.open([url], withApplicationAt: app, configuration: configuration) { application, error in
                 if let error { completion(error) }
@@ -45,17 +47,29 @@ final class ArkivFinderSync: FIFinderSync {
     }
 
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
-        guard menuKind == .contextualMenuForItems, let home,
-              let archive = FinderHandoff.selection(FIFinderSyncController.default().selectedItemURLs() ?? [], within: home) else { return nil }
+        guard menuKind == .contextualMenuForItems, let home else { return nil }
+        let selected = FIFinderSyncController.default().selectedItemURLs() ?? []
+        let archive = FinderHandoff.selection(selected, within: home)
+        let sources = CreationHandoff.selection(selected, within: home)
+        guard archive != nil || sources != nil else { return nil }
         let menu = NSMenu()
         let parent = NSMenuItem(title: "Arkiv", action: nil, keyEquivalent: "")
         let actions = NSMenu(title: "Arkiv")
-        let titles = ["Open in Arkiv", "Extract Here", "Extract to “\(FinderHandoff.folderName(for: archive))/”", "Extract To…"]
-        for (command, title) in zip(FinderCommand.allCases, titles) {
-            let item = actions.addItem(withTitle: title, action: #selector(performAction(_:)), keyEquivalent: "")
-            item.target = self
-            // Finder transports scalar tags; do not rely on representedObject.
-            item.tag = command.menuTag
+        actions.autoenablesItems = false
+        if let archive {
+            let titles = ["Open in Arkiv", "Extract Here", "Extract to “\(FinderHandoff.folderName(for: archive))/”", "Extract To…"]
+            for (command, title) in zip(FinderCommand.allCases, titles) {
+                let item = actions.addItem(withTitle: title, action: #selector(performAction(_:)), keyEquivalent: "")
+                item.target = self; item.tag = command.menuTag
+            }
+        } else if let sources {
+            for (command, title) in [(CreationCommand.addArchive, "Add to Archive…"), (.zip, "Compress to “\(CreationHandoff.baseName(for: sources)).zip”")] {
+                let item = actions.addItem(withTitle: title, action: #selector(performAction(_:)), keyEquivalent: "")
+                item.target = self; item.tag = command.menuTag
+            }
+            let password = actions.addItem(withTitle: "Compress with Password…", action: nil, keyEquivalent: "")
+            password.isEnabled = false
+            password.toolTip = "Encrypted archive creation is not supported in this build."
         }
         parent.submenu = actions; menu.addItem(parent)
         return menu

@@ -6,7 +6,8 @@
 | Selective/all extraction | Implemented: new destination folder, bounded streaming, cancellation, progress and cleanup |
 | Extraction safety | Automated hostile-path/link/overwrite/CRC/limit regression suite |
 | macOS application validation | Native compilation, tests, arm64 app/icon packaging and signature verification passed macOS CI; interactive validation outstanding |
-| Create / modify / encryption / AES-256 / filename encryption | Deferred; no enabled UI claims |
+| Create ZIP | Store/Deflate, native creation setup, direct Finder multi-selection compression; [details](creation.md) |
+| Modify / encryption / AES-256 / filename encryption / 7z creation | Deferred; no enabled UI claims |
 | Solid archives / multipart / comments | Deferred compatibility work |
 | Integrity test command | Deferred; extraction checks data/CRC but is not a dedicated Test action |
 | Checksums / split-combine / benchmark / CLI | Deferred |

@@ -4,7 +4,7 @@ These are **fixture results on Linux with libarchive 3.7.4 and in [macOS CI](htt
 
 | Format | Browse/extract evidence | Create/modify | Encryption/multipart/comments/integrity command |
 | --- | --- | --- | --- |
-| ZIP | Stored and Deflate; nested Unicode paths, empty, corrupt CRC | Not implemented | Not implemented; CRC errors caught during extraction |
+| ZIP | Stored and Deflate; nested Unicode paths, empty, corrupt CRC | Create Store/Deflate; modification deferred | Not implemented; CRC errors caught during extraction |
 | TAR | Regular file, nested paths, rejection of links/devices | Not implemented | Not implemented |
 | 7z | One LZMA fixture, nested path, byte-for-byte extraction | Not implemented | Not implemented |
 | RAR5 | One stored upstream fixture, byte-for-byte extraction | Never create RAR | Not implemented |
@@ -22,3 +22,5 @@ An accepted file extension does not prove a compression method is available. Enc
 - Apple's Compression framework provides codecs rather than a complete ZIP/7z/RAR archive manager; Apple Archive is not a replacement for the requested formats. Native APIs remain appropriate for UI, file access, security and future metadata work.
 
 The 7-zip.org license endpoint was denied by this environment; research used the official ip7z GitHub source. This research is a foundation decision, not certification of every future backend or codec.
+
+ZIP creation details and validation: [creation.md](creation.md).

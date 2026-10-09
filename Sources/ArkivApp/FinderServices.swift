@@ -70,7 +70,7 @@ final class FinderServiceProvider: NSObject {
     static func requiresDestinationSelection(_ action: FinderAction) -> Bool { action == .extractTo }
 
     private func start(_ request: FinderRequest) {
-        NSApp.activate(ignoringOtherApps: true)
+        if Self.requiresDestinationSelection(request.action) { NSApp.activate(ignoringOtherApps: true) }
         var destination: URL?
         if Self.requiresDestinationSelection(request.action) {
             let panel = NSOpenPanel()
@@ -130,16 +130,19 @@ private final class FinderProgressThrottle: @unchecked Sendable {
     }
 }
 
-private final class FinderOperationWindow: NSWindowController, NSWindowDelegate {
+final class FinderOperationWindow: NSWindowController, NSWindowDelegate {
     let cancellation = ArchiveCancellation()
     private var running = true
     private var cancelling = false
     private let status = NSTextField(labelWithString: "Validating and extracting…")
-    init(archive: URL) {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 140),
-            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+    init(archive: URL, verb: String = "Extracting") {
+        let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 140),
+            styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init(window: window)
-        window.title = "Arkiv — Extracting"
+        window.title = "Arkiv — \(verb)"
+        window.hidesOnDeactivate = false
+        window.becomesKeyOnlyIfNeeded = true
+        status.stringValue = "Validating and \(verb.lowercased())…"
         window.tabbingMode = .disallowed; window.isReleasedWhenClosed = false
         window.delegate = self; window.center()
         let name = NSTextField(labelWithString: archive.lastPathComponent)

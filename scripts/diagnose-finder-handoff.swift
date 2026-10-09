@@ -1,8 +1,8 @@
-// macOS CI: deliver all four custom URLs through real NSWorkspace to the packaged
+// macOS CI: deliver all six custom URLs through real NSWorkspace to the packaged
 // Arkiv executable, then await AppKit receiver acknowledgements. No extraction.
 import AppKit
 
-func runProbe() throws -> Int32 {
+func runProbe(firstCommand: String) throws -> Int32 {
 let app = URL(fileURLWithPath: CommandLine.arguments[1]).standardizedFileURL
 let nonce = UUID().uuidString
 let root = FileManager.default.temporaryDirectory.appendingPathComponent("Arkiv-handoff-" + nonce)
@@ -10,7 +10,7 @@ try FileManager.default.createDirectory(at: root, withIntermediateDirectories: f
 defer { try? FileManager.default.removeItem(at: root) }
 let archive = root.appendingPathComponent("日本語 & # percent%.zip")
 try Data([0x50, 0x4b, 0x05, 0x06] + Array(repeating: UInt8(0), count: 18)).write(to: archive)
-let expected: Set<String> = ["open", "extractHere", "extractFolder", "extractTo"]
+let expected: Set<String> = ["zip", "addArchive", "open", "extractHere", "extractFolder", "extractTo"]
 var received: Set<String> = []
 var failure = false
 var launched = false
@@ -22,23 +22,34 @@ let observer = center.addObserver(forName: Notification.Name("xyz.isharalakshan.
     guard let command = notification.userInfo?["command"] as? String, expected.contains(command) else {
         failure = true; return
     }
+    if command == firstCommand, notification.userInfo?["browserWindows"] as? Int != 0 {
+        failure = true; return
+    }
     received.insert(command)
 }
 defer {
     center.removeObserver(observer)
     // Only the isolated application instance created by this probe is cleaned up.
-    if let child, !child.isTerminated { child.forceTerminate() }
+    if let child, !child.isTerminated {
+        child.forceTerminate()
+        let cleanupDeadline = Date().addingTimeInterval(5)
+        while !child.isTerminated && Date() < cleanupDeadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
+    }
 }
-let urls = ["open", "extractHere", "extractFolder", "extractTo"].map { command -> URL in
+let commands = [firstCommand] + ["zip", "addArchive", "open", "extractHere", "extractFolder", "extractTo"].filter { $0 != firstCommand }
+let urls = commands.map { command -> URL in
     var components = URLComponents()
-    components.scheme = "arkiv-finder"; components.host = "action"; components.path = "/v1"
+    components.scheme = "arkiv-finder"; components.host = ["zip", "addArchive"].contains(command) ? "create" : "action"; components.path = "/v1"
     components.queryItems = [URLQueryItem(name: "command", value: command), URLQueryItem(name: "file", value: archive.absoluteString)]
     return components.url!
 }
 let configuration = NSWorkspace.OpenConfiguration()
 configuration.createsNewApplicationInstance = true
-configuration.arguments = ["--verify-finder-url-delivery", nonce]
+configuration.arguments = ["--verify-finder-url-delivery", nonce, "--finder-action"]
 configuration.addsToRecentItems = false
+configuration.activates = false
 NSWorkspace.shared.open([urls[0]], withApplicationAt: app, configuration: configuration) { application, error in
     DispatchQueue.main.async {
         child = application
@@ -60,11 +71,15 @@ while !failure && (!launched || !warmCompleted || received != expected) && Date(
     RunLoop.main.run(until: Date().addingTimeInterval(0.05))
 }
 guard launched, warmCompleted, !failure, received == expected else {
-    fputs("Packaged Finder URL delivery failed or did not reach all four app routing callbacks\n", stderr)
+    fputs("Packaged Finder URL delivery failed or did not reach all six app routing callbacks\n", stderr)
     return 1
 }
-print("Verified real NSWorkspace → packaged AppKit URL receipt → all four Finder action callbacks (read-only extraction dispatch intercepted)")
+print("Verified real NSWorkspace → packaged AppKit URL receipt → all six Finder action callbacks (read-only extraction dispatch intercepted)")
 
 return 0
 }
-exit(try runProbe())
+for command in ["zip", "extractHere", "extractFolder"] {
+    let result = try runProbe(firstCommand: command)
+    if result != 0 { exit(result) }
+}
+exit(0)
