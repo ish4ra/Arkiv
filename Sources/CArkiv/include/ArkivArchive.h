@@ -31,7 +31,7 @@ int arkiv_publish_extracted(const char *parent, const char *staging, const char 
 
 /* Transactional ZIP creation. sources are absolute paths; stage/name are single components.
    3 means publication conflict. Compression: 0 Store, 1 Deflate. */
-int arkiv_create_zip(const char *const *, size_t, const char *, const char *, const char *, int,
+int arkiv_create_zip(const char *const *, size_t, const char *, const char *, const char *, char *, size_t, int,
                      arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 
 #endif

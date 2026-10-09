@@ -9,7 +9,7 @@ import zipfile
 lib = C.CDLL(os.environ['ARKIV_TEST_LIBRARY'])
 class Limits(C.Structure):
     _fields_ = [('max_entries', C.c_uint64), ('max_bytes', C.c_uint64)]
-lib.arkiv_create_zip.argtypes = [C.POINTER(C.c_char_p), C.c_size_t, C.c_char_p, C.c_char_p, C.c_char_p, C.c_int, Limits, C.c_void_p, C.c_void_p, C.c_void_p, C.c_char_p, C.c_size_t]
+lib.arkiv_create_zip.argtypes = [C.POINTER(C.c_char_p), C.c_size_t, C.c_char_p, C.c_char_p, C.c_char_p, C.c_char_p, C.c_size_t, C.c_int, Limits, C.c_void_p, C.c_void_p, C.c_void_p, C.c_char_p, C.c_size_t]
 
 class CreationTests(unittest.TestCase):
     def setUp(self):
@@ -27,7 +27,7 @@ class CreationTests(unittest.TestCase):
     def create(self, source=None, compression=1, limits=None, destination=None):
         sources = (C.c_char_p * 1)(os.fsencode(source or self.source))
         error = C.create_string_buffer(256)
-        return lib.arkiv_create_zip(sources, 1, os.fsencode(destination or self.destination), b'.stage', b'result.zip', compression, limits or Limits(100000, 20 * 1024**3), None, None, None, error, len(error))
+        return lib.arkiv_create_zip(sources, 1, os.fsencode(destination or self.destination), b'.stage', b'result.zip', C.create_string_buffer(512), 512, compression, limits or Limits(100000, 20 * 1024**3), None, None, None, error, len(error))
     def test_compression_unicode_crc_and_no_overwrite(self):
         for method in (0, 1):
             self.assertEqual(self.create(compression=method), 0)
@@ -40,10 +40,11 @@ class CreationTests(unittest.TestCase):
                 self.assertEqual(z.getinfo(name).compress_type, zipfile.ZIP_STORED if method == 0 else zipfile.ZIP_DEFLATED)
                 self.assertTrue(z.getinfo(name).flag_bits & 0x800)
             previous = archive.read_bytes()
-            self.assertEqual(self.create(), 3)
+            self.assertEqual(self.create(), 0)
             self.assertEqual(archive.read_bytes(), previous)
             self.assertEqual(list((self.destination / '.stage').iterdir()), [])
             archive.unlink()
+            (self.destination / "result (2).zip").unlink()
     def test_limits_and_symlink_ancestors(self):
         self.assertEqual(self.create(limits=Limits(1, 100)), 1)
         alias = self.root / 'alias'

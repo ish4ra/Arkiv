@@ -10,3 +10,5 @@ else
   cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Werror -shared -fPIC ${ARKIV_CFLAGS:-} -I Sources/CArkiv/include Sources/CArkiv/ArkivArchive.c -Wl,-l:libarchive.so.13 -o "$library"
 fi
 ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_engine.py -v
+
+ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_creation.py -v

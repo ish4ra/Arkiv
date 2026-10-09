@@ -292,6 +292,17 @@ static int create_open(const char *path) {
     }
     free(copy); return fd;
 }
+static int create_same_stat(const struct stat *a, const struct stat *b) {
+#ifdef __APPLE__
+    return a->st_dev == b->st_dev && a->st_ino == b->st_ino && a->st_size == b->st_size &&
+        a->st_mtimespec.tv_sec == b->st_mtimespec.tv_sec && a->st_mtimespec.tv_nsec == b->st_mtimespec.tv_nsec &&
+        a->st_ctimespec.tv_sec == b->st_ctimespec.tv_sec && a->st_ctimespec.tv_nsec == b->st_ctimespec.tv_nsec;
+#else
+    return a->st_dev == b->st_dev && a->st_ino == b->st_ino && a->st_size == b->st_size &&
+        a->st_mtim.tv_sec == b->st_mtim.tv_sec && a->st_mtim.tv_nsec == b->st_mtim.tv_nsec &&
+        a->st_ctim.tv_sec == b->st_ctim.tv_sec && a->st_ctim.tv_nsec == b->st_ctim.tv_nsec;
+#endif
+}
 struct create_state {
     struct archive *writer; arkiv_limits limits; arkiv_cancel *token;
     arkiv_progress_callback progress; void *context;
@@ -347,23 +358,22 @@ static int create_walk(struct create_state *s, int fd, const char *path, unsigne
             if (s->progress) s->progress(s->context, s->entries, s->bytes);
         }
         struct stat after;
-        if (fstat(fd, &after) || after.st_size != st.st_size || after.st_mtime != st.st_mtime || after.st_ctime != st.st_ctime)
+        if (fstat(fd, &after) || !create_same_stat(&after, &st))
             return fail(s->error, s->capacity, "Source changed during creation.");
     }
     struct stat final_stat;
-    if (fstat(fd, &final_stat) || final_stat.st_size != st.st_size ||
-        final_stat.st_mtime != st.st_mtime || final_stat.st_ctime != st.st_ctime)
+    if (fstat(fd, &final_stat) || !create_same_stat(&final_stat, &st))
         return fail(s->error, s->capacity, "Source changed during creation.");
     if (archive_write_finish_entry(s->writer) != ARCHIVE_OK) return fail(s->error, s->capacity, "Cannot finish ZIP entry.");
     if (s->progress) s->progress(s->context, s->entries, s->bytes);
     return 0;
 }
 int arkiv_create_zip(const char *const *sources, size_t count, const char *parent,
-                     const char *stage, const char *name, int compression, arkiv_limits limits,
+                     const char *stage, const char *name, char *published_name, size_t published_capacity, int compression, arkiv_limits limits,
                      arkiv_cancel *token, arkiv_progress_callback progress, void *context,
                      char *error, size_t capacity) {
     if (cancelled(token)) return 2;
-    if (!count || count > limits.max_entries || !safe_path(stage) || strchr(stage, '/') || !safe_path(name) || strchr(name, '/'))
+    if (!published_name || published_capacity < 256 || !count || count > limits.max_entries || !safe_path(stage) || strchr(stage, '/') || !safe_path(name) || strchr(name, '/') || strlen(name) < 5 || strcmp(name + strlen(name) - 4, ".zip"))
         return fail(error, capacity, "Invalid creation request.");
     locale_t utf8 = newlocale(LC_CTYPE_MASK, "en_US.UTF-8", NULL);
     if (!utf8) utf8 = newlocale(LC_CTYPE_MASK, "C.UTF-8", NULL);
@@ -411,8 +421,15 @@ int arkiv_create_zip(const char *const *sources, size_t count, const char *paren
     if (r != ARCHIVE_EOF || entries != state.entries || bytes != state.bytes) goto done;
     if (cancelled(token)) { status = 2; goto done; }
     /* A same-filesystem hard link publishes atomically without replacing any item. */
-    if (linkat(stagefd, "archive.zip", parentfd, name, 0)) { status = errno == EEXIST ? 3 : 1; goto done; }
-    status = 0;
+    status = 3;
+    for (unsigned attempt = 1; attempt <= 1000; attempt++) {
+        if (cancelled(token)) { status = 2; goto done; }
+        int length = attempt == 1 ? snprintf(published_name, published_capacity, "%s", name) :
+            snprintf(published_name, published_capacity, "%.*s (%u).zip", (int)strlen(name) - 4, name, attempt);
+        if (length < 0 || (size_t)length >= published_capacity) { status = 1; goto done; }
+        if (!linkat(stagefd, "archive.zip", parentfd, published_name, 0)) { status = 0; break; }
+        if (errno != EEXIST) { status = 1; goto done; }
+    }
 done:
     if (verify) archive_read_free(verify);
     if (writer) archive_write_free(writer);

@@ -29,12 +29,22 @@ public struct ArchiveCreator: Sendable {
         guard !request.sources.isEmpty, request.sources.count <= 100_000, local(request.destination), component(request.name) else {
             throw ArchiveFailure.message("Choose local source items, a destination folder, and a valid archive name.")
         }
+        func canonicalSystemURL(_ url: URL) -> URL {
+            let url = url.standardizedFileURL
+            #if os(macOS)
+            // macOS exposes trusted system aliases for its temporary folders.
+            if url.path == "/var" || url.path.hasPrefix("/var/") || url.path == "/tmp" || url.path.hasPrefix("/tmp/") {
+                return URL(fileURLWithPath: "/private" + url.path)
+            }
+            #endif
+            return url
+        }
         let manager = FileManager.default
-        let destination = request.destination.standardizedFileURL
+        let destination = canonicalSystemURL(request.destination)
         var paths: [String] = [], names = Set<String>()
         for source in request.sources {
             guard local(source) else { throw ArchiveFailure.message("Choose local source items.") }
-            let url = source.standardizedFileURL
+            let url = canonicalSystemURL(source)
             guard component(url.lastPathComponent), names.insert(url.lastPathComponent.lowercased()).inserted else {
                 throw ArchiveFailure.message("Source items must have distinct safe names.")
             }
@@ -65,23 +75,23 @@ public struct ArchiveCreator: Sendable {
         let strings = paths.map { strdup($0)! }
         defer { strings.forEach { free($0) } }
         let pointers: [UnsafePointer<CChar>?] = strings.map { UnsafePointer($0) }
-        for attempt in 1...1000 {
+        do {
             let stage = destination.appendingPathComponent(".arkiv-create-" + UUID().uuidString, isDirectory: true)
             try manager.createDirectory(at: stage, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
             defer { try? manager.removeItem(at: stage) }
-            let filename = request.name + (attempt == 1 ? "" : " (\(attempt))") + ".zip"
+            let filename = request.name + ".zip"
+            var published = [CChar](repeating: 0, count: 512)
             var error = [CChar](repeating: 0, count: 256)
             let result = pointers.withUnsafeBufferPointer { buffer in
                 arkiv_create_zip(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
-                    filename, request.compression == .store ? 0 : 1,
+                    filename, &published, published.count, request.compression == .store ? 0 : 1,
                     arkiv_limits(max_entries: 100_000, max_bytes: 20 * 1024 * 1024 * 1024),
                     cancellation.pointer, callback, context, &error, error.count)
             }
-            if result == 0 { return destination.appendingPathComponent(filename) }
-            if result == 3 { continue }
+            if result == 0 { return destination.appendingPathComponent(String(cString: published)) }
+            if result == 3 { throw ArchiveFailure.message("No unused archive name was available.") }
             if result == 2 { throw ArchiveFailure.cancelled }
             throw ArchiveFailure.message(String(cString: error))
         }
-        throw ArchiveFailure.message("No unused archive name was available.")
     }
 }
