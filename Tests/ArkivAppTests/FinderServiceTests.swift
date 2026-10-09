@@ -52,19 +52,23 @@ final class FinderServiceTests: XCTestCase {
         // Extract To's chooser is always in start(), independent of this URL consent gate.
     }
 
-    func testAuthenticationBindsOSTokenToExactURLAndRejectsBrokeredEvents() throws {
+    func testAuthenticationBindsOSTokenToExactURLAndRejectsBrokeredEvents() {
         let url = URL(string: "arkiv-finder://action/v1?command=extractHere")!
-        let event = try XCTUnwrap(NSAppleEventDescriptor(eventClass: AEEventClass(kInternetEventClass),
-            eventID: AEEventID(kAEGetURL), targetDescriptor: nil, returnID: AEReturnID(kAutoGenerateReturnID), transactionID: AETransactionID(kAnyTransactionID)))
-        event.setParam(NSAppleEventDescriptor(string: url.absoluteString), forKeyword: keyDirectObject)
-        XCTAssertFalse(FinderEventAuthenticator.isTrusted(url, event: event) { _ in XCTFail("Missing OS token"); return true })
         let token = Data(repeating: 1, count: 32)
-        event.setAttribute(try XCTUnwrap(NSAppleEventDescriptor(descriptorType: typeAuditToken, data: token)), forKeyword: keySenderAuditTokenAttr)
-        XCTAssertTrue(FinderEventAuthenticator.isTrusted(url, event: event) { $0 == token })
-        XCTAssertFalse(FinderEventAuthenticator.isTrusted(url, event: event) { _ in false })
-        XCTAssertFalse(FinderEventAuthenticator.isTrusted(URL(string: url.absoluteString + "&trusted=true")!, event: event) { _ in true })
-        event.setAttribute(try XCTUnwrap(NSAppleEventDescriptor(descriptorType: typeAuditToken, data: Data(repeating: 2, count: 32))), forKeyword: keyActualSenderAuditToken)
-        XCTAssertFalse(FinderEventAuthenticator.isTrusted(url, event: event) { _ in XCTFail("Broker mismatch"); return true })
+        // Read-only OS event attributes cannot reliably be forged in a synthetic
+        // descriptor. Test the extracted identity gate, and genuine code identity
+        // separately with the signed macOS diagnostic's real kernel audit token.
+        XCTAssertFalse(FinderEventAuthenticator.isTrusted(url, event: nil) { _ in XCTFail("Missing event"); return true })
+        XCTAssertTrue(FinderEventAuthenticator.validateIdentity(url, eventURL: url.absoluteString,
+            sender: token, actual: token) { $0 == token })
+        XCTAssertFalse(FinderEventAuthenticator.validateIdentity(url, eventURL: url.absoluteString,
+            sender: token, actual: token) { _ in false })
+        XCTAssertFalse(FinderEventAuthenticator.validateIdentity(url, eventURL: url.absoluteString + "&trusted=true",
+            sender: token, actual: nil) { _ in XCTFail("Wrong URL"); return true })
+        XCTAssertFalse(FinderEventAuthenticator.validateIdentity(url, eventURL: url.absoluteString,
+            sender: token, actual: Data(repeating: 2, count: 32)) { _ in XCTFail("Broker mismatch"); return true })
+        XCTAssertFalse(FinderEventAuthenticator.validateIdentity(url, eventURL: url.absoluteString,
+            sender: Data(), actual: nil) { _ in XCTFail("Missing token"); return true })
         XCTAssertFalse(FinderEventAuthenticator.matchesCode(Data(), at: URL(fileURLWithPath: "/missing")))
     }
 

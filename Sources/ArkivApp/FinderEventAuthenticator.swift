@@ -8,13 +8,20 @@ enum FinderEventAuthenticator {
                           verifySender: (Data) -> Bool = matchesEmbeddedExtension) -> Bool {
         guard let event, event.eventClass == AEEventClass(kInternetEventClass),
               event.eventID == AEEventID(kAEGetURL),
-              event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue == url.absoluteString,
               let sender = event.attributeDescriptor(forKeyword: keySenderAuditTokenAttr),
-              sender.descriptorType == typeAuditToken, sender.data.count == 32 else { return false }
+              sender.descriptorType == typeAuditToken else { return false }
+        let actual = event.attributeDescriptor(forKeyword: keyActualSenderAuditToken)
+        if let actual, actual.descriptorType != typeAuditToken { return false }
+        return validateIdentity(url, eventURL: event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
+                                sender: sender.data, actual: actual?.data, verifySender: verifySender)
+    }
+
+    static func validateIdentity(_ url: URL, eventURL: String?, sender: Data, actual: Data?,
+                                 verifySender: (Data) -> Bool) -> Bool {
+        guard eventURL == url.absoluteString, sender.count == 32 else { return false }
         // Do not elevate delegated/brokered events with differing actual identity.
-        if let actual = event.attributeDescriptor(forKeyword: keyActualSenderAuditToken),
-           actual.descriptorType != typeAuditToken || actual.data != sender.data { return false }
-        return verifySender(sender.data)
+        if let actual, actual != sender { return false }
+        return verifySender(sender)
     }
 
     static func matchesEmbeddedExtension(_ auditToken: Data) -> Bool {
