@@ -194,6 +194,10 @@ int arkiv_extract(const char *path, const char *root_path, const int64_t *ids, s
 }
 
 #include <dirent.h>
+#include <locale.h>
+#ifdef __APPLE__
+#include <xlocale.h>
+#endif
 #ifdef __linux__
 #include <sys/syscall.h>
 #endif
@@ -268,4 +272,154 @@ int arkiv_publish_extracted(const char *parent_path, const char *staging, const 
         result = fail(error, capacity, "Files were placed, but the empty staging folder could not be removed.");
     close(parent);
     return result;
+}
+
+#include <dirent.h>
+#include <locale.h>
+#ifdef __APPLE__
+#include <xlocale.h>
+#endif
+/* Walk every ancestor without following links, including the final component. */
+static int create_open(const char *path) {
+    if (!path || path[0] != '/') { errno = EINVAL; return -1; }
+    char *copy = strdup(path); if (!copy) return -1;
+    int fd = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    char *save = NULL;
+    for (char *p = strtok_r(copy, "/", &save); p && fd >= 0; p = strtok_r(NULL, "/", &save)) {
+        if (!strcmp(p, ".") || !strcmp(p, "..")) { close(fd); fd = -1; errno = EINVAL; break; }
+        int next = openat(fd, p, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+        close(fd); fd = next;
+    }
+    free(copy); return fd;
+}
+struct create_state {
+    struct archive *writer; arkiv_limits limits; arkiv_cancel *token;
+    arkiv_progress_callback progress; void *context;
+    uint64_t entries, bytes; char *error; size_t capacity;
+    dev_t stage_dev; ino_t stage_ino;
+};
+static int create_walk(struct create_state *s, int fd, const char *path, unsigned depth) {
+    if (cancelled(s->token)) return 2;
+    struct stat st;
+    if (depth > 128 || !safe_path(path) || fstat(fd, &st) ||
+        (!S_ISREG(st.st_mode) && !S_ISDIR(st.st_mode)) ||
+        (st.st_dev == s->stage_dev && st.st_ino == s->stage_ino))
+        return fail(s->error, s->capacity, "Source contains a link, special file, or unsafe path.");
+    if (++s->entries > s->limits.max_entries || st.st_size < 0 ||
+        (S_ISREG(st.st_mode) && (uint64_t)st.st_size > s->limits.max_bytes - s->bytes))
+        return fail(s->error, s->capacity, "Creation safety limit exceeded.");
+    struct archive_entry *entry = archive_entry_new();
+    if (!entry) return fail(s->error, s->capacity, "Cannot allocate ZIP entry.");
+    archive_entry_set_pathname_utf8(entry, path);
+    archive_entry_set_filetype(entry, S_ISDIR(st.st_mode) ? AE_IFDIR : AE_IFREG);
+    archive_entry_set_perm(entry, S_ISDIR(st.st_mode) ? 0755 : 0644);
+    archive_entry_set_mtime(entry, st.st_mtime, 0);
+    archive_entry_set_size(entry, S_ISDIR(st.st_mode) ? 0 : st.st_size);
+    int result = archive_write_header(s->writer, entry); archive_entry_free(entry);
+    if (result != ARCHIVE_OK) return fail(s->error, s->capacity, "Cannot write ZIP header.");
+    if (S_ISDIR(st.st_mode)) {
+        DIR *dir = fdopendir(dup(fd));
+        if (!dir) return fail(s->error, s->capacity, "Cannot enumerate source folder.");
+        struct dirent *item; int status = 0;
+        for (;;) {
+            errno = 0; item = readdir(dir);
+            if (!item) { if (errno) status = fail(s->error, s->capacity, "Cannot read source folder."); break; }
+            if (!strcmp(item->d_name, ".") || !strcmp(item->d_name, "..")) continue;
+            char child[4097];
+            if (snprintf(child, sizeof(child), "%s/%s", path, item->d_name) >= (int)sizeof(child)) {
+                status = fail(s->error, s->capacity, "Source path is too long."); break;
+            }
+            int childfd = openat(fd, item->d_name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+            if (childfd < 0) { status = fail(s->error, s->capacity, "Cannot safely open source item."); break; }
+            status = create_walk(s, childfd, child, depth + 1); close(childfd);
+            if (status) break;
+        }
+        closedir(dir); if (status) return status;
+    } else {
+        char buffer[65536]; uint64_t count = 0;
+        while (count < (uint64_t)st.st_size) {
+            if (cancelled(s->token)) return 2;
+            size_t wanted = (uint64_t)st.st_size - count < sizeof(buffer) ? (size_t)((uint64_t)st.st_size - count) : sizeof(buffer);
+            ssize_t n = read(fd, buffer, wanted);
+            if (n <= 0 || archive_write_data(s->writer, buffer, (size_t)n) != n)
+                return fail(s->error, s->capacity, "Source changed or ZIP write failed.");
+            count += (uint64_t)n; s->bytes += (uint64_t)n;
+            if (s->progress) s->progress(s->context, s->entries, s->bytes);
+        }
+        struct stat after;
+        if (fstat(fd, &after) || after.st_size != st.st_size || after.st_mtime != st.st_mtime || after.st_ctime != st.st_ctime)
+            return fail(s->error, s->capacity, "Source changed during creation.");
+    }
+    struct stat final_stat;
+    if (fstat(fd, &final_stat) || final_stat.st_size != st.st_size ||
+        final_stat.st_mtime != st.st_mtime || final_stat.st_ctime != st.st_ctime)
+        return fail(s->error, s->capacity, "Source changed during creation.");
+    if (archive_write_finish_entry(s->writer) != ARCHIVE_OK) return fail(s->error, s->capacity, "Cannot finish ZIP entry.");
+    if (s->progress) s->progress(s->context, s->entries, s->bytes);
+    return 0;
+}
+int arkiv_create_zip(const char *const *sources, size_t count, const char *parent,
+                     const char *stage, const char *name, int compression, arkiv_limits limits,
+                     arkiv_cancel *token, arkiv_progress_callback progress, void *context,
+                     char *error, size_t capacity) {
+    if (cancelled(token)) return 2;
+    if (!count || count > limits.max_entries || !safe_path(stage) || strchr(stage, '/') || !safe_path(name) || strchr(name, '/'))
+        return fail(error, capacity, "Invalid creation request.");
+    locale_t utf8 = newlocale(LC_CTYPE_MASK, "en_US.UTF-8", NULL);
+    if (!utf8) utf8 = newlocale(LC_CTYPE_MASK, "C.UTF-8", NULL);
+    if (!utf8) return fail(error, capacity, "UTF-8 filename support is unavailable.");
+    locale_t previous = uselocale(utf8);
+    int parentfd = create_open(parent), stagefd = -1, output = -1, status = 1;
+    struct archive *writer = NULL, *verify = NULL;
+    if (parentfd < 0) goto done;
+    stagefd = openat(parentfd, stage, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (stagefd < 0) goto done;
+    output = openat(stagefd, "archive.zip", O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    if (output < 0) goto done;
+    writer = archive_write_new();
+    if (!writer || archive_write_set_format_zip(writer) != ARCHIVE_OK ||
+        archive_write_set_format_option(writer, "zip", "compression", compression ? "deflate" : "store") != ARCHIVE_OK ||
+        archive_write_set_format_option(writer, "zip", "hdrcharset", "UTF-8") != ARCHIVE_OK ||
+        archive_write_open_fd(writer, output) != ARCHIVE_OK) goto done;
+    struct stat stage_stat;
+    if (fstat(stagefd, &stage_stat)) goto done;
+    struct create_state state = { writer, limits, token, progress, context, 0, 0, error, capacity, stage_stat.st_dev, stage_stat.st_ino };
+    for (size_t i = 0; i < count; i++) {
+        int fd = create_open(sources[i]);
+        if (fd < 0) goto done;
+        const char *base = strrchr(sources[i], '/');
+        status = create_walk(&state, fd, base ? base + 1 : sources[i], 0); close(fd);
+        if (status) goto done;
+    }
+    status = 1;
+    if (archive_write_close(writer) != ARCHIVE_OK || fsync(output) || lseek(output, 0, SEEK_SET) < 0) goto done;
+    archive_write_free(writer); writer = NULL;
+    verify = archive_read_new();
+    if (!verify || archive_read_support_filter_none(verify) != ARCHIVE_OK ||
+        archive_read_support_format_zip(verify) != ARCHIVE_OK || archive_read_open_fd(verify, output, 65536) != ARCHIVE_OK) goto done;
+    struct archive_entry *entry; int r; uint64_t entries = 0, bytes = 0; char buffer[65536];
+    while ((r = archive_read_next_header(verify, &entry)) == ARCHIVE_OK) {
+        if (++entries > limits.max_entries || !entry_kind(entry)) goto done;
+        ssize_t n;
+        while ((n = archive_read_data(verify, buffer, sizeof(buffer))) > 0) {
+            if (cancelled(token)) { status = 2; goto done; }
+            if ((uint64_t)n > limits.max_bytes - bytes) goto done;
+            bytes += (uint64_t)n;
+        }
+        if (n < 0) goto done;
+    }
+    if (r != ARCHIVE_EOF || entries != state.entries || bytes != state.bytes) goto done;
+    if (cancelled(token)) { status = 2; goto done; }
+    /* A same-filesystem hard link publishes atomically without replacing any item. */
+    if (linkat(stagefd, "archive.zip", parentfd, name, 0)) { status = errno == EEXIST ? 3 : 1; goto done; }
+    status = 0;
+done:
+    if (verify) archive_read_free(verify);
+    if (writer) archive_write_free(writer);
+    if (output >= 0) close(output);
+    if (stagefd >= 0) { unlinkat(stagefd, "archive.zip", 0); close(stagefd); }
+    if (parentfd >= 0) close(parentfd);
+    uselocale(previous); freelocale(utf8);
+    if (status == 1 && error && capacity && !error[0]) fail(error, capacity, "Cannot safely create or verify ZIP archive.");
+    return status;
 }
