@@ -80,17 +80,49 @@ publisher; the public URLs intentionally identify ish4ra/Arkiv.
 The stable development feed URL embedded in Arkiv is:
 
 ```
-https://github.com/ish4ra/Arkiv/releases/download/development-updates/appcast.xml
+https://raw.githubusercontent.com/ish4ra/Arkiv/updates/appcast.xml
 ```
 
 After both matrix jobs pass on main, CI signs the exact verified Universal ZIP,
 verifies its signature against the embedded public key, signs the appcast, then
 creates a **prerelease** `dev-<build>` with `Arkiv-universal.zip` and `appcast.xml`.
-Only after publishing that immutable payload does it replace the feed asset in
-the dedicated `development-updates` prerelease. No stable production release is
-created. Feed updates are serialized and refuse a non-increasing remote version.
-GitHub asset replacement can briefly return 404; Sparkle retries on a later check.
-Do not delete releases that a feed references, reuse tags, or overwrite payloads.
+Only after publicly downloading and verifying that immutable payload does CI
+commit the byte-identical signed `appcast.xml` to the dedicated **updates** branch.
+The branch contains only that file. A normal fast-forward push advances its ref
+atomically: readers see either the old valid feed or the new valid feed. The live
+feed is never deleted/reuploaded. GitHub's CDN may briefly serve an older valid
+feed; publication does not create a missing-object/404 interval. This cannot
+prevent independent GitHub/network outages.
+
+The publisher verifies previous feed signatures and compares versions using the
+Git branch contents, avoiding stale CDN monotonicity decisions. Unexpected
+network/authentication errors, malformed metadata, non-increasing versions,
+unavailable or mismatched payloads, signature failures, unrelated branch files,
+and rejected Git pushes all fail closed. No force-push or branch deletion is
+used. Publishing remains serialized. CI fetches the public new feed and verifies
+its bytes, signature, version and immutable enclosure. Do not delete the updates
+branch, releases a feed references, reuse tags, or overwrite payloads.
+
+### Migration from the release-asset feed
+
+Build 12801 and older read:
+
+```
+https://github.com/ish4ra/Arkiv/releases/download/development-updates/appcast.xml
+```
+
+The first migration publication updates **both** feeds with the same signed
+appcast, after verifying the new branch feed and payload. That last legacy
+replacement still uses GitHub's asset replacement API; it can have the old gap
+**once during migration**, not during future publication. The signed channel
+`link` identifies the new feed, allowing later publishers to leave the legacy
+asset frozen indefinitely. It is not an HTTP redirect: old installations discover
+the migration build, install it with their existing trusted key, then use the new
+embedded `SUFeedURL` on relaunch. They can subsequently update to the latest build.
+No key rotation or manual reinstall is needed. If migration upload fails after
+the branch push, the next higher-numbered full build retries the legacy bridge;
+never overwrite an immutable release or rerun a partial publish to recover.
+No stable production release is created.
 
 `CFBundleVersion = 10000 + github.run_number * 100 + github.run_attempt` for this
 existing macos.yml workflow. Keep this workflow's run-number sequence; do not
@@ -112,23 +144,23 @@ identify every arbitrary random seed, so never export one into the repository.
 
 ## Real-Mac test
 
-1. Configure the variable and secret, then Actions → **macOS foundation** →
-   **Run workflow** on main. Confirm all jobs pass and the two development
-   prereleases/feed are present. Download that run's arm64 or Universal DMG.
-2. Quit Arkiv, replace `/Applications/Arkiv.app` once, eject the DMG and launch.
-   This initial ad-hoc installation may still require the existing development
-   Gatekeeper approval described in [release.md](release.md). Do not disable
-   Gatekeeper globally. Confirm the menu does not report a missing key.
-3. Dispatch another complete main workflow. Its larger build number produces a
-   newer signed Universal update even if the source commit is unchanged.
-4. In the installed app choose **Arkiv → Check for Updates…**. Confirm the newer
-   build/version information, install, and relaunch. Verify the installed build
-   number increased (About Arkiv or Info.plist), Finder Services still work, and
-   ZIP browsing/extraction remain correct. No repeated manual DMG replacement or
-   xattr command should be part of the normal signed update path.
-5. Test declining the update, no-update status, background-check permission/toggle,
-   offline recovery, and updating after finishing/cancelling extraction. Repeat
-   on Intel with the Universal payload.
+1. On an existing build (12801 or older), choose **Arkiv → Check for Updates…**.
+   Install the migration update and relaunch. The existing key/secret setup stays
+   unchanged; no manual DMG replacement is required.
+2. Confirm the installed build number increased and `SUFeedURL` in
+   `/Applications/Arkiv.app/Contents/Info.plist` is the raw GitHub URL above.
+3. Check for updates again. The new feed should report current status or offer a
+   later build. The legacy feed remains available for Macs that migrate later.
+4. During a subsequent full main workflow publication, repeatedly check updates
+   (and fetch the stable URL in a browser). Responses may show the old or new
+   version during CDN propagation, but publication must not remove the appcast.
+5. Install a subsequent update. Verify Finder actions, Services, ZIP browsing and
+   extraction, declining updates, background-check preferences, and offline
+   recovery. Repeat on Intel with the Universal payload.
+
+Fresh installations still need the development Gatekeeper approval described in
+[release.md](release.md). Do not disable Gatekeeper. Existing Sparkle installations
+should not need repeated DMG replacement or xattr commands.
 
 CI cannot prove the full interactive install/relaunch or local macOS security
 policy. Those remain real-Mac acceptance tests, especially for ad-hoc builds.
@@ -143,3 +175,14 @@ Official documentation inspected for this integration:
 [helper signing](https://sparkle-project.org/documentation/sandboxing/).
 The official documentation repository and Sparkle 2.10.0 package/source were read
 via GitHub, including `sign_update` stdin handling and signed-feed verification.
+
+### Atomic-feed compatibility research
+
+Sparkle 2.10.0's pinned [`SUAppcastDriver.m`](https://github.com/sparkle-project/Sparkle/blob/2.10.0/Sparkle/SUAppcastDriver.m)
+downloads the configured URL, verifies the signed feed bytes, then passes XML to
+[`SUAppcast.m`](https://github.com/sparkle-project/Sparkle/blob/2.10.0/Sparkle/SUAppcast.m).
+It does not require a GitHub Release endpoint or an XML-specific MIME type.
+GitHub raw serves the committed bytes over HTTPS; the signed appcast retains its
+absolute HTTPS release-enclosure URL. Thus changing the host path preserves
+Sparkle's native verification and installation flow. CI additionally verifies
+byte-for-byte public raw delivery with the pinned Sparkle signing tool.

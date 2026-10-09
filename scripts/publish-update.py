@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """CI-only publisher. Secrets stay in memory/stdin, never argv/files/logs."""
 import os
+import json
+import hashlib
+import time
+from update_channel import FEED, FeedBranch, feed_state, require_newer, publish_transaction, legacy_needs_migration, migrate_if_needed
 from pathlib import Path
 import plistlib
 import subprocess
@@ -39,6 +43,8 @@ info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
 version = info['CFBundleVersion']
 if info.get('SUPublicEDKey') != os.environ['SPARKLE_PUBLIC_ED_KEY'].strip():
     raise SystemExit('Payload public key does not match configured key')
+if info.get('SUFeedURL') != FEED:
+    raise SystemExit('Payload must use the atomic update feed')
 if info.get('SURequireSignedFeed') is not True:
     raise SystemExit('Payload must require signed feeds')
 tool = next(Path('.build/artifacts').glob('**/bin/sign_update'))
@@ -50,42 +56,100 @@ run(['python3', 'scripts/update-feed.py', str(app / 'Contents/Info.plist'), str(
 sign([str(feed)])
 sign(['--verify', str(feed)])
 
-# Serialized job plus remote monotonicity check prevents an older queued run from
-# replacing a newer feed. Any unexpected network/API error fails closed.
+# Read the branch through Git (not a possibly stale raw CDN response). Its
+# signatures and version must validate before creating any new public release.
 repo = 'ish4ra/Arkiv'
 channel = 'development-updates'
-request = urllib.request.Request(
-    f'https://api.github.com/repos/{repo}/releases/tags/{channel}',
-    headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
-             'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
-try:
-    with urllib.request.urlopen(request, timeout=30) as response:
-        exists = response.status == 200
-        if not exists:
-            raise SystemExit('Unexpected channel lookup response; publication refused')
-except urllib.error.HTTPError as error:
-    if error.code != 404:
-        raise SystemExit('Channel lookup failed; publication refused') from None
-    exists = False
-except urllib.error.URLError:
-    raise SystemExit('Channel lookup unavailable; publication refused') from None
-if exists:
+branch = FeedBranch(Path.cwd())
+current = branch.read()
+previous = []
+if current:
+    previous_feed = Path('build/previous-branch-appcast.xml')
+    previous_feed.write_bytes(current[1])
+    sign(['--verify', str(previous_feed)])
+    previous.append(current[1])
+
+# Legacy is retained indefinitely as a migration bridge. Distinguish a missing
+# asset (interrupted one-time replacement) from a network/auth/release error.
+release = json.loads(subprocess.check_output(['gh', 'release', 'view', channel, '--repo', repo, '--json', 'assets']))
+assets = [asset for asset in release['assets'] if asset['name'] == 'appcast.xml']
+if len(assets) > 1:
+    raise SystemExit('Ambiguous legacy feed assets')
+legacy = None
+if assets:
     old = Path('build/previous-feed')
     old.mkdir(exist_ok=True)
     run(['gh', 'release', 'download', channel, '--repo', repo, '--pattern', 'appcast.xml', '--dir', str(old), '--clobber'])
-    previous = ET.parse(old / 'appcast.xml').find('.//{http://www.andymatuschak.org/xml-namespaces/sparkle}version')
-    if previous is None or int(previous.text) >= int(version):
-        raise SystemExit('Refusing to replace the channel with a non-increasing version')
+    legacy = (old / 'appcast.xml').read_bytes()
+    sign(['--verify', str(old / 'appcast.xml')])
+    previous.append(legacy)
+needs_migration = legacy_needs_migration(current[1] if current else None, legacy)
+require_newer(version, previous)
 
-# Publish immutable payload first; switch the stable feed asset only afterwards.
+# Validate generated metadata again after feed signing, which adds an XML comment.
+feed_module = __import__('runpy').run_path('scripts/update-feed.py')
+feed_module['validate'](ET.parse(feed).getroot(), info, archive, True)
+feed_state(feed.read_bytes())
+
+
+def verify_public(url, expected, destination):
+    # CDN propagation may serve an older *valid* appcast. Never delete the old
+    # feed; wait for byte-identical new content. Query avoids stale cache entries.
+    for attempt in range(12):
+        try:
+            request = urllib.request.Request(url + '?arkiv-build=' + version + '-' + str(attempt),
+                                             headers={'Cache-Control': 'no-cache'})
+            with urllib.request.urlopen(request, timeout=30) as response:
+                data = response.read(len(expected) + 1)
+            if hashlib.sha256(data).digest() == hashlib.sha256(expected).digest():
+                destination.write_bytes(data)
+                return
+        except (urllib.error.URLError, TimeoutError):
+            pass
+        time.sleep(5)
+    raise SystemExit('Public update content unavailable or mismatched; publication stopped')
+
+
 tag = 'dev-' + version
-run(['gh', 'release', 'create', tag, str(archive), str(feed), '--repo', repo,
-     '--target', os.environ['GITHUB_SHA'], '--prerelease', '--title', 'Arkiv Development ' + version,
-     '--notes', 'Development/testing build. Universal Intel + Apple Silicon. Ad-hoc signed, not notarized. Sparkle EdDSA-signed update.'])
-if not exists:
-    run(['gh', 'release', 'create', channel, str(feed), '--repo', repo, '--target', os.environ['GITHUB_SHA'],
-         '--prerelease', '--title', 'Arkiv Development Update Channel', '--notes',
-         'Signed Sparkle development feed. Not a stable production release. Do not delete or recreate this channel.'])
-else:
-    run(['gh', 'release', 'upload', channel, str(feed), '--repo', repo, '--clobber'])
-print('Published signed Universal development update ' + version)
+payload_url = f'https://github.com/{repo}/releases/download/{tag}/Arkiv-universal.zip'
+
+
+def create_payload():
+    # No --clobber: an existing immutable release is an error, never overwritten.
+    run(['gh', 'release', 'create', tag, str(archive), str(feed), '--repo', repo,
+         '--target', os.environ['GITHUB_SHA'], '--prerelease', '--title', 'Arkiv Development ' + version,
+         '--notes', 'Development/testing build. Universal Intel + Apple Silicon. Ad-hoc signed, not notarized. Sparkle EdDSA-signed update.'])
+
+
+def verify_payload():
+    downloaded = Path('build/downloaded-update.zip')
+    verify_public(payload_url, archive.read_bytes(), downloaded)
+    run(['swift', 'scripts/verify-update-signature.swift', str(app / 'Contents/Info.plist'), str(downloaded), signature])
+
+
+def verify_feed():
+    downloaded = Path('build/downloaded-appcast.xml')
+    verify_public(FEED, feed.read_bytes(), downloaded)
+    sign(['--verify', str(downloaded)])
+    if feed_state(downloaded.read_bytes())[0] != int(version):
+        raise SystemExit('Published feed version mismatch')
+
+
+def migrate_legacy():
+    if needs_migration:
+        # One final replacement is unavoidable for installed legacy clients.
+        # Future runs leave this signed migration feed untouched.
+        run(['gh', 'release', 'upload', channel, str(feed), '--repo', repo, '--clobber'])
+        downloaded = Path('build/migration-appcast.xml')
+        verify_public(f'https://github.com/{repo}/releases/download/{channel}/appcast.xml', feed.read_bytes(), downloaded)
+        sign(['--verify', str(downloaded)])
+        print('Legacy feed now points to the migration build; future publications leave it unchanged')
+
+
+
+if not needs_migration:
+    print('Legacy migration feed preserved unchanged')
+publish_transaction(create_payload, verify_payload,
+                    lambda: branch.advance(feed.read_bytes(), current[0] if current else None),
+                    lambda: migrate_if_needed(needs_migration, migrate_legacy), verify_feed)
+print('Published and verified signed Universal development update ' + version + ' through atomic feed')

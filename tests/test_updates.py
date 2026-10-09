@@ -10,6 +10,11 @@ feed = runpy.run_path(str(ROOT / 'scripts/update-feed.py'))
 
 
 class UpdateTests(unittest.TestCase):
+    def test_atomic_feed_url_is_embedded(self):
+        info = metadata['configured']({}, {})
+        self.assertEqual(info['SUFeedURL'],
+                         'https://raw.githubusercontent.com/ish4ra/Arkiv/updates/appcast.xml')
+
     def test_keyless_build_is_not_configured(self):
         info = metadata['configured']({}, {})
         self.assertNotIn('SUPublicEDKey', info)

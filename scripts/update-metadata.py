@@ -6,7 +6,7 @@ from pathlib import Path
 import plistlib
 import sys
 
-FEED = 'https://github.com/ish4ra/Arkiv/releases/download/development-updates/appcast.xml'
+FEED = 'https://raw.githubusercontent.com/ish4ra/Arkiv/updates/appcast.xml'
 
 
 def configured(source, env):

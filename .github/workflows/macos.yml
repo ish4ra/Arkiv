@@ -28,7 +28,9 @@ jobs:
           (( GITHUB_RUN_ATTEMPT < 100 ))
           echo "ARKIV_BUILD_VERSION=$((10000 + GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))" >> "$GITHUB_ENV"
       - name: Updater metadata regression tests
-        run: python3 tests/test_updates.py -v
+        run: |
+          python3 tests/test_updates.py -v
+          python3 tests/test_update_channel.py -v
       - name: Check for tracked signing material
         run: python3 scripts/check-update-secrets.py
       - name: Toolchain and backend

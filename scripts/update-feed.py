@@ -19,6 +19,7 @@ def create(info, archive, signature=None):
         raise ValueError('Invalid EdDSA signature')
     root = ET.Element('rss', version='2.0')
     channel = ET.SubElement(root, 'channel')
+    ET.SubElement(channel, 'link').text = 'https://raw.githubusercontent.com/ish4ra/Arkiv/updates/appcast.xml'
     ET.SubElement(channel, 'title').text = 'Arkiv Development Updates'
     item = ET.SubElement(channel, 'item')
     ET.SubElement(item, 'title').text = f'Arkiv {info["CFBundleShortVersionString"]} Development ({version})'
