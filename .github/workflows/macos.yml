@@ -52,6 +52,8 @@ jobs:
           (cd branding && shasum -a 256 -c SHA256SUMS)
       - name: Build and verify development application
         run: scripts/ci-check.sh app scripts/build-app.sh
+      - name: Finder sender authentication (real ad-hoc code and audit tokens)
+        run: scripts/ci-check.sh finder-auth scripts/test-finder-auth.sh
       - name: Finder action URL delivery diagnostic (packaged app)
         run: scripts/ci-check.sh finder-handoff swift scripts/diagnose-finder-handoff.swift build/Arkiv.app
       - name: Finder Sync system registration diagnostic (packaged extension)

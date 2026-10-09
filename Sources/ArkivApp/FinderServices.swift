@@ -48,15 +48,27 @@ final class FinderServiceProvider: NSObject {
         DispatchQueue.main.async { [self] in self.start(request) }
     }
 
-    /// URLs are untrusted input even when the extension normally sends them.
+    /// URLs are untrusted unless the receiver authenticates OS event identity.
     /// Injectable consent keeps cancellation/no-write behavior testable.
-    func receive(_ url: URL, consent: (FinderRequest) -> Bool) throws {
+    func receive(_ url: URL, authenticatedFinder: Bool = false, consent: (FinderRequest) -> Bool) throws {
         let handoff = try FinderHandoff(url: url)
         guard let action = FinderAction(rawValue: handoff.command.rawValue) else { throw FinderHandoffError.invalidRequest }
         let request = try FinderRequest(action: action, urls: [handoff.archive])
-        guard request.action == .open || consent(request) else { return }
+        guard !Self.requiresConsent(request.action, authenticatedFinder: authenticatedFinder) || consent(request) else { return }
         // Revalidate after a potentially modal confirmation before dispatching work.
         try perform(FinderRequest(action: action, urls: [handoff.archive]))
+    }
+
+    static func requiresConsent(_ action: FinderAction, authenticatedFinder: Bool) -> Bool {
+        action != .open && !authenticatedFinder
+    }
+
+    /// Nearby extractions appear naturally in the existing Finder directory.
+    /// Only an explicitly chosen destination warrants a success reveal.
+    static func showExtractionResult(_ output: URL, action: FinderAction,
+                                     reveal: ([URL]) -> Void = { NSWorkspace.shared.activateFileViewerSelecting($0) }) {
+        guard action == .extractTo else { return }
+        reveal([output])
     }
 
     private func start(_ request: FinderRequest) {
@@ -91,7 +103,7 @@ final class FinderServiceProvider: NSObject {
                 self.isBusy = false
                 operation.finish(); operation.close(); self.operation = nil
                 switch result {
-                case .success(let output): NSWorkspace.shared.activateFileViewerSelecting([output])
+                case .success(let output): Self.showExtractionResult(output, action: request.action)
                 case .failure(let failure):
                     if case ArchiveFailure.cancelled = failure { return }
                     if let recovery = failure as? FinderExtractionFailure {

@@ -5,6 +5,69 @@ import ArkivCore
 import ArkivFinderIntegration
 
 final class FinderServiceTests: XCTestCase {
+    func testNearbyExtractionDoesNotRevealOrNavigateFinder() async {
+        await MainActor.run {
+            let output = URL(fileURLWithPath: "/Users/test/Downloads/Compressed")
+            var revealed: [[URL]] = []
+            FinderServiceProvider.showExtractionResult(output, action: .extractHere) { revealed.append($0) }
+            FinderServiceProvider.showExtractionResult(output.appendingPathComponent("Example"), action: .extractFolder) { revealed.append($0) }
+            XCTAssertTrue(revealed.isEmpty, "Nearby extraction must leave Finder's current location alone")
+            FinderServiceProvider.showExtractionResult(output, action: .extractTo) { revealed.append($0) }
+            XCTAssertEqual(revealed, [[output]], "An explicitly chosen destination may be revealed")
+        }
+    }
+
+    func testURLCannotClaimTrustedFinderIdentity() async throws {
+        try await MainActor.run {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+            defer { try? FileManager.default.removeItem(at: root) }
+            let archive = root.appendingPathComponent("Example.zip")
+            try Data().write(to: archive)
+            let provider = FinderServiceProvider { _ in XCTFail("Must not open") }
+            for command in [FinderCommand.extractHere, .extractFolder, .extractTo] {
+                let legitimate = try FinderHandoff(command: command, archive: archive).url
+                var consentCount = 0
+                // Even an exact extension-generated URL is unauthenticated at receipt.
+                try provider.receive(legitimate) { _ in consentCount += 1; return false }
+                XCTAssertEqual(consentCount, 1)
+                for claim in ["trusted=true", "source=finder-sync", "bundle=xyz.isharalakshan.arkiv.finder-sync"] {
+                    let forged = URL(string: legitimate.absoluteString + "&" + claim)!
+                    XCTAssertThrowsError(try provider.receive(forged) { _ in
+                        XCTFail("Unrecognized authentication claims must be rejected"); return true
+                    })
+                }
+                XCTAssertFalse(provider.isBusy)
+                XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.path), ["Example.zip"])
+            }
+        }
+    }
+
+    func testAuthenticatedAndUnauthenticatedConsentPolicy() {
+        for action in [FinderAction.extractHere, .extractFolder, .extractTo] {
+            XCTAssertTrue(FinderServiceProvider.requiresConsent(action, authenticatedFinder: false))
+            XCTAssertFalse(FinderServiceProvider.requiresConsent(action, authenticatedFinder: true))
+        }
+        XCTAssertFalse(FinderServiceProvider.requiresConsent(.open, authenticatedFinder: false))
+        // Extract To's chooser is always in start(), independent of this URL consent gate.
+    }
+
+    func testAuthenticationBindsOSTokenToExactURLAndRejectsBrokeredEvents() {
+        let url = URL(string: "arkiv-finder://action/v1?command=extractHere")!
+        let event = NSAppleEventDescriptor(eventClass: AEEventClass(kInternetEventClass),
+            eventID: AEEventID(kAEGetURL), targetDescriptor: nil, returnID: AEReturnID(kAutoGenerateReturnID), transactionID: AETransactionID(kAnyTransactionID))
+        event.setParam(NSAppleEventDescriptor(string: url.absoluteString), forKeyword: keyDirectObject)
+        XCTAssertFalse(FinderEventAuthenticator.isTrusted(url, event: event) { _ in XCTFail("Missing OS token"); return true })
+        let token = Data(repeating: 1, count: 32)
+        event.setAttribute(NSAppleEventDescriptor(descriptorType: typeAuditToken, data: token), forKeyword: keySenderAuditTokenAttr)
+        XCTAssertTrue(FinderEventAuthenticator.isTrusted(url, event: event) { $0 == token })
+        XCTAssertFalse(FinderEventAuthenticator.isTrusted(url, event: event) { _ in false })
+        XCTAssertFalse(FinderEventAuthenticator.isTrusted(URL(string: url.absoluteString + "&trusted=true")!, event: event) { _ in true })
+        event.setAttribute(NSAppleEventDescriptor(descriptorType: typeAuditToken, data: Data(repeating: 2, count: 32)), forKeyword: keyActualSenderAuditToken)
+        XCTAssertFalse(FinderEventAuthenticator.isTrusted(url, event: event) { _ in XCTFail("Broker mismatch"); return true })
+        XCTAssertFalse(FinderEventAuthenticator.matchesCode(Data(), at: URL(fileURLWithPath: "/missing")))
+    }
+
     func testMenuTransportCanDropRepresentedObjectWithoutDroppingAction() async throws {
         try await MainActor.run {
             _ = NSApplication.shared

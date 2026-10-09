@@ -82,6 +82,19 @@ final class FinderActionTests: XCTestCase {
         XCTAssertThrowsError(try extract(.extractHere))
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.path), ["Example.zip"])
     }
+    func testCancelledFolderActionsPreserveExistingDestination() throws {
+        let existing = root.appendingPathComponent("Example", isDirectory: true)
+        try FileManager.default.createDirectory(at: existing, withIntermediateDirectories: false)
+        let sentinel = existing.appendingPathComponent("keep.txt")
+        try Data("keep".utf8).write(to: sentinel)
+        for action in [FinderAction.extractFolder, .extractTo] {
+            let token = ArchiveCancellation(); token.cancel()
+            XCTAssertThrowsError(try extract(action, to: action == .extractTo ? root : nil, token: token))
+            XCTAssertEqual(try String(contentsOf: sentinel), "keep")
+            XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: root.path)), ["Example.zip", "Example"])
+        }
+    }
+
     func testAtomicPublisherNeverReplacesFolderOrSymlink() throws {
         let staging = root.appendingPathComponent("staging"), target = root.appendingPathComponent("target")
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false)

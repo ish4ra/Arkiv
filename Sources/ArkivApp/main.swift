@@ -67,7 +67,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
             if url.scheme == FinderHandoff.scheme {
-                do { try finderServices.receive(url, consent: confirmFinderExtraction) }
+                do {
+                    let trusted = finderDeliveryDiagnostic == nil && FinderEventAuthenticator.isTrusted(url,
+                        event: NSAppleEventManager.shared().currentAppleEvent)
+                    try finderServices.receive(url, authenticatedFinder: trusted, consent: confirmFinderExtraction)
+                }
                 catch { NSAlert(error: error).runModal() }
             } else if url.isFileURL { open(url) }
         }
