@@ -3,7 +3,7 @@ import ArkivCore
 import ArkivFinderIntegration
 
 /// One main-app routing/operation owner shared by Services and Finder Sync.
-/// Services retain direct AppKit delivery; URL handoffs require extraction consent.
+/// Services and validated URL handoffs share the same safe extractor.
 final class FinderServiceProvider: NSObject {
     private let openArchive: (URL) -> Void
     private(set) var isBusy = false
@@ -48,19 +48,15 @@ final class FinderServiceProvider: NSObject {
         DispatchQueue.main.async { [self] in self.start(request) }
     }
 
-    /// URLs are untrusted unless the receiver authenticates OS event identity.
-    /// Injectable consent keeps cancellation/no-write behavior testable.
-    func receive(_ url: URL, authenticatedFinder: Bool = false, consent: (FinderRequest) -> Bool) throws {
+    /// The development channel intentionally accepts allowlisted URL actions
+    /// without sender authentication. Parsing and source validation still apply.
+    /// A routing sink supports read-only packaged diagnostics without extraction.
+    func receive(_ url: URL, dispatch: ((FinderRequest) throws -> Void)? = nil) throws {
         let handoff = try FinderHandoff(url: url)
         guard let action = FinderAction(rawValue: handoff.command.rawValue) else { throw FinderHandoffError.invalidRequest }
         let request = try FinderRequest(action: action, urls: [handoff.archive])
-        guard !Self.requiresConsent(request.action, authenticatedFinder: authenticatedFinder) || consent(request) else { return }
-        // Revalidate after a potentially modal confirmation before dispatching work.
-        try perform(FinderRequest(action: action, urls: [handoff.archive]))
-    }
-
-    static func requiresConsent(_ action: FinderAction, authenticatedFinder: Bool) -> Bool {
-        action != .open && !authenticatedFinder
+        if let dispatch { try dispatch(request) }
+        else { try perform(FinderRequest(action: action, urls: [handoff.archive])) }
     }
 
     /// Nearby extractions appear naturally in the existing Finder directory.
@@ -71,10 +67,12 @@ final class FinderServiceProvider: NSObject {
         reveal([output])
     }
 
+    static func requiresDestinationSelection(_ action: FinderAction) -> Bool { action == .extractTo }
+
     private func start(_ request: FinderRequest) {
         NSApp.activate(ignoringOtherApps: true)
         var destination: URL?
-        if request.action == .extractTo {
+        if Self.requiresDestinationSelection(request.action) {
             let panel = NSOpenPanel()
             panel.canChooseFiles = false; panel.canChooseDirectories = true
             panel.canCreateDirectories = true; panel.allowsMultipleSelection = false
@@ -102,6 +100,7 @@ final class FinderServiceProvider: NSObject {
             DispatchQueue.main.async { [self] in
                 self.isBusy = false
                 operation.finish(); operation.close(); self.operation = nil
+                ExtractionFeedback.completed(result)
                 switch result {
                 case .success(let output): Self.showExtractionResult(output, action: request.action)
                 case .failure(let failure):

@@ -32,6 +32,7 @@ else
 fi
 stage=resources
 python3 scripts/update-metadata.py write "$app/Contents/Info.plist"
+cp Resources/Arkiv-Extraction-Complete.wav "$app/Contents/Resources/"
 stage=sparkle
 framework=$(find .build/artifacts -type d -path "*/macos-arm64_x86_64/Sparkle.framework" -print -quit)
 [[ -n "$framework" ]] || { echo "Sparkle framework not found" >&2; exit 1; }

@@ -17,59 +17,22 @@ final class FinderServiceTests: XCTestCase {
         }
     }
 
-    func testURLCannotClaimTrustedFinderIdentity() async throws {
-        try await MainActor.run {
-            let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
-            defer { try? FileManager.default.removeItem(at: root) }
-            let archive = root.appendingPathComponent("Example.zip")
-            try Data().write(to: archive)
-            let provider = FinderServiceProvider { _ in XCTFail("Must not open") }
-            for command in [FinderCommand.extractHere, .extractFolder, .extractTo] {
-                let legitimate = try FinderHandoff(command: command, archive: archive).url
-                var consentCount = 0
-                // Even an exact extension-generated URL is unauthenticated at receipt.
-                try provider.receive(legitimate) { _ in consentCount += 1; return false }
-                XCTAssertEqual(consentCount, 1)
-                for claim in ["trusted=true", "source=finder-sync", "bundle=xyz.isharalakshan.arkiv.finder-sync"] {
-                    let forged = URL(string: legitimate.absoluteString + "&" + claim)!
-                    XCTAssertThrowsError(try provider.receive(forged) { _ in
-                        XCTFail("Unrecognized authentication claims must be rejected"); return true
-                    })
-                }
-                XCTAssertFalse(provider.isBusy)
-                XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.path), ["Example.zip"])
-            }
-        }
+    func testOnlyExtractToRequestsDestinationSelection() {
+        XCTAssertFalse(FinderServiceProvider.requiresDestinationSelection(.extractHere))
+        XCTAssertFalse(FinderServiceProvider.requiresDestinationSelection(.extractFolder))
+        XCTAssertTrue(FinderServiceProvider.requiresDestinationSelection(.extractTo))
     }
 
-    func testAuthenticatedAndUnauthenticatedConsentPolicy() {
-        for action in [FinderAction.extractHere, .extractFolder, .extractTo] {
-            XCTAssertTrue(FinderServiceProvider.requiresConsent(action, authenticatedFinder: false))
-            XCTAssertFalse(FinderServiceProvider.requiresConsent(action, authenticatedFinder: true))
-        }
-        XCTAssertFalse(FinderServiceProvider.requiresConsent(.open, authenticatedFinder: false))
-        // Extract To's chooser is always in start(), independent of this URL consent gate.
-    }
-
-    func testAuthenticationBindsOSTokenToExactURLAndRejectsBrokeredEvents() {
-        let url = URL(string: "arkiv-finder://action/v1?command=extractHere")!
-        let token = Data(repeating: 1, count: 32)
-        // Read-only OS event attributes cannot reliably be forged in a synthetic
-        // descriptor. Test the extracted identity gate, and genuine code identity
-        // separately with the signed macOS diagnostic's real kernel audit token.
-        XCTAssertFalse(FinderEventAuthenticator.isTrusted(url, event: nil) { _ in XCTFail("Missing event"); return true })
-        XCTAssertTrue(FinderEventAuthenticator.validateIdentity(url, eventURL: url.absoluteString,
-            sender: token, actual: token) { $0 == token })
-        XCTAssertFalse(FinderEventAuthenticator.validateIdentity(url, eventURL: url.absoluteString,
-            sender: token, actual: token) { _ in false })
-        XCTAssertFalse(FinderEventAuthenticator.validateIdentity(url, eventURL: url.absoluteString + "&trusted=true",
-            sender: token, actual: nil) { _ in XCTFail("Wrong URL"); return true })
-        XCTAssertFalse(FinderEventAuthenticator.validateIdentity(url, eventURL: url.absoluteString,
-            sender: token, actual: Data(repeating: 2, count: 32)) { _ in XCTFail("Broker mismatch"); return true })
-        XCTAssertFalse(FinderEventAuthenticator.validateIdentity(url, eventURL: url.absoluteString,
-            sender: Data(), actual: nil) { _ in XCTFail("Missing token"); return true })
-        XCTAssertFalse(FinderEventAuthenticator.matchesCode(Data(), at: URL(fileURLWithPath: "/missing")))
+    func testCompletionSoundOnlyPlaysOncePerSuccess() {
+        var plays = 0
+        let success: Result<URL, Error> = .success(URL(fileURLWithPath: "/tmp/output"))
+        ExtractionFeedback.completed(success) { plays += 1 }
+        XCTAssertEqual(plays, 1)
+        ExtractionFeedback.completed(Result<URL, Error>.failure(ArchiveFailure.cancelled)) { plays += 1 }
+        ExtractionFeedback.completed(Result<URL, Error>.failure(ArchiveFailure.message("failure"))) { plays += 1 }
+        XCTAssertEqual(plays, 1)
+        ExtractionFeedback.completed(success) { plays += 1 }
+        XCTAssertEqual(plays, 2)
     }
 
     func testMenuTransportCanDropRepresentedObjectWithoutDroppingAction() async throws {
@@ -99,7 +62,7 @@ final class FinderServiceTests: XCTestCase {
         }
     }
 
-    func testFinderURLRoutesOpenAndCancelledExtractionDoesNotWrite() async throws {
+    func testFinderURLsDispatchDirectlyWithoutConfirmationAndRejectInvalidSources() async throws {
         try await MainActor.run {
             _ = NSApplication.shared
             let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -110,23 +73,24 @@ final class FinderServiceTests: XCTestCase {
             var opened: URL?
             let provider = FinderServiceProvider { opened = $0 }
             let open = try FinderHandoff(command: .open, archive: archive)
-            try provider.receive(open.url) { _ in XCTFail("Open does not require extraction consent"); return false }
+            try provider.receive(open.url)
             XCTAssertEqual(opened, archive)
             for command in [FinderCommand.extractHere, .extractFolder, .extractTo] {
-                var asked = false
+                var dispatched = 0
                 try provider.receive(FinderHandoff(command: command, archive: archive).url) { request in
-                    asked = true
+                    dispatched += 1
                     XCTAssertEqual(request.archive, archive)
-                    return false
                 }
-                XCTAssertTrue(asked)
+                XCTAssertEqual(dispatched, 1)
                 XCTAssertFalse(provider.isBusy)
+                let malformed = URL(string: try FinderHandoff(command: command, archive: archive).url.absoluteString + "&output=/tmp/elsewhere")!
+                XCTAssertThrowsError(try provider.receive(malformed) { _ in XCTFail("Arbitrary output must be rejected") })
                 XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.path), ["Example.zip"])
             }
             let link = root.appendingPathComponent("link.zip")
             try FileManager.default.createSymbolicLink(at: link, withDestinationURL: archive)
             XCTAssertThrowsError(try provider.receive(FinderHandoff(command: .extractHere, archive: link).url) { _ in
-                XCTFail("Invalid requests must fail before consent"); return true
+                XCTFail("Invalid requests must fail before dispatch")
             })
         }
     }

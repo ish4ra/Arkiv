@@ -58,25 +58,22 @@ contains one allowlisted action and one encoded local file URL. It carries no
 output path, executable command, or overwrite option. The receiver rejects
 unknown/duplicate fields, remote URLs, unsupported formats, malformed requests
 and oversized payloads. It then runs the same `FinderRequest` regular-file and
-symlink validation as Services, including revalidation after confirmation.
+symlink validation as Services, including source revalidation before extraction.
 
-**The URL itself cannot authenticate Finder.** Arkiv now checks the current
-`kAEGetURL` Apple event's exact URL and its OS-supplied, read-only sender audit
-token. Security.framework resolves that token to running code and validates it
-against the exact code-directory hash of the bundled Finder extension. A bundle
-identifier, same user/PID, URL parameter or self-declared entitlement is never
-sufficient. This works with ad-hoc code signatures without inventing a Team ID.
-The extension remains sandboxed with unchanged entitlements.
+**The URL does not authenticate Finder.** By explicit development-channel
+product decision, valid Extract Here and Extract to Folder requests now execute
+without confirmation, regardless of sender. Other applications/websites able to
+invoke the custom scheme can therefore trigger these same allowlisted actions.
+This is an accepted trust tradeoff, not an authentication claim. The unsuccessful
+live audit-token gate and its code-hash checks have been removed. No sandbox
+entitlement or engine protection was relaxed.
 
-Only successful authentication bypasses the additional confirmation for Extract
-Here and Extract to Folder. Extract To always presents its destination chooser.
-Missing identity, a Launch Services broker/delegate with different identity,
-invalid signature, or an old/mismatched extension binary falls back to the existing
-confirmation. Arbitrary applications/websites cannot opt into trust through URL
-fields. Requests still undergo normal validation and revalidation before writes.
-The macOS URL delivery route may expose a broker rather than the original Finder
-extension on some versions or launch paths: such requests **still prompt**. CI
-cannot promise that every real Finder cold/warm launch preserves sender identity.
+Open remains direct. Extract To always presents the native destination chooser;
+cancelling it does not extract. Requests cannot specify arbitrary destinations
+for Here/Folder. The extension's home scope, regular-file/format validation,
+strict URL/action parsing, source revalidation, collision-safe naming, no-overwrite
+publication, traversal/link/special-file protections, limits and cancellation
+remain unchanged.
 
 Successful Extract Here and Extract to Folder do not reveal/select output in
 Finder; nearby files/folders appear naturally without changing its directory.
@@ -169,9 +166,9 @@ On your M1 Mac:
    right-click should show **Arkiv** directly, alongside Finder's own actions.
 3. Choose Open in Arkiv with Arkiv quit, with an empty window, and with an archive
    already open. Confirm the existing window-reuse/browsing behavior.
-4. Test Extract Here, accept confirmation, and check files beside the ZIP. Repeat
+4. Test one-click Extract Here and check files beside the ZIP without navigation. Repeat
    with an output-name collision: existing files must remain unchanged. Test
-   cancelling confirmation and cancelling a large extraction.
+   cancelling a large extraction.
 5. Choose Extract to “Example/” twice; verify separate `Example` and `Example (2)`
    folders. Repeat with a Unicode filename. Test Extract To, cancel its chooser,
    then choose a different destination and verify output there only.
@@ -254,60 +251,39 @@ error is no longer swallowed. The menu structure, icons, registration, setup,
 Services and updater remain unchanged.
 
 CI tests all four actions with nil representedObject, verifies relay failures are
-reported without launching, and retains URL parsing/consent/no-write tests. A
+reported without launching, and retains URL parsing/direct-routing/no-write diagnostic tests. A
 read-only packaged-app diagnostic launches the real Arkiv executable through
 NSWorkspace for Open, then delivers the extraction URLs to the **same running
 process**. It observes nonce-scoped test acknowledgements from AppKit routing and
-refuses extraction consent. The diagnostic does not replace production IPC or
+intercepts extraction dispatch without writing. The diagnostic does not replace production IPC or
 claim to test a live Finder extension's sandbox. The extension runtime probe also
 checks that its principal class exports `performAction:`.
 
 Retest after updating: with Arkiv quit, right-click a ZIP in Downloads and choose
 Open in Arkiv. Repeat with Arkiv running. Test Extract Here and Extract to Folder,
-accept their confirmations, verify collision protection, and cancel each once.
+verify there is no confirmation, verify collision protection, and cancel a running extraction.
 Test Extract To's destination chooser and cancellation, then repeat with TAR and
 a Unicode filename. If any handoff fails, record the new visible error's domain
 and code; do not reset caches or redo working registration. Live Finder menu
 transport and sandboxed delivery still require that real-Mac test.
 
-## Authenticated consent and completion behavior after build 12901
+## One-click behavior and original sound after build 13201
 
-The former unconditional success reveal selected Extract Here's returned parent
-directory in its own parent, moving Finder from `Downloads/Compressed` to
-`Downloads`. Success now reveals only Extract To results. No engine or publication
-semantics changed.
+Build 13201 fixed navigation but its audit-token check did not authenticate the
+real Finder launch path. The product decision is now to remove confirmation,
+not to attempt another sender-authentication mechanism. The obsolete verifier,
+authentication tests, and dedicated diagnostic were removed; the working URL
+handoff, provider validation, Services, onboarding and update channel remain.
 
-Public API research: macOS 13's
-[AEDataModel.h](https://github.com/alexey-lysiuk/macos-sdk/blob/master/MacOSX13.3.sdk/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/AE.framework/Versions/A/Headers/AEDataModel.h)
-declares `keySenderAuditTokenAttr` as read-only;
-[SecCode.h](https://github.com/alexey-lysiuk/macos-sdk/blob/master/MacOSX13.3.sdk/System/Library/Frameworks/Security.framework/Versions/A/Headers/SecCode.h)
-provides public audit-token guest lookup and dynamic code validation. The exact
-CDHash requirement avoids treating forgeable ad-hoc bundle identifiers as identity.
-The original sender is not inferred from a PID or from the URL. This pins the
-installed architecture's extension; a stale extension after an update or a
-cross-architecture mismatch safely prompts instead of relaxing identity checks.
+Every successful Finder or browser extraction uses shared, nonblocking completion
+feedback. The original 0.55-second sound has a soft mechanical seal and warm
+ascending two-note chime. There is no sound on failure, cancellation, archive
+opening, or extraction start. See [sound provenance and reproducible synthesis](../Resources/Completion-Sound.md).
 
-NSXPCConnection's public peer code-signing requirements are also available on
-macOS 13, but introducing a separate sandbox-approved endpoint/helper rendezvous
-is unnecessary for this conservative Apple-event check. No App Group, Mach lookup
-exception, shell IPC, shared bearer token, or private API is introduced. Apple
-web documentation was blocked in this environment; the public SDK declarations
-above were inspected directly.
-
-Regression coverage checks success reveal behavior, trusted/untrusted consent
-policy, exact event-to-URL binding, missing/invalid/delegated identity, and forged
-URL trust claims. On both macOS runners a separately ad-hoc-signed diagnostic
-uses a genuine kernel task audit token to prove exact-code acceptance and rejection
-of a sender that does not match the packaged extension. Existing cancellation,
-no-overwrite, collision, and packaged URL delivery tests remain enabled.
-
-Real-Mac retest: place a ZIP in `Downloads/Compressed`, open that Finder folder,
-and run Extract Here. Verify Finder stays there and existing files are never
-replaced. Run Extract to Folder twice and verify collision-safe names with no
-navigation. Test Extract To cancellation and successful chosen-destination output.
-Repeat all actions with Arkiv quit and running, and with uncompressed TAR. An
-authenticated original extension event skips redundant confirmation; any path
-that cannot be authenticated retains it. An externally opened custom URL must
-still prompt (or show the destination chooser). Report macOS version and whether
-a cold/warm Finder invocation still prompts; never disable consent to hide a
-brokered-identity limitation.
+Retest in `Downloads/Compressed`: Here extracts with one click, sounds once, and
+leaves Finder there. Folder does the same, creating `Example` then `Example (2)`
+on repeated runs. Extract To keeps its destination chooser; cancelling is silent
+and writes nothing. Successful selected/all extraction in Arkiv also sounds once.
+Verify conflicts preserve existing files and failures/cancellations do not play
+the success sound. Repeat with Arkiv quit and running, ZIP/TAR, and system output
+muted/changed. The app never changes system volume or output device.

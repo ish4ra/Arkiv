@@ -248,6 +248,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                 }
                 DispatchQueue.main.async { [self] in
                     self.finish()
+                    ExtractionFeedback.completed(result)
                     switch result {
                     case .success(let output):
                         self.status.stringValue = "Extraction complete"

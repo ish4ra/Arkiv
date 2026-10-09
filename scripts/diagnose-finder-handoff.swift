@@ -63,7 +63,7 @@ guard launched, warmCompleted, !failure, received == expected else {
     fputs("Packaged Finder URL delivery failed or did not reach all four app routing callbacks\n", stderr)
     return 1
 }
-print("Verified real NSWorkspace → packaged AppKit URL receipt → all four Finder action callbacks (extraction cancelled)")
+print("Verified real NSWorkspace → packaged AppKit URL receipt → all four Finder action callbacks (read-only extraction dispatch intercepted)")
 
 return 0
 }

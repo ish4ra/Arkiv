@@ -68,30 +68,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for url in urls {
             if url.scheme == FinderHandoff.scheme {
                 do {
-                    let trusted = finderDeliveryDiagnostic == nil && FinderEventAuthenticator.isTrusted(url,
-                        event: NSAppleEventManager.shared().currentAppleEvent)
-                    try finderServices.receive(url, authenticatedFinder: trusted, consent: confirmFinderExtraction)
+                    if let diagnostic = finderDeliveryDiagnostic {
+                        try finderServices.receive(url) { request in
+                            if request.action == .open { try finderServices.perform(request) }
+                            else { diagnostic.record(request.action) } // Read-only CI; never extract.
+                        }
+                    } else { try finderServices.receive(url) }
                 }
                 catch { NSAlert(error: error).runModal() }
             } else if url.isFileURL { open(url) }
         }
     }
-    private func confirmFinderExtraction(_ request: FinderRequest) -> Bool {
-        if let diagnostic = finderDeliveryDiagnostic {
-            diagnostic.record(request.action)
-            return false // Never write files or present an unattended chooser in CI.
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        // Extract To presents its own destination chooser before any extraction.
-        if request.action == .extractTo { return true }
-        let alert = NSAlert()
-        alert.messageText = request.action == .extractHere ? "Extract Here?" : "Extract to “\(request.folderName)/”?"
-        alert.informativeText = "Archive: \(request.archive.path)\n\nDestination: \(request.parent.path)\n\nExisting items will never be overwritten."
-        alert.addButton(withTitle: "Extract")
-        alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn
-    }
-
     @objc private func showFinderIntegration(_ sender: Any?) {
         finderSetup.showSetup()
     }

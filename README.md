@@ -56,7 +56,9 @@ not notarized; keyless builds clearly report that updates are not configured.
 Use the first-run Finder setup, or **Arkiv → Finder Integration…**, for a direct **Arkiv** submenu when
 right-clicking one ZIP or uncompressed TAR in your home folder. Actions include
 Open, Extract Here, Extract to an archive-named folder, and Extract To. Extraction
-requests are confirmed in Arkiv; Services remain the fallback outside this scope.
+requests execute directly after validation; Extract To retains its destination chooser.
+The custom-URL trust tradeoff is documented in [Finder integration](docs/finder-sync.md).
+Services remain the fallback outside this scope.
 See [Finder Sync setup and real-Mac tests](docs/finder-sync.md).
 
 Finder setup shows the manual macOS Settings path and refreshes enabled status
