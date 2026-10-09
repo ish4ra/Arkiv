@@ -2,6 +2,7 @@
 // Arkiv executable, then await AppKit receiver acknowledgements. No extraction.
 import AppKit
 
+func runProbe() throws -> Int32 {
 let app = URL(fileURLWithPath: CommandLine.arguments[1]).standardizedFileURL
 let nonce = UUID().uuidString
 let root = FileManager.default.temporaryDirectory.appendingPathComponent("Arkiv-handoff-" + nonce)
@@ -13,6 +14,7 @@ let expected: Set<String> = ["open", "extractHere", "extractFolder", "extractTo"
 var received: Set<String> = []
 var failure = false
 var launched = false
+var warmCompleted = false
 var child: NSRunningApplication?
 let center = DistributedNotificationCenter.default()
 let observer = center.addObserver(forName: Notification.Name("xyz.isharalakshan.arkiv.finder-delivery-diagnostic"),
@@ -47,17 +49,22 @@ NSWorkspace.shared.open([urls[0]], withApplicationAt: app, configuration: config
         existing.addsToRecentItems = false
         NSWorkspace.shared.open(Array(urls.dropFirst()), withApplicationAt: app, configuration: existing) { running, error in
             DispatchQueue.main.async {
+                warmCompleted = true
                 if error != nil || running?.processIdentifier != child?.processIdentifier { failure = true }
             }
         }
     }
 }
 let deadline = Date().addingTimeInterval(30)
-while !failure && (!launched || received != expected) && Date() < deadline {
+while !failure && (!launched || !warmCompleted || received != expected) && Date() < deadline {
     RunLoop.main.run(until: Date().addingTimeInterval(0.05))
 }
-guard launched, !failure, received == expected else {
+guard launched, warmCompleted, !failure, received == expected else {
     fputs("Packaged Finder URL delivery failed or did not reach all four app routing callbacks\n", stderr)
-    exit(1)
+    return 1
 }
 print("Verified real NSWorkspace → packaged AppKit URL receipt → all four Finder action callbacks (extraction cancelled)")
+
+return 0
+}
+exit(try runProbe())
