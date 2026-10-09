@@ -20,8 +20,10 @@ Arkiv >
 The folder title uses the actual filename with the same sanitization and byte
 limit used by ArkivCore. For ordinary `Example.zip`, it is `Example/`; unsafe
 characters are normalized, and an occupied name becomes `Example (2)/`, etc.
-The extension snapshots the menu selection so a later Finder selection cannot
-silently change which archive an action operates on. Unsupported types,
+The menu action is carried by a scalar tag. At invocation, the extension reads
+Finder’s documented action-time selection, validates it, and snapshots the URL
+before asynchronous delivery. It does not depend on a custom represented object
+surviving Finder’s cross-process menu transport. Unsupported types,
 directories, symbolic links and multi-selection do not get an Arkiv menu.
 Eligibility checks metadata only; parsing still happens in the main app.
 
@@ -211,3 +213,45 @@ stay quiet and the menu must still reopen management. Re-run the direct menu,
 extraction/conflict/cancellation and Services checks above. If the new build is
 still absent from Settings, report it as an unresolved registration bug with the
 macOS version; do not reset caches as a normal setup step.
+
+## Action-handoff correction after build 12601
+
+Registration and the direct menu were confirmed on a real M1 Mac, but all actions
+were silent. The reproducible defect in the action callback was its dependency on
+`NSMenuItem.representedObject`: a returned item without that custom URL payload
+hit the first guard and returned without attempting to open Arkiv. The other
+preflight guards also returned silently, and NSWorkspace failures only went to
+Console. No real-Mac trace was available to distinguish those silent exits.
+
+The four actions now have stable integer tags. The callback uses the public
+`selectedItemURLs()` API, which Apple's Finder Sync header explicitly supports
+inside menu actions. A shared, tested relay validates the single file and action,
+resolves `Contents/PlugIns/*.appex` to its containing app, checks the app identifier,
+and sends the existing encoded `arkiv-finder` URL through explicit-app NSWorkspace
+opening. The extension location comes from `Bundle(for: ArkivFinderSync.self)`,
+not an assumption that the host process's main bundle is the extension. There is
+no default-scheme-owner fallback, shell, entitlement expansion, or new runtime IPC.
+
+Any unrecognized action, unavailable selection, invalid containing app, missing
+launch result or NSWorkspace error now presents a native **Couldn’t send the
+Finder action to Arkiv** error with the underlying diagnostic domain/code and
+instructions to use **Finder → Services** or open Arkiv manually. An OS launch
+error is no longer swallowed. The menu structure, icons, registration, setup,
+Services and updater remain unchanged.
+
+CI tests all four actions with nil representedObject, verifies relay failures are
+reported without launching, and retains URL parsing/consent/no-write tests. A
+read-only packaged-app diagnostic launches the real Arkiv executable through
+NSWorkspace for Open, then delivers the extraction URLs to the **same running
+process**. It observes nonce-scoped test acknowledgements from AppKit routing and
+refuses extraction consent. The diagnostic does not replace production IPC or
+claim to test a live Finder extension's sandbox. The extension runtime probe also
+checks that its principal class exports `performAction:`.
+
+Retest after updating: with Arkiv quit, right-click a ZIP in Downloads and choose
+Open in Arkiv. Repeat with Arkiv running. Test Extract Here and Extract to Folder,
+accept their confirmations, verify collision protection, and cancel each once.
+Test Extract To's destination chooser and cancellation, then repeat with TAR and
+a Unicode filename. If any handoff fails, record the new visible error's domain
+and code; do not reset caches or redo working registration. Live Finder menu
+transport and sandboxed delivery still require that real-Mac test.

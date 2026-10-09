@@ -90,3 +90,8 @@ Finder registration validation now requires empty `NSExtensionAttributes` and th
 runtime-resolved principal class `ArkivFinderSync.ArkivFinderSync`. CI checks
 PlugInKit discovery as well as signed bundles. First-run setup guides approval;
 no user terminal commands or cache resets are required.
+
+Finder actions now use scalar menu tags and action-time selection instead of
+custom represented objects. Handoff failures display a native error and Services
+fallback. CI exercises real packaged-app URL delivery on launch and while running;
+registration, onboarding and Sparkle remain intact.

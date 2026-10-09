@@ -6,6 +6,32 @@ import ArkivFinderIntegration
 @objc
 final class ArkivFinderSync: FIFinderSync {
     private let home: URL?
+    private lazy var relay = FinderActionRelay(home: home,
+        extensionURL: Bundle(for: ArkivFinderSync.self).bundleURL,
+        transport: { url, app, completion in
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            configuration.addsToRecentItems = false
+            NSWorkspace.shared.open([url], withApplicationAt: app, configuration: configuration) { application, error in
+                if let error { completion(error) }
+                else if application == nil {
+                    completion(NSError(domain: "ArkivFinderHandoff", code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "macOS did not return a running Arkiv application."]))
+                } else { completion(nil) }
+            }
+        }, failure: { error in
+            DispatchQueue.main.async {
+                let alert = NSAlert()
+                alert.messageText = "Couldn’t send the Finder action to Arkiv"
+                let detail = error as NSError
+                alert.informativeText = "\(error.localizedDescription)\n\nUse Finder → Services for the same Arkiv actions, or open Arkiv manually.\n\nDiagnostic: \(detail.domain) (\(detail.code))"
+                alert.addButton(withTitle: "OK")
+                alert.window.level = .floating
+                alert.window.center()
+                alert.window.orderFrontRegardless()
+                alert.runModal()
+            }
+        })
 
     override init() {
         // NSHomeDirectory in a sandbox points to its container, not the user's home.
@@ -28,26 +54,17 @@ final class ArkivFinderSync: FIFinderSync {
         for (command, title) in zip(FinderCommand.allCases, titles) {
             let item = actions.addItem(withTitle: title, action: #selector(performAction(_:)), keyEquivalent: "")
             item.target = self
-            // Snapshot the clicked menu's selection; do not re-read a later selection.
-            item.representedObject = try? FinderHandoff(command: command, archive: archive).url
+            // Finder transports scalar tags; do not rely on representedObject.
+            item.tag = command.menuTag
         }
         parent.submenu = actions; menu.addItem(parent)
         return menu
     }
 
     @objc private func performAction(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL,
-              let request = try? FinderHandoff(url: url), let home,
-              FinderHandoff.selection([request.archive], within: home) != nil else { return }
-        // Target our enclosing app explicitly rather than trusting scheme ownership.
-        let app = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        guard app.pathExtension == "app",
-              Bundle(url: app)?.bundleIdentifier == "xyz.isharalakshan.arkiv" else { return }
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        configuration.addsToRecentItems = false
-        NSWorkspace.shared.open([url], withApplicationAt: app, configuration: configuration) { _, error in
-            if error != nil { NSLog("Arkiv could not open its containing application. Use Arkiv Services as a fallback.") }
-        }
+        // Apple documents selectedItemURLs as valid inside an action callback.
+        // Resolve it now, then pass a value snapshot through asynchronous delivery.
+        relay.perform(tag: sender.tag,
+                      selectedURLs: FIFinderSyncController.default().selectedItemURLs() ?? [])
     }
 }

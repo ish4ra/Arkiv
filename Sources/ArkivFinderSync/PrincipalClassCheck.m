@@ -12,6 +12,7 @@ __attribute__((constructor)) static void verifyPrincipalClassWhenRequested(void)
         Class actual = principal ? NSClassFromString(principal) : Nil;
         if (![principal isEqualToString:@"ArkivFinderSync.ArkivFinderSync"] ||
             !actual || ![actual isSubclassOfClass:FIFinderSync.class] ||
+            ![actual instancesRespondToSelector:NSSelectorFromString(@"performAction:")] ||
             ![NSStringFromClass(actual) isEqualToString:principal]) {
             fputs("Finder Sync principal class does not resolve to the packaged Swift class\n", stderr);
             exit(1);

@@ -7,18 +7,24 @@ import ArkivPresentation
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let updates = UpdateController()
+    private let finderDeliveryDiagnostic = FinderDeliveryDiagnostic.fromArguments()
     private lazy var finderSetup = FinderSetupWindowController()
     private var windows: [BrowserWindowController] = []
-    private lazy var finderServices = FinderServiceProvider { [weak self] url in self?.open(url) }
+    private lazy var finderServices = FinderServiceProvider { [weak self] url in
+        self?.open(url)
+        self?.finderDeliveryDiagnostic?.record(.open)
+    }
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.servicesProvider = finderServices
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
-        updates.start()
+        if finderDeliveryDiagnostic == nil { updates.start() }
         buildMenus()
         if windows.isEmpty { newWindow(nil) }
         NSApp.activate(ignoringOtherApps: true)
-        DispatchQueue.main.async { [weak self] in self?.finderSetup.presentIfNeeded() }
+        if finderDeliveryDiagnostic == nil {
+            DispatchQueue.main.async { [weak self] in self?.finderSetup.presentIfNeeded() }
+        }
     }
     func applicationDidBecomeActive(_ notification: Notification) {
         finderSetup.refresh()
@@ -67,6 +73,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     private func confirmFinderExtraction(_ request: FinderRequest) -> Bool {
+        if let diagnostic = finderDeliveryDiagnostic {
+            diagnostic.record(request.action)
+            return false // Never write files or present an unattended chooser in CI.
+        }
         NSApp.activate(ignoringOtherApps: true)
         // Extract To presents its own destination chooser before any extraction.
         if request.action == .extractTo { return true }

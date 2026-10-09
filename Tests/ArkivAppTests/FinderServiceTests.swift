@@ -5,6 +5,33 @@ import ArkivCore
 import ArkivFinderIntegration
 
 final class FinderServiceTests: XCTestCase {
+    func testMenuTransportCanDropRepresentedObjectWithoutDroppingAction() async throws {
+        try await MainActor.run {
+            _ = NSApplication.shared
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+            defer { try? FileManager.default.removeItem(at: root) }
+            let archive = root.appendingPathComponent("a.zip")
+            try Data().write(to: archive)
+            for command in FinderCommand.allCases {
+                // Reproduce Finder's returned menu shape: scalar tag, no custom payload.
+                let returnedItem = NSMenuItem(title: "Arkiv action", action: nil, keyEquivalent: "")
+                returnedItem.tag = command.menuTag
+                XCTAssertNil(returnedItem.representedObject)
+                var delivered = false
+                let relay = FinderActionRelay(home: root,
+                    extensionURL: URL(fileURLWithPath: "/Applications/Arkiv.app/Contents/PlugIns/ArkivFinderSync.appex"),
+                    identifier: { _ in "xyz.isharalakshan.arkiv" }, transport: { url, _, completion in
+                        XCTAssertEqual(try? FinderHandoff(url: url).command, command)
+                        delivered = true
+                        completion(nil)
+                    }, failure: { XCTFail("Unexpected relay failure: \($0)") })
+                relay.perform(tag: returnedItem.tag, selectedURLs: [archive])
+                XCTAssertTrue(delivered)
+            }
+        }
+    }
+
     func testFinderURLRoutesOpenAndCancelledExtractionDoesNotWrite() async throws {
         try await MainActor.run {
             _ = NSApplication.shared
