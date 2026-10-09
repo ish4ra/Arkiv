@@ -70,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 do {
                     if let diagnostic = finderDeliveryDiagnostic {
                         try finderServices.receive(url) { request in
-                            if request.action == .open { try finderServices.perform(request) }
+                            if request.action == .open { try self.finderServices.perform(request) }
                             else { diagnostic.record(request.action) } // Read-only CI; never extract.
                         }
                     } else { try finderServices.receive(url) }
