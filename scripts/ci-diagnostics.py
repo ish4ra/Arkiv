@@ -39,10 +39,11 @@ for name in ['archive_read_support_format_rar5', 'archive_entry_is_encrypted',
              'UnicodeScalar', 'NSSearchFieldDelegate', 'NSToolbarItemValidation']:
     if name in text: labels.append('Referenced API: ' + name)
 # Only names declared in our committed tests can appear in annotations.
-for node in ast.walk(ast.parse(Path('tests/test_engine.py').read_text())):
-    if isinstance(node, ast.FunctionDef) and node.name.startswith('test_'):
-        if re.search(r'(?:FAIL|ERROR): ' + re.escape(node.name) + r'\b', text):
-            labels.append('Failing test: ' + node.name)
+for test_file in ['tests/test_engine.py', 'tests/test_creation.py']:
+    for node in ast.walk(ast.parse(Path(test_file).read_text())):
+        if isinstance(node, ast.FunctionDef) and node.name.startswith('test_'):
+            if re.search(r'(?:FAIL|ERROR): ' + re.escape(node.name) + r'\b', text):
+                labels.append('Failing test: ' + node.name)
 # Referenced identifiers must occur in repository source; never emit diagnostic text.
 source_identifiers = set()
 for source in Path('Sources').rglob('*.swift'):

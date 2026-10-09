@@ -14,7 +14,7 @@ lib.arkiv_create_zip.argtypes = [C.POINTER(C.c_char_p), C.c_size_t, C.c_char_p, 
 class CreationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.root = pathlib.Path(self.temp.name)
+        self.root = pathlib.Path(self.temp.name).resolve()
         self.source = self.root / '資料 🐈'
         self.source.mkdir()
         (self.source / 'empty').mkdir()
