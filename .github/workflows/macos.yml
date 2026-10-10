@@ -38,6 +38,8 @@ jobs:
           swift --version
           xcodebuild -version
           uname -m
+      - name: Build pinned in-process 7z engine
+        run: scripts/ci-check.sh sevenzip python3 scripts/build-sevenzip.py
       - name: Engine security and fixture tests
         run: scripts/ci-check.sh engine scripts/test-engine.sh
       - name: Finder extension metadata regression tests
@@ -45,7 +47,7 @@ jobs:
       - name: File Services registration regression tests
         run: scripts/ci-check.sh services-tests python3 tests/test_finder_services.py -v
       - name: Swift tests (native runner architecture)
-        run: scripts/ci-check.sh swift swift test --parallel
+        run: scripts/ci-check.sh swift swift test --parallel -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
       - name: Validate branding dimensions, transparency, and checksums
         run: |
           scripts/ci-check.sh branding swift branding/verify-assets.swift branding

@@ -2,22 +2,23 @@
 
 A native macOS archive manager in early development. `ARKIV_SPEC.md` is the authoritative implementation specification.
 
-The first foundation contains an AppKit archive table, folder navigation, search, multi-selection, selected/all extraction into a new directory, progress/cancellation, and a reusable Swift engine backed by system libarchive. It does not require users to install an external compressor.
+The first foundation contains an AppKit archive table, folder navigation, search, multi-selection, selected/all extraction into a new directory, progress/cancellation, and a reusable Swift engine backed by system libarchive and a bundled in-process 7-Zip library. It does not require users to install an external compressor.
 
 **Validation:** [macOS CI](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml) runs engine/security fixtures, Swift/AppKit tests, branding checks, arm64 and Universal app verification, and mounted DMG verification. Interactive Finder discovery, UI/accessibility, and Gatekeeper behavior still require a real Mac; this is not a production release.
 
-Fixture-verified on Linux and macOS CI: stored/Deflate ZIP, TAR, one basic 7z and one stored RAR5. This is not blanket codec/encryption/multipart support. Creation, modification, passwords, preview/open, Quick Look, drag/drop and advanced tools are not implemented yet.
+Fixture-verified formats include ZIP Store/Deflate, TAR, 7z/LZMA2 and stored RAR5. Creation supports ZIP and 7z, including 7z AES-256 content and optional filename encryption. This is not blanket codec/multipart support. Modification, preview/open, Quick Look, drag/drop and advanced tools remain deferred.
 
 ## Download for Mac testing
 
 Open the [macOS foundation Actions page](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml?query=branch%3Amain), sign in, and choose a successful `main` run with DMG artifacts. Download **`Arkiv-arm64-development-dmg`** for Apple Silicon or **`Arkiv-universal-development-dmg`** for Intel/Apple Silicon. Unzip GitHub's artifact wrapper, open the enclosed **`Arkiv-…-development.dmg`**, and drag **Arkiv.app** to the **Applications** shortcut. Eject the **Arkiv** volume and launch the installed app from Applications.
 
-These are **development builds**: the app is **ad-hoc signed**, the DMG is **unsigned**, and **neither is notarized**. Gatekeeper may block first launch with an Apple-could-not-verify/unidentified-developer warning. If you trust this build, attempt launch, then use **System Settings → Privacy & Security → Open Anyway** for Arkiv. See [exact artifact names, checksums, installation and Gatekeeper details](docs/release.md). No GitHub Release is published.
+These are **development builds**: the app is **ad-hoc signed**, the DMG is **unsigned**, and **neither is notarized**. Gatekeeper may block first launch with an Apple-could-not-verify/unidentified-developer warning. If you trust this build, attempt launch, then use **System Settings → Privacy & Security → Open Anyway** for Arkiv. See [exact artifact names, checksums, installation and Gatekeeper details](docs/release.md). Signed development updates are also published as prereleases through Sparkle.
 
 ## Develop on macOS
 
 ```sh
-swift test
+python3 scripts/build-sevenzip.py
+swift test -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
 scripts/test-engine.sh
 scripts/build-app.sh
 scripts/build-dmg.sh
@@ -36,7 +37,7 @@ The repository is already isolated in Codex cloud tasks; reuse its checkout and 
 - [Original icon direction](docs/branding.md)
 - [Third-party notices](docs/third-party-licenses.md)
 
-Next: confirm/fix macOS CI and real-Mac browser behavior, then implement owned preview workspaces, single-entry Open/Quick Look and TAR creation with round-trip tests. ZIP creation is implemented. Complete those Priority A slices before encryption or modification.
+Next: confirm/fix macOS CI and real-Mac browser behavior, then implement owned preview workspaces, single-entry Open/Quick Look and TAR creation with round-trip tests. ZIP/7z creation and 7z AES-256 are implemented; archive modification remains deferred.
 
 ## Finder extraction
 
@@ -64,10 +65,10 @@ See [Finder Sync setup and real-Mac tests](docs/finder-sync.md).
 Finder setup shows the manual macOS Settings path and refreshes enabled status
 when you return. **Not Now** is remembered; setup remains available from the menu.
 
-### ZIP creation
+### Archive creation
 
-Select files/folders in Finder for **Add to Archive…** or direct **Compress to ZIP**.
+Select files/folders in Finder for **Add to Archive…**, direct **Compress to ZIP/7z**, or **Compress with Password…**.
 The File menu also offers **Create Archive…**. Store/Deflate, mixed selections,
 nested/empty folders, Unicode, progress and cancellation are supported with
-transactional no-overwrite publication. Password and 7z creation remain unavailable.
-See [creation behavior, safety and real-Mac tests](docs/creation.md).
+transactional no-overwrite publication. 7z offers LZMA2, AES-256 and optional encrypted filenames; ZIP AES remains unavailable. Passwords are not saved.
+See [creation behavior and real-Mac tests](docs/creation.md) and [7z backend, temporary plaintext handling and licensing](docs/sevenzip.md).

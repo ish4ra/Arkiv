@@ -11,7 +11,7 @@ final class ArkivFinderSync: FIFinderSync {
         transport: { url, app, completion in
             let configuration = NSWorkspace.OpenConfiguration()
             let command = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "command" }?.value
-            configuration.activates = ["open", "extractTo", "addArchive"].contains(command ?? "")
+            configuration.activates = ["open", "extractTo", "addArchive", "password"].contains(command ?? "")
             configuration.arguments = ["--finder-action"]
             configuration.addsToRecentItems = false
             NSWorkspace.shared.open([url], withApplicationAt: app, configuration: configuration) { application, error in
@@ -26,7 +26,7 @@ final class ArkivFinderSync: FIFinderSync {
                 let alert = NSAlert()
                 alert.messageText = "Couldn’t send the Finder action to Arkiv"
                 let detail = error as NSError
-                alert.informativeText = "\(error.localizedDescription)\n\nUse Finder → Services for the same Arkiv actions, or open Arkiv manually.\n\nDiagnostic: \(detail.domain) (\(detail.code))"
+                alert.informativeText = "\(error.localizedDescription)\n\nOpen Arkiv manually to create or extract an archive. Finder → Services also provides extraction actions.\n\nDiagnostic: \(detail.domain) (\(detail.code))"
                 alert.addButton(withTitle: "OK")
                 alert.window.level = .floating
                 alert.window.center()
@@ -63,13 +63,13 @@ final class ArkivFinderSync: FIFinderSync {
                 item.target = self; item.tag = command.menuTag
             }
         } else if let sources {
-            for (command, title) in [(CreationCommand.addArchive, "Add to Archive…"), (.zip, "Compress to “\(CreationHandoff.baseName(for: sources)).zip”")] {
+            for (command, title) in [(CreationCommand.addArchive, "Add to Archive…"),
+                                     (.zip, "Compress to “\(CreationHandoff.baseName(for: sources)).zip”"),
+                                     (.sevenZip, "Compress to “\(CreationHandoff.baseName(for: sources)).7z”"),
+                                     (.password, "Compress with Password…")] {
                 let item = actions.addItem(withTitle: title, action: #selector(performAction(_:)), keyEquivalent: "")
                 item.target = self; item.tag = command.menuTag
             }
-            let password = actions.addItem(withTitle: "Compress with Password…", action: nil, keyEquivalent: "")
-            password.isEnabled = false
-            password.toolTip = "Encrypted archive creation is not supported in this build."
         }
         parent.submenu = actions; menu.addItem(parent)
         return menu

@@ -1,10 +1,12 @@
 import Foundation
 
 public enum CreationCommand: String, Sendable {
-    case addArchive, zip
-    public var menuTag: Int { self == .addArchive ? 10 : 11 }
+    case addArchive, zip, sevenZip, password
+    public var menuTag: Int {
+        switch self { case .addArchive: return 10; case .zip: return 11; case .sevenZip: return 12; case .password: return 13 }
+    }
     public init?(menuTag: Int) {
-        switch menuTag { case 10: self = .addArchive; case 11: self = .zip; default: return nil }
+        switch menuTag { case 10: self = .addArchive; case 11: self = .zip; case 12: self = .sevenZip; case 13: self = .password; default: return nil }
     }
 }
 

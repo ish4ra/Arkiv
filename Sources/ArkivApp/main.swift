@@ -87,8 +87,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     let request = try CreationHandoff(url: url)
                     if let diagnostic = finderDeliveryDiagnostic {
                         diagnostic.recordCommand(request.command.rawValue, browserWindows: windows.count)
-                    } else if request.command == .zip { try creation.compress(request.sources) }
-                    else { creation.present(request.sources, parent: windows.first(where: { $0.window === NSApp.keyWindow })?.window) }
+                    } else if request.command == .zip || request.command == .sevenZip {
+                        try creation.compress(request.sources, format: request.command == .sevenZip ? .sevenZip : .zip)
+                    }
+                    else { creation.present(request.sources, parent: windows.first(where: { $0.window === NSApp.keyWindow })?.window, encrypted: request.command == .password) }
                 } catch { NSAlert(error: error).runModal() }
             } else if url.scheme == FinderHandoff.scheme {
                 do {
@@ -174,7 +176,12 @@ if CommandLine.arguments.contains("--verify-updater-bundle") {
         fputs("Sparkle was not loaded from the packaged app\n", stderr)
         exit(1)
     }
-    print("Loaded embedded Sparkle framework")
+    let seven = Bundle.main.bundleURL.appendingPathComponent("Contents/Frameworks/libArkivSeven.dylib").resolvingSymlinksInPath()
+    guard SevenZipBackend.loadedLibraryURL.resolvingSymlinksInPath() == seven else {
+        fputs("7z engine was not loaded from the packaged app\n", stderr)
+        exit(1)
+    }
+    print("Loaded embedded Sparkle framework and 7z engine")
     exit(0)
 }
 

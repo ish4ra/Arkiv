@@ -33,7 +33,8 @@ Only if you trust the selected repository/run: attempt to open the installed app
 Development requires Xcode command-line tools with Swift 5.9+ and Python 3 for the fixture tests. `hdiutil`, `lipo`, `codesign`, `ditto`, `iconutil`, and `plutil` are macOS/Xcode tools; no extra packaging package is required.
 
 ```sh
-swift test
+python3 scripts/build-sevenzip.py
+swift test -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
 scripts/test-engine.sh
 scripts/build-app.sh
 scripts/build-dmg.sh
@@ -55,7 +56,7 @@ The default arm64 build remains independent. Universal builds compile the existi
 
 Separate Apple Silicon (`macos-15`) and Intel (`macos-15-intel`) jobs run the complete engine fixture suite and Swift tests natively. The Apple Silicon job packages arm64; the Intel job builds both slices and packages Universal. `lipo` verifies the exact expected architecture set and `codesign` verifies every slice. Building both slices and running native tests on both platforms does not substitute for interactive GUI testing.
 
-Before packaging, `verify-app.sh` checks the executable, original icon, metadata, notices, architecture(s), and signature. The DMG script stages the verified app with an `/Applications` symlink, creates a compressed read-only HFS+ image named **Arkiv**, verifies its checksum, mounts it read-only, verifies its volume name/link/app, verifies the app again, and tests copying it out into a temporary installation directory. It detaches the image before publishing the final `.dmg` and SHA-256 file to `build/`. Temporary staging and mount directories are cleaned up after successful detach. If attachment/detachment fails and cleanup cannot establish a safe detach, the temporary workspace is retained for diagnosis. The workflow also uploads the existing ZIP alternative; it has read-only repository permissions and no release-publishing step.
+Before packaging, `verify-app.sh` checks the executable, original icon, metadata, notices, architecture(s), and signature. The DMG script stages the verified app with an `/Applications` symlink, creates a compressed read-only HFS+ image named **Arkiv**, verifies its checksum, mounts it read-only, verifies its volume name/link/app, verifies the app again, and tests copying it out into a temporary installation directory. It detaches the image before publishing the final `.dmg` and SHA-256 file to `build/`. Temporary staging and mount directories are cleaned up after successful detach. If attachment/detachment fails and cleanup cannot establish a safe detach, the temporary workspace is retained for diagnosis. The workflow also uploads the existing ZIP alternative; build jobs have read-only permissions; the separate signed development publisher updates the Sparkle channel after all checks pass.
 
 Real-Mac release gates remain: first-launch/Gatekeeper behavior from an actual browser download, light/dark appearance, VoiceOver, keyboard navigation, table selection, resizing, cancel/close/quit during extraction, Finder routing, icon readability, large archives and case-insensitive APFS behavior. CI mounting/signature checks do not claim these interactive checks have happened.
 

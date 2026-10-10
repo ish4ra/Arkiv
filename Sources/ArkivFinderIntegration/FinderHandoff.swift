@@ -47,7 +47,7 @@ public struct FinderHandoff: Sendable {
     public static func isArchiveURL(_ url: URL) -> Bool {
         url.isFileURL && [nil, "", "localhost"].contains(url.host) && url.user == nil && url.password == nil
             && url.port == nil && url.query == nil && url.fragment == nil && url.path.hasPrefix("/")
-            && !url.path.contains("\0") && !url.absoluteString.lowercased().contains("%00") && ["zip", "tar"].contains(url.pathExtension.lowercased())
+            && !url.path.contains("\0") && !url.absoluteString.lowercased().contains("%00") && ["zip", "tar", "7z"].contains(url.pathExtension.lowercased())
     }
 
     /// Menu eligibility only. The main app revalidates before invoking the engine.
@@ -65,7 +65,8 @@ public struct FinderHandoff: Sendable {
 
     /// Shared with FinderRequest so menu and extraction use exactly the same name.
     public static func folderName(for archive: URL) -> String {
-        let base = String(archive.lastPathComponent.dropLast(4))
+        let filename = archive.lastPathComponent
+        let base = String(filename.dropLast(filename.lowercased().hasSuffix(".7z") ? 3 : 4))
         let invalid = CharacterSet.controlCharacters.union(CharacterSet(charactersIn: "/\\:"))
         let clean = base.components(separatedBy: invalid).joined(separator: "_")
             .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))

@@ -34,4 +34,9 @@ int arkiv_publish_extracted(const char *parent, const char *staging, const char 
 int arkiv_create_zip(const char *const *, size_t, const char *, const char *, const char *, char *, size_t, int,
                      arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 
+int arkiv_create_archive(const char *const *, size_t, const char *, const char *, const char *, char *, size_t, int,
+ arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t, int, const char *, int);
+const char *arkiv_seven_loaded_library(void);
+int arkiv_is_seven(const char *);
+int arkiv_unlock_seven(const char *, const char *, const char *, arkiv_cancel *);
 #endif

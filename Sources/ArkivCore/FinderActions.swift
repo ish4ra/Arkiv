@@ -10,12 +10,12 @@ public struct FinderRequest: Sendable {
     public let action: FinderAction
     public let archive: URL
     public init(action: FinderAction, urls: [URL]) throws {
-        guard urls.count == 1 else { throw ArchiveFailure.message("Select exactly one ZIP or TAR archive for Arkiv's Finder actions.") }
+        guard urls.count == 1 else { throw ArchiveFailure.message("Select exactly one ZIP, 7z, or TAR archive for Arkiv's Finder actions.") }
         let url = urls[0]
         guard url.isFileURL, url.host == nil || url.host == "" || url.host == "localhost",
               url.query == nil, url.fragment == nil,
-              ["zip", "tar"].contains(url.lastPathComponent.split(separator: ".").last?.lowercased() ?? "") else {
-            throw ArchiveFailure.message("Finder actions support local ZIP and uncompressed TAR files only.")
+              ["zip", "7z", "tar"].contains(url.lastPathComponent.split(separator: ".").last?.lowercased() ?? "") else {
+            throw ArchiveFailure.message("Finder actions support local ZIP, 7z, and uncompressed TAR files only.")
         }
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         guard attributes[.type] as? FileAttributeType == .typeRegular else {
@@ -40,7 +40,7 @@ public struct FinderExtractionFailure: Error, LocalizedError {
 public struct FinderExtractor {
     private let engine = LibArchiveEngine()
     public init() {}
-    public func extract(_ request: FinderRequest, destination: URL? = nil,
+    public func extract(_ request: FinderRequest, destination: URL? = nil, password: String? = nil,
                         cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         guard request.action != .open else { throw ArchiveFailure.message("Open requests must go to the archive browser.") }
@@ -49,7 +49,7 @@ public struct FinderExtractor {
             guard let destination, destination.isFileURL else { throw ArchiveFailure.message("Choose a destination folder.") }
             parent = destination
         } else { parent = request.parent }
-        let snapshot = try engine.inspect(request.archive, cancellation: cancellation)
+        let snapshot = try engine.inspect(request.archive, cancellation: cancellation, password: password)
         let staging = try engine.extract(snapshot, ids: nil, into: parent, cancellation: cancellation, progress: progress)
         for attempt in 1...1000 {
             let name = request.folderName + (attempt == 1 ? "" : " (\(attempt))")

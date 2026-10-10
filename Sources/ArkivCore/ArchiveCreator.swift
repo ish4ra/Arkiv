@@ -1,13 +1,19 @@
 import Foundation
 import CArkiv
 
+public enum ArchiveFormat: Sendable { case zip, sevenZip }
 public enum ZIPCompression: Sendable { case store, deflate }
 public struct ArchiveCreationRequest: Sendable {
+    public let format: ArchiveFormat
+    public let password: String?
+    public let encryptFilenames: Bool
     public let sources: [URL]
     public let destination: URL
     public let name: String
     public let compression: ZIPCompression
-    public init(sources: [URL], destination: URL, name: String, compression: ZIPCompression = .deflate) {
+    public init(sources: [URL], destination: URL, name: String, compression: ZIPCompression = .deflate,
+                format: ArchiveFormat = .zip, password: String? = nil, encryptFilenames: Bool = true) {
+        self.format = format; self.password = password; self.encryptFilenames = encryptFilenames
         self.sources = sources; self.destination = destination; self.name = name; self.compression = compression
     }
 }
@@ -19,6 +25,10 @@ public struct ArchiveCreator: Sendable {
     public init() {}
     public func create(_ request: ArchiveCreationRequest, cancellation: ArchiveCancellation,
                        progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
+        try validateArchivePassword(request.password)
+        if request.format == .zip, request.password != nil {
+            throw ArchiveFailure.message("Password protection is available for 7z archives only.")
+        }
         func local(_ url: URL) -> Bool {
             url.isFileURL && (url.host == nil || url.host == "" || url.host == "localhost") && url.query == nil && url.fragment == nil
         }
@@ -79,14 +89,15 @@ public struct ArchiveCreator: Sendable {
             let stage = destination.appendingPathComponent(".arkiv-create-" + UUID().uuidString, isDirectory: true)
             try manager.createDirectory(at: stage, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
             defer { try? manager.removeItem(at: stage) }
-            let filename = request.name + ".zip"
+            let filename = request.name + (request.format == .sevenZip ? ".7z" : ".zip")
             var published = [CChar](repeating: 0, count: 512)
             var error = [CChar](repeating: 0, count: 256)
             let result = pointers.withUnsafeBufferPointer { buffer in
-                arkiv_create_zip(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
+                arkiv_create_archive(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
                     filename, &published, published.count, request.compression == .store ? 0 : 1,
                     arkiv_limits(max_entries: 100_000, max_bytes: 20 * 1024 * 1024 * 1024),
-                    cancellation.pointer, callback, context, &error, error.count)
+                    cancellation.pointer, callback, context, &error, error.count,
+                    request.format == .sevenZip ? 1 : 0, request.password, request.encryptFilenames ? 1 : 0)
             }
             if result == 0 { return destination.appendingPathComponent(String(cString: published)) }
             if result == 3 { throw ArchiveFailure.message("No unused archive name was available.") }

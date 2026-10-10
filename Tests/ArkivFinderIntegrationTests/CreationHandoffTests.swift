@@ -14,7 +14,7 @@ final class CreationHandoffTests: XCTestCase {
         XCTAssertEqual(CreationHandoff.baseName(for: [file]), "my 日本語 🦊")
         XCTAssertEqual(CreationHandoff.baseName(for: [folder]), "Subs")
         XCTAssertEqual(CreationHandoff.baseName(for: [file, folder]), root.lastPathComponent)
-        for command in [CreationCommand.addArchive, .zip] {
+        for command in [CreationCommand.addArchive, .zip, .sevenZip, .password] {
             let request = try CreationHandoff(command: command, sources: [file, folder])
             let decoded = try CreationHandoff(url: request.url)
             XCTAssertEqual(decoded.command, command); XCTAssertEqual(decoded.sources, request.sources)
@@ -22,6 +22,7 @@ final class CreationHandoffTests: XCTestCase {
             XCTAssertThrowsError(try CreationHandoff(url: URL(string: request.url.absoluteString + "&destination=/tmp")!))
             XCTAssertThrowsError(try CreationHandoff(url: URL(string: request.url.absoluteString + "&command=zip")!))
             XCTAssertThrowsError(try FinderHandoff(url: request.url))
+            XCTAssertThrowsError(try CreationHandoff(url: URL(string: request.url.absoluteString + "&password=not-allowed")!))
         }
         XCTAssertEqual(CreationHandoff.selection([file, folder], within: root), [file, folder].map(\.standardizedFileURL))
         XCTAssertNil(CreationHandoff.selection([file], within: folder))
@@ -31,6 +32,16 @@ final class CreationHandoffTests: XCTestCase {
         let link = root.appendingPathComponent("link")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: folder)
         XCTAssertThrowsError(try CreationHandoff(command: .zip, sources: [link]))
+    }
+
+    func testSevenZipArchiveEligibilityAndFolderName() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let archive = root.appendingPathComponent("日本語 name.7z")
+        try Data().write(to: archive)
+        XCTAssertEqual(FinderHandoff.folderName(for: archive), "日本語 name")
+        XCTAssertEqual(FinderHandoff.selection([archive], within: root), archive.standardizedFileURL)
     }
 
     func testCreationRelayPreservesAllSelectedItems() throws {
@@ -45,7 +56,9 @@ final class CreationHandoffTests: XCTestCase {
                 XCTAssertEqual(try? CreationHandoff(url: url).sources, files)
                 received += 1; finish(nil)
             }, failure: { XCTFail("Unexpected routing error: \($0)") })
-        relay.perform(tag: CreationCommand.zip.menuTag, selectedURLs: files)
-        XCTAssertEqual(received, 1)
+        for command in [CreationCommand.zip, .sevenZip, .password, .addArchive] {
+            relay.perform(tag: command.menuTag, selectedURLs: files)
+        }
+        XCTAssertEqual(received, 4)
     }
 }

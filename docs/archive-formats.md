@@ -6,18 +6,18 @@ These are **fixture results on Linux with libarchive 3.7.4 and in [macOS CI](htt
 | --- | --- | --- | --- |
 | ZIP | Stored and Deflate; nested Unicode paths, empty, corrupt CRC | Create Store/Deflate; modification deferred | Not implemented; CRC errors caught during extraction |
 | TAR | Regular file, nested paths, rejection of links/devices | Not implemented | Not implemented |
-| 7z | One LZMA fixture, nested path, byte-for-byte extraction | Not implemented | Not implemented |
+| 7z | LZMA/LZMA2; plain/encrypted fixtures and round trips | Create LZMA2; no modification | AES-256 content, optional filenames; no multipart/integrity command |
 | RAR5 | One stored upstream fixture, byte-for-byte extraction | Never create RAR | Not implemented |
 | RAR4 | Decoder registered; no fixture validation yet | Not implemented | Not implemented |
 | All other spec formats | Deferred, not advertised | Not implemented | Not implemented |
 
-An accepted file extension does not prove a compression method is available. Encrypted extraction is explicitly rejected. ZIPX, compressed TAR filters, solid/multipart RAR and advanced 7z compatibility require dedicated fixtures before support claims. The app initially registers only ZIP/TAR document associations.
+An accepted file extension does not prove a compression method is available. 7z encrypted extraction is supported through the bundled backend; encrypted ZIP remains rejected. ZIPX, compressed TAR filters, solid/multipart RAR and advanced 7z compatibility require dedicated fixtures before support claims. The app initially registers only ZIP/TAR document associations.
 
 ## Backend research (2026-10-07)
 
 - [libarchive](https://github.com/libarchive/libarchive): in-process streaming reader/writer with broad format support and permissive licensing. The inspected upstream master header declares 3.9.0 (development, not asserted to be the latest stable release); local runtime is 3.7.4. macOS ships its own version, recorded in Archive Info. Apple/system security updates therefore matter. Native backend integration avoids shipping a Homebrew dependency, but its codec/version variability limits compatibility guarantees.
-- [7-Zip](https://github.com/ip7z/7zip): inspected upstream README identifies 26.04. Most code is LGPL 2.1-or-later, some BSD/public-domain, RAR code additionally has the unRAR restriction. Better future candidate for advanced 7z, AES/header encryption and wider formats; redistribution must satisfy the actual component license and source/relinking requirements. Not bundled in this milestone.
-- LZMA SDK is narrower than a complete archive-manager backend; do not confuse its public-domain portions with the entire 7-Zip license. No SDK code bundled.
+- [7-Zip](https://github.com/ip7z/7zip): inspected upstream README identifies 26.04. Most code is LGPL 2.1-or-later, some BSD/public-domain, RAR code additionally has the unRAR restriction. A pinned RAR-free subset is now bundled for 7z/LZMA2 and AES/header encryption; source, patches, license and rebuild/replace instructions are in [sevenzip.md](sevenzip.md).
+- LZMA SDK is narrower than a complete archive-manager backend; do not confuse its public-domain portions with the entire 7-Zip license. The full selected 7-Zip component retains LGPL obligations.
 - UnRAR has a license restriction against using its sources to recreate the RAR compression algorithm. No UnRAR code or binary is bundled. RAR creation is a non-goal. Broader RAR support will require a specific version/license review.
 - Apple's Compression framework provides codecs rather than a complete ZIP/7z/RAR archive manager; Apple Archive is not a replacement for the requested formats. Native APIs remain appropriate for UI, file access, security and future metadata work.
 

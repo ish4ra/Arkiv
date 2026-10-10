@@ -179,12 +179,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
         window?.toolbar?.validateVisibleItems()
     }
-    func load(_ url: URL) {
+    func load(_ url: URL, password: String? = nil) {
         guard !isBusy else { return }
         pendingURL = url
         let token = begin("Reading archive…")
         worker.async { [self] in
-            let result = Result { try self.engine.inspect(url, cancellation: token) }
+            let result = Result { try self.engine.inspect(url, cancellation: token, password: password) }
             DispatchQueue.main.async { [self] in
                 self.pendingURL = nil
                 self.finish()
@@ -196,7 +196,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                     self.window?.representedURL = url
                     self.reload()
                     self.window?.makeFirstResponder(self.table)
-                case .failure(let error): self.present(error)
+                case .failure(let error):
+                    if ArchivePasswordPrompt.isPasswordFailure(error) {
+                        ArchivePasswordPrompt.ask(archive: url, retry: password != nil, parent: self.window) { [weak self] supplied in
+                            if let supplied { self?.load(url, password: supplied) }
+                        }
+                    } else { self.present(error) }
                 }
             }
         }
@@ -288,7 +293,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         guard let snapshot, let window else { return }
         let alert = NSAlert()
         alert.messageText = snapshot.url.lastPathComponent
-        alert.informativeText = "\(snapshot.entries.count) entries\nBackend: \(LibArchiveEngine.version)\n\nRead-only browser. Extraction limit: 100,000 entries / 20 GiB. Encryption, modification, and creation are not available in this milestone."
+        alert.informativeText = "\(snapshot.entries.count) entries\nBackend: \(LibArchiveEngine.version)\n\nRead-only browser. Extraction limit: 100,000 entries / 20 GiB. ZIP and 7z creation are available from File → Create Archive. 7z supports AES-256. Archive modification is unavailable."
         alert.beginSheetModal(for: window)
     }
     @objc func copyPath(_ sender: Any?) {

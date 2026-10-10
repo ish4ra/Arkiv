@@ -9,29 +9,29 @@ final class ArchiveCreationController {
     private var operation: FinderOperationWindow?
     private let worker = DispatchQueue(label: "xyz.isharalakshan.arkiv.create", qos: .userInitiated)
 
-    func present(_ sources: [URL], parent: NSWindow?) {
+    func present(_ sources: [URL], parent: NSWindow?, encrypted: Bool = false) {
         guard !isBusy else { NSAlert(error: ArchiveFailure.message("An archive is already being created. Wait or cancel it first.")).runModal(); return }
         if let setup { setup.window?.makeKeyAndOrderFront(nil); return }
-        let sheet = CreateArchiveSheet(sources: sources)
+        let sheet = CreateArchiveSheet(sources: sources, encrypted: encrypted)
         setup = sheet
-        sheet.complete = { [weak self] destination, name, compression in
+        sheet.complete = { [weak self] destination, name, compression, format, password, encryptFilenames in
             guard let self else { return }
             self.setup = nil
             guard let destination else { return }
-            do { try self.compress(sources, destination: destination, name: name, compression: compression) }
+            do { try self.compress(sources, destination: destination, name: name, compression: compression, format: format, password: password, encryptFilenames: encryptFilenames) }
             catch { NSAlert(error: error).runModal() }
         }
         sheet.present(parent: parent)
     }
 
-    func compress(_ sources: [URL], destination: URL? = nil, name: String? = nil, compression: ZIPCompression = .deflate) throws {
+    func compress(_ sources: [URL], destination: URL? = nil, name: String? = nil, compression: ZIPCompression = .deflate, format: ArchiveFormat = .zip, password: String? = nil, encryptFilenames: Bool = true) throws {
         guard !isBusy else { throw ArchiveFailure.message("An archive is already being created. Wait or cancel it first.") }
         guard let first = sources.first else { throw ArchiveFailure.message("Select files or folders to compress.") }
         let destination = destination ?? first.deletingLastPathComponent()
         let name = name ?? CreationHandoff.baseName(for: sources)
-        let request = ArchiveCreationRequest(sources: sources, destination: destination, name: name, compression: compression)
+        let request = ArchiveCreationRequest(sources: sources, destination: destination, name: name, compression: compression, format: format, password: password, encryptFilenames: encryptFilenames)
         isBusy = true
-        let operation = FinderOperationWindow(archive: destination.appendingPathComponent(name + ".zip"), verb: "Compressing")
+        let operation = FinderOperationWindow(archive: destination.appendingPathComponent(name + (format == .sevenZip ? ".7z" : ".zip")), verb: "Compressing")
         self.operation = operation
         operation.showWindow(nil) // nonactivating panel: Finder retains focus
         let cancellation = operation.cancellation
@@ -69,14 +69,20 @@ private final class CreationProgressThrottle: @unchecked Sendable {
 }
 
 private final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
-    var complete: ((URL?, String, ZIPCompression) -> Void)?
+    var complete: ((URL?, String, ZIPCompression, ArchiveFormat, String?, Bool) -> Void)?
     private let name = NSTextField(string: "")
     private let location = NSTextField(labelWithString: "")
     private let compression = NSPopUpButton()
+    private let format = NSPopUpButton()
+    private let encryption = NSButton(checkboxWithTitle: "Protect with AES-256 password", target: nil, action: nil)
+    private let passwords = PasswordEntryView(confirm: true)
+    private let filenames = NSButton(checkboxWithTitle: "Encrypt filenames", target: nil, action: nil)
+    private let encryptionNote = NSTextField(wrappingLabelWithString: "ZIP encryption is unavailable. Choose 7z for AES-256.")
+    private var selectedFormat: ArchiveFormat { format.indexOfSelectedItem == 1 ? .sevenZip : .zip }
     private var destination: URL
     private var finished = false
 
-    init(sources: [URL]) {
+    init(sources: [URL], encrypted: Bool) {
         destination = sources.first?.deletingLastPathComponent() ?? FileManager.default.homeDirectoryForCurrentUser
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 510, height: 340),
                             styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -88,19 +94,25 @@ private final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
         location.stringValue = destination.path; location.lineBreakMode = .byTruncatingMiddle
         location.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         compression.addItems(withTitles: ["Deflate — Normal", "Store — No compression"])
-        compression.setAccessibilityLabel("ZIP compression")
+        compression.setAccessibilityLabel("Compression")
+        format.addItems(withTitles: ["ZIP (.zip)", "7z (.7z)"])
+        format.setAccessibilityLabel("Archive format")
+        format.target = self; format.action = #selector(changeFormat)
+        encryption.target = self; encryption.action = #selector(changeEncryption)
+        filenames.state = .on
+        encryptionNote.textColor = .secondaryLabelColor
+        let passwordSection = NSStackView(views: [encryption, passwords, filenames, encryptionNote])
+        passwordSection.orientation = .vertical; passwordSection.alignment = .leading; passwordSection.spacing = 8
         let choose = NSButton(title: "Choose…", target: self, action: #selector(chooseDestination))
         let destinationRow = NSStackView(views: [location, choose]); destinationRow.spacing = 8
         let selection = NSTextField(wrappingLabelWithString: sources.prefix(5).map(\.lastPathComponent).joined(separator: ", ") + (sources.count > 5 ? " … (\(sources.count) items)" : ""))
-        let password = NSTextField(wrappingLabelWithString: "Password protection is not supported in this build.")
-        password.textColor = .secondaryLabelColor
         let grid = NSGridView(views: [
             [NSTextField(labelWithString: "Items:"), selection],
             [NSTextField(labelWithString: "Name:"), name],
             [NSTextField(labelWithString: "Destination:"), destinationRow],
-            [NSTextField(labelWithString: "Format:"), NSTextField(labelWithString: "ZIP (.zip)")],
+            [NSTextField(labelWithString: "Format:"), format],
             [NSTextField(labelWithString: "Compression:"), compression],
-            [NSTextField(labelWithString: "Password:"), password]
+            [NSTextField(labelWithString: "Encryption:"), passwordSection]
         ])
         grid.rowSpacing = 12; grid.columnSpacing = 12
         let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelCreate)); cancel.keyEquivalent = "\u{1b}"
@@ -114,6 +126,9 @@ private final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
         panel.contentView = content
         content.widthAnchor.constraint(equalToConstant: 510).isActive = true
         grid.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -40).isActive = true
+        format.selectItem(at: encrypted ? 1 : 0)
+        encryption.state = encrypted ? .on : .off
+        changeFormat()
         panel.setContentSize(content.fittingSize)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
@@ -124,6 +139,21 @@ private final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
         else { showWindow(nil); window.makeKeyAndOrderFront(nil) }
         window.makeFirstResponder(name)
     }
+    @objc private func changeFormat() {
+        compression.removeAllItems()
+        compression.addItems(withTitles: selectedFormat == .sevenZip ? ["LZMA2 — Normal"] : ["Deflate — Normal", "Store — No compression"])
+        encryption.isEnabled = selectedFormat == .sevenZip
+        encryptionNote.isHidden = selectedFormat == .sevenZip
+        if selectedFormat == .zip { encryption.state = .off; passwords.clear() }
+        changeEncryption()
+    }
+    @objc private func changeEncryption() {
+        let enabled = selectedFormat == .sevenZip && encryption.state == .on
+        passwords.isHidden = !enabled; filenames.isHidden = !enabled
+        if !enabled { passwords.clear() }
+        window?.contentView?.layoutSubtreeIfNeeded()
+        if let content = window?.contentView { window?.setContentSize(content.fittingSize) }
+    }
     @objc private func chooseDestination() {
         let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true
         panel.canCreateDirectories = true; panel.allowsMultipleSelection = false; panel.directoryURL = destination
@@ -132,16 +162,22 @@ private final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
     @objc private func createArchive() {
         var value = name.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.lowercased().hasSuffix(".zip") { value = String(value.dropLast(4)) }
+        else if value.lowercased().hasSuffix(".7z") { value = String(value.dropLast(3)) }
         guard !value.isEmpty, value != ".", value != "..", !value.unicodeScalars.contains(where: { $0.value < 32 || "/\\:".unicodeScalars.contains($0) }), value.utf8.count <= 180 else {
             NSAlert(error: ArchiveFailure.message("Enter an archive name without colons, path separators or control characters (up to 180 UTF-8 bytes).")).runModal(); return
         }
-        finish(destination, value, compression.indexOfSelectedItem == 1 ? .store : .deflate)
+        let password: String?
+        do {
+            password = encryption.state == .on ? try CreationPasswordPolicy.validate(passwords.value, confirmation: passwords.confirmedValue) : nil
+        } catch { NSAlert(error: error).runModal(); return }
+        finish(destination, value, compression.indexOfSelectedItem == 1 ? .store : .deflate, password: password)
     }
     @objc private func cancelCreate() { finish(nil, "", .deflate) }
-    private func finish(_ destination: URL?, _ name: String, _ compression: ZIPCompression) {
+    private func finish(_ destination: URL?, _ name: String, _ compression: ZIPCompression, password: String? = nil) {
         guard !finished else { return }; finished = true
         if let window, let parent = window.sheetParent { parent.endSheet(window) }
-        close(); complete?(destination, name, compression)
+        passwords.clear()
+        close(); complete?(destination, name, compression, selectedFormat, password, filenames.state == .on)
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool { cancelCreate(); return false }
 }

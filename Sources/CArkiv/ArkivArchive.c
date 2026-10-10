@@ -1,4 +1,5 @@
 #include "ArkivArchive.h"
+#include "../CArkivSeven/include/ArkivSeven.h"
 #include "vendor/archive.h"
 #include "vendor/archive_entry.h"
 #include <errno.h>
@@ -368,18 +369,22 @@ static int create_walk(struct create_state *s, int fd, const char *path, unsigne
     if (s->progress) s->progress(s->context, s->entries, s->bytes);
     return 0;
 }
-int arkiv_create_zip(const char *const *sources, size_t count, const char *parent,
+static int seven_cancel(void *token) { return cancelled(token); }
+static int create_archive(const char *const *sources, size_t count, const char *parent,
                      const char *stage, const char *name, char *published_name, size_t published_capacity, int compression, arkiv_limits limits,
                      arkiv_cancel *token, arkiv_progress_callback progress, void *context,
-                     char *error, size_t capacity) {
+                     char *error, size_t capacity, int seven, const char *password, int headers) {
     if (cancelled(token)) return 2;
-    if (!published_name || published_capacity < 256 || !count || count > limits.max_entries || !safe_path(stage) || strchr(stage, '/') || !safe_path(name) || strchr(name, '/') || strlen(name) < 5 || strcmp(name + strlen(name) - 4, ".zip"))
+    size_t extension = seven ? 3 : 4;
+    const char *suffix = seven ? ".7z" : ".zip";
+    const char *payload = seven ? "archive.7z" : "archive.zip";
+    if (!published_name || published_capacity < 256 || !count || count > limits.max_entries || !safe_path(stage) || strchr(stage, '/') || !safe_path(name) || strchr(name, '/') || strlen(name) <= extension || strcmp(name + strlen(name) - extension, suffix))
         return fail(error, capacity, "Invalid creation request.");
     locale_t utf8 = newlocale(LC_CTYPE_MASK, "en_US.UTF-8", NULL);
     if (!utf8) utf8 = newlocale(LC_CTYPE_MASK, "C.UTF-8", NULL);
     if (!utf8) return fail(error, capacity, "UTF-8 filename support is unavailable.");
     locale_t previous = uselocale(utf8);
-    int parentfd = create_open(parent), stagefd = -1, output = -1, status = 1;
+    int parentfd = create_open(parent), stagefd = -1, output = -1, sevenfd = -1, checkfd = -1, status = 1;
     struct archive *writer = NULL, *verify = NULL;
     if (parentfd < 0) goto done;
     stagefd = openat(parentfd, stage, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
@@ -422,23 +427,66 @@ int arkiv_create_zip(const char *const *sources, size_t count, const char *paren
     }
     if (r != ARCHIVE_EOF || entries != state.entries || bytes != state.bytes) goto done;
     if (cancelled(token)) { status = 2; goto done; }
+    if (seven) {
+        archive_read_free(verify); verify = NULL;
+        if (lseek(output, 0, SEEK_SET) < 0) goto done;
+        sevenfd = openat(stagefd, "archive.7z", O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+        checkfd = openat(stagefd, "verify.zip", O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+        if (sevenfd < 0 || checkfd < 0) goto done;
+        status = arkiv_seven_encode(output, sevenfd, password, headers, seven_cancel, token, progress, context);
+        if (status) goto done;
+        status = 1;
+        if (fsync(sevenfd)) goto done;
+        status = arkiv_seven_decode(sevenfd, checkfd, password, seven_cancel, token);
+        if (status) goto done;
+    }
     /* A same-filesystem hard link publishes atomically without replacing any item. */
     status = 3;
     for (unsigned attempt = 1; attempt <= 1000; attempt++) {
         if (cancelled(token)) { status = 2; goto done; }
         int length = attempt == 1 ? snprintf(published_name, published_capacity, "%s", name) :
-            snprintf(published_name, published_capacity, "%.*s (%u).zip", (int)strlen(name) - 4, name, attempt);
+            snprintf(published_name, published_capacity, "%.*s (%u)%s", (int)(strlen(name) - extension), name, attempt, suffix);
         if (length < 0 || (size_t)length >= published_capacity) { status = 1; goto done; }
-        if (!linkat(stagefd, "archive.zip", parentfd, published_name, 0)) { status = 0; break; }
+        if (!linkat(stagefd, payload, parentfd, published_name, 0)) { status = 0; break; }
         if (errno != EEXIST) { status = 1; goto done; }
     }
 done:
     if (verify) archive_read_free(verify);
     if (writer) archive_write_free(writer);
+    if (sevenfd >= 0) close(sevenfd);
+    if (checkfd >= 0) close(checkfd);
     if (output >= 0) close(output);
-    if (stagefd >= 0) { unlinkat(stagefd, "archive.zip", 0); close(stagefd); }
+    if (stagefd >= 0) { unlinkat(stagefd, "archive.zip", 0); unlinkat(stagefd, "archive.7z", 0); unlinkat(stagefd, "verify.zip", 0); close(stagefd); }
     if (parentfd >= 0) close(parentfd);
     uselocale(previous); freelocale(utf8);
-    if (status == 1 && error && capacity && !error[0]) fail(error, capacity, "Cannot safely create or verify ZIP archive.");
+    if (status == 1 && error && capacity && !error[0]) fail(error, capacity, "Cannot safely create or verify archive.");
     return status;
 }
+
+int arkiv_create_archive(const char *const *sources, size_t count, const char *parent, const char *stage,
+ const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
+ arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity,
+ int seven, const char *password, int headers) {
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers);
+}
+int arkiv_create_zip(const char *const *sources, size_t count, const char *parent, const char *stage,
+ const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
+ arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity) {
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0);
+}
+int arkiv_is_seven(const char *path) {
+ int fd=create_open(path); if(fd<0)return 0;unsigned char b[6];ssize_t n=read(fd,b,6);close(fd);
+ return n==6&&!memcmp(b,"7z\xbc\xaf\x27\x1c",6);
+}
+int arkiv_unlock_seven(const char *path, const char *output, const char *password, arkiv_cancel *token) {
+ if(cancelled(token))return 2;
+ int in=create_open(path);if(in<0)return 1;
+ int out=open(output,O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);if(out<0){close(in);return 1;}
+ locale_t utf8=newlocale(LC_CTYPE_MASK,"en_US.UTF-8",NULL);
+ if(!utf8)utf8=newlocale(LC_CTYPE_MASK,"C.UTF-8",NULL);
+ int result=1;
+ if(utf8){locale_t previous=uselocale(utf8);result=arkiv_seven_decode(in,out,password,seven_cancel,token);uselocale(previous);freelocale(utf8);}
+ close(in);close(out);if(result)unlink(output);return result;
+}
+
+const char *arkiv_seven_loaded_library(void) { return arkiv_seven_library_path(); }

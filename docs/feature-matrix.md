@@ -7,7 +7,8 @@
 | Extraction safety | Automated hostile-path/link/overwrite/CRC/limit regression suite |
 | macOS application validation | Native compilation, tests, arm64 app/icon packaging and signature verification passed macOS CI; interactive validation outstanding |
 | Create ZIP | Store/Deflate, native creation setup, direct Finder multi-selection compression; [details](creation.md) |
-| Modify / encryption / AES-256 / filename encryption / 7z creation | Deferred; no enabled UI claims |
+| Create/read 7z / AES-256 / filename encryption | LZMA2, content/header encryption, native password prompt/retry; [backend and limits](sevenzip.md) |
+| Modify / ZIP AES | Deferred; no enabled UI claims |
 | Solid archives / multipart / comments | Deferred compatibility work |
 | Integrity test command | Deferred; extraction checks data/CRC but is not a dedicated Test action |
 | Checksums / split-combine / benchmark / CLI | Deferred |

@@ -22,7 +22,7 @@ final class FinderServiceProvider: NSObject {
         } else if let paths = pasteboard.propertyList(forType: NSPasteboard.PasteboardType("NSFilenamesPboardType")) as? [String] {
             guard paths.allSatisfy({ $0.hasPrefix("/") }) else { throw ArchiveFailure.message("Finder paths must be absolute.") }
             urls = paths.map { URL(fileURLWithPath: $0) }
-        } else { throw ArchiveFailure.message("Select one ZIP or TAR file in Finder.") }
+        } else { throw ArchiveFailure.message("Select one ZIP, TAR or 7z file in Finder.") }
         return try FinderRequest(action: action, urls: urls)
     }
 
@@ -69,10 +69,10 @@ final class FinderServiceProvider: NSObject {
 
     static func requiresDestinationSelection(_ action: FinderAction) -> Bool { action == .extractTo }
 
-    private func start(_ request: FinderRequest) {
+    private func start(_ request: FinderRequest, password: String? = nil, chosenDestination: URL? = nil) {
         if Self.requiresDestinationSelection(request.action) { NSApp.activate(ignoringOtherApps: true) }
-        var destination: URL?
-        if Self.requiresDestinationSelection(request.action) {
+        var destination = chosenDestination
+        if Self.requiresDestinationSelection(request.action) && destination == nil {
             let panel = NSOpenPanel()
             panel.canChooseFiles = false; panel.canChooseDirectories = true
             panel.canCreateDirectories = true; panel.allowsMultipleSelection = false
@@ -90,7 +90,7 @@ final class FinderServiceProvider: NSObject {
             // The callback is serial on this worker; throttle updates without touching AppKit here.
             let throttle = FinderProgressThrottle()
             let result = Result {
-                try FinderExtractor().extract(request, destination: parent, cancellation: token) { progress in
+                try FinderExtractor().extract(request, destination: parent, password: password, cancellation: token) { progress in
                     guard throttle.shouldUpdate() else { return }
                     DispatchQueue.main.async { [weak operation] in
                         operation?.showProgress(progress)
@@ -105,7 +105,14 @@ final class FinderServiceProvider: NSObject {
                 case .success(let output): Self.showExtractionResult(output, action: request.action)
                 case .failure(let failure):
                     if case ArchiveFailure.cancelled = failure { return }
-                    if let recovery = failure as? FinderExtractionFailure {
+                    if ArchivePasswordPrompt.isPasswordFailure(failure) {
+                        self.isBusy = true
+                        ArchivePasswordPrompt.ask(archive: request.archive, retry: password != nil) { [weak self] supplied in
+                            guard let self else { return }
+                            if let supplied { self.start(request, password: supplied, chosenDestination: parent) }
+                            else { self.isBusy = false }
+                        }
+                    } else if let recovery = failure as? FinderExtractionFailure {
                         let alert = NSAlert()
                         alert.messageText = "Finder extraction stopped"
                         alert.informativeText = recovery.localizedDescription

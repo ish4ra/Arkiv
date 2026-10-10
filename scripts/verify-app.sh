@@ -27,6 +27,15 @@ case "$architecture" in
     ;;
   *) fail 'Unsupported architecture; use arm64, x86_64, or universal.' ;;
 esac
+seven="$app/Contents/Frameworks/libArkivSeven.dylib"
+[[ -s "$seven" && ! -L "$seven" ]] || fail 'Bundled 7z engine is missing.'
+[[ -s "$app/Contents/Resources/licenses/7zip-License.txt" && -s "$app/Contents/Resources/licenses/7zip-LGPL.txt" ]] || fail '7-Zip licenses are missing.'
+case "$architecture" in
+  universal) lipo "$seven" -verify_arch arm64 x86_64 ;;
+  *) lipo "$seven" -verify_arch "$architecture" ;;
+esac
+codesign --verify --strict --all-architectures "$seven"
+otool -L "$binary" | grep -q '@rpath/libArkivSeven.dylib' || fail 'App does not link its bundled 7z engine.'
 framework="$app/Contents/Frameworks/Sparkle.framework"
 [[ -L "$framework/Versions/Current" && -s "$framework/Sparkle" ]] || fail "Sparkle framework or symlinks missing."
 [[ -s "$app/Contents/Resources/Sparkle-LICENSE.txt" ]] || fail "Sparkle license missing."
