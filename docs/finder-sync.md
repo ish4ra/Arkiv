@@ -3,11 +3,11 @@
 Arkiv embeds `Contents/PlugIns/ArkivFinderSync.appex`, a native Finder Sync
 extension with identifier `xyz.isharalakshan.arkiv.finder-sync`. The existing
 [AppKit Services](finder-integration.md) remain a fallback. No app icon or browser
-UI is redesigned. Archive creation and multiple-archive extraction are not added.
+UI is redesigned. ZIP/7z creation and password setup are described in [creation.md](creation.md). Multiple-archive extraction remains deferred.
 
 ## Menu and scope
 
-Right-click **one regular ZIP or uncompressed TAR** inside your home folder:
+Right-click **one regular ZIP, uncompressed TAR or 7z archive** inside your home folder:
 
 ```
 Arkiv >
