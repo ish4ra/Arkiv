@@ -21,7 +21,7 @@ LIB.arkiv_cancel_free.argtypes = [C.c_void_p]
 class IntegrityTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.path = Path(self.tmp.name) / 'archive'
+        self.path = Path(self.tmp.name).resolve() / 'archive'
         self.token = LIB.arkiv_cancel_new()
     def tearDown(self):
         LIB.arkiv_cancel_free(self.token)
