@@ -21,6 +21,10 @@ int arkiv_list(const char *, arkiv_limits, arkiv_cancel *, arkiv_entry_callback,
    NULL IDs means all entries. Only regular files/directories; no links or special entries. */
 int arkiv_extract(const char *, const char *, const int64_t *, size_t, arkiv_limits,
                  arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
+/* Test streams all payload into a discard sink. 0 OK, 2 cancelled, 4 password required,
+   5 wrong password or encrypted damage, 6 corrupt, 7 CRC error, 8 unsupported method,
+   9 warning: format has no payload checksum. 1 operational/security error. */
+int arkiv_test(const char *, const char *, arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 const char *arkiv_backend_version(void);
 
 /* Publish validated output beside its private staging directory. Never replaces or

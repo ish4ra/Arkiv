@@ -11,7 +11,7 @@ final class ArkivFinderSync: FIFinderSync {
         transport: { url, app, completion in
             let configuration = NSWorkspace.OpenConfiguration()
             let command = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "command" }?.value
-            configuration.activates = ["open", "extractTo", "addArchive", "password"].contains(command ?? "")
+            configuration.activates = ["open", "extractTo", "test", "addArchive", "password"].contains(command ?? "")
             configuration.arguments = ["--finder-action"]
             configuration.addsToRecentItems = false
             NSWorkspace.shared.open([url], withApplicationAt: app, configuration: configuration) { application, error in
@@ -57,7 +57,7 @@ final class ArkivFinderSync: FIFinderSync {
         let actions = NSMenu(title: "Arkiv")
         actions.autoenablesItems = false
         if let archive {
-            let titles = ["Open in Arkiv", "Extract Here", "Extract to “\(FinderHandoff.folderName(for: archive))/”", "Extract To…"]
+            let titles = ["Open in Arkiv", "Extract Here", "Extract to “\(FinderHandoff.folderName(for: archive))/”", "Extract To…", "Test Archive"]
             for (command, title) in zip(FinderCommand.allCases, titles) {
                 let item = actions.addItem(withTitle: title, action: #selector(performAction(_:)), keyEquivalent: "")
                 item.target = self; item.tag = command.menuTag
@@ -65,8 +65,8 @@ final class ArkivFinderSync: FIFinderSync {
         } else if let sources {
             for (command, title) in [(CreationCommand.addArchive, "Add to Archive…"),
                                      (.zip, "Compress to “\(CreationHandoff.baseName(for: sources)).zip”"),
-                                     (.sevenZip, "Compress to “\(CreationHandoff.baseName(for: sources)).7z”"),
-                                     (.password, "Compress with Password…")] {
+                                     (.password, "Compress with Password…"),
+                                     (.sevenZip, "Compress to “\(CreationHandoff.baseName(for: sources)).7z”")] {
                 let item = actions.addItem(withTitle: title, action: #selector(performAction(_:)), keyEquivalent: "")
                 item.target = self; item.tag = command.menuTag
             }

@@ -62,6 +62,8 @@ struct SourceStamp: Equatable, Sendable {
     }
 }
 public protocol ArchiveEngine: Sendable {
+    func test(_ url: URL, cancellation: ArchiveCancellation, password: String?,
+              progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> ArchiveIntegrityResult
     func inspect(_ url: URL, cancellation: ArchiveCancellation) throws -> ArchiveSnapshot
     func extract(_ snapshot: ArchiveSnapshot, ids: [Int64]?, into parent: URL,
                  cancellation: ArchiveCancellation,
@@ -167,4 +169,46 @@ public struct LibArchiveEngine: ArchiveEngine {
 
 public enum SevenZipBackend {
     public static var loadedLibraryURL: URL { URL(fileURLWithPath: String(cString: arkiv_seven_loaded_library())) }
+}
+
+public enum ArchiveIntegrityState: String, Sendable {
+    case ok = "OK", warning = "Warning", corrupt = "Corrupt", crcError = "CRC Error"
+    case wrongPassword = "Wrong Password", unsupportedMethod = "Unsupported Method"
+}
+public struct ArchiveIntegrityResult: Sendable {
+    public let state: ArchiveIntegrityState
+    public let detail: String
+}
+extension LibArchiveEngine {
+    /// Verifies the original archive, including encrypted data, without extraction or publication.
+    public func test(_ url: URL, cancellation: ArchiveCancellation, password: String? = nil,
+                     progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> ArchiveIntegrityResult {
+        try validateArchivePassword(password)
+        let stamp = try SourceStamp(url)
+        let receiver = ProgressReceiver(progress)
+        let retained = Unmanaged.passRetained(receiver)
+        defer { retained.release() }
+        var error = [CChar](repeating: 0, count: 256)
+        var source = url.standardizedFileURL
+        #if os(macOS)
+        if source.path.hasPrefix("/var/") || source.path.hasPrefix("/tmp/") { source = URL(fileURLWithPath: "/private" + source.path) }
+        #endif
+        let code = arkiv_test(source.path, password, limits, cancellation.pointer, { context, files, bytes in
+            guard let context else { return }
+            Unmanaged<ProgressReceiver>.fromOpaque(context).takeUnretainedValue().callback(ArchiveProgress(files: files, bytes: bytes))
+        }, retained.toOpaque(), &error, error.count)
+        guard try SourceStamp(url) == stamp else { throw ArchiveFailure.message("Archive changed during testing.") }
+        let state: ArchiveIntegrityState
+        let detail: String
+        switch code {
+        case 0: state = .ok; detail = "All archive entries were decoded and their available checksums verified."
+        case 9: state = .warning; detail = "TAR structure and all payload bytes are readable. TAR has no payload checksum; content integrity cannot be confirmed."
+        case 6: state = .corrupt; detail = "Archive structure or data is damaged."
+        case 7: state = .crcError; detail = "An archive checksum does not match the decoded data."
+        case 8: state = .unsupportedMethod; detail = "The compression or encryption method is unsupported."
+        case 5: throw ArchiveFailure.wrongPassword
+        default: try check(code, error); throw ArchiveFailure.message("Unexpected integrity result.")
+        }
+        return ArchiveIntegrityResult(state: state, detail: detail)
+    }
 }

@@ -8,6 +8,7 @@ extension FinderCommand {
         case .extractHere: return 2
         case .extractFolder: return 3
         case .extractTo: return 4
+        case .test: return 5
         }
     }
 

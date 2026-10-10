@@ -43,9 +43,11 @@ final class FinderServiceProvider: NSObject {
             openArchive(request.archive)
             return
         }
-        guard !isBusy else { throw ArchiveFailure.message("Arkiv is already handling a Finder extraction. Wait or cancel it before starting another.") }
+        guard !isBusy else { throw ArchiveFailure.message("Arkiv is already handling a Finder operation. Wait or cancel it before starting another.") }
         isBusy = true
-        DispatchQueue.main.async { [self] in self.start(request) }
+        DispatchQueue.main.async { [self] in
+            if request.action == .test { self.startTest(request) } else { self.start(request) }
+        }
     }
 
     /// The development channel intentionally accepts allowlisted URL actions
@@ -68,6 +70,41 @@ final class FinderServiceProvider: NSObject {
     }
 
     static func requiresDestinationSelection(_ action: FinderAction) -> Bool { action == .extractTo }
+
+    private func startTest(_ request: FinderRequest, password: String? = nil) {
+        NSApp.activate(ignoringOtherApps: true)
+        let operation = FinderOperationWindow(archive: request.archive, verb: "Testing")
+        self.operation = operation; operation.showWindow(nil)
+        let token = operation.cancellation
+        worker.async { [self] in
+            let throttle = FinderProgressThrottle()
+            let result = Result {
+                try LibArchiveEngine().test(request.archive, cancellation: token, password: password) { progress in
+                    guard throttle.shouldUpdate() else { return }
+                    DispatchQueue.main.async { [weak operation] in operation?.showProgress(progress) }
+                }
+            }
+            DispatchQueue.main.async { [self] in
+                self.isBusy = false; operation.finish(); operation.close(); self.operation = nil
+                switch result {
+                case .success(let value):
+                    let alert = NSAlert(); alert.messageText = "Test Archive — " + value.state.rawValue
+                    alert.informativeText = request.archive.lastPathComponent + "\n\n" + value.detail
+                    alert.alertStyle = value.state == .ok ? .informational : .warning
+                    alert.runModal()
+                case .failure(let error):
+                    if case ArchiveFailure.cancelled = error { return }
+                    if ArchivePasswordPrompt.isPasswordFailure(error) {
+                        self.isBusy = true
+                        ArchivePasswordPrompt.ask(archive: request.archive, retry: password != nil) { [weak self] supplied in
+                            guard let self else { return }
+                            if let supplied { self.startTest(request, password: supplied) } else { self.isBusy = false }
+                        }
+                    } else { NSAlert(error: error).runModal() }
+                }
+            }
+        }
+    }
 
     private func start(_ request: FinderRequest, password: String? = nil, chosenDestination: URL? = nil) {
         if Self.requiresDestinationSelection(request.action) { NSApp.activate(ignoringOtherApps: true) }

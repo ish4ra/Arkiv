@@ -27,6 +27,7 @@ final class FinderServiceTests: XCTestCase {
         XCTAssertFalse(FinderServiceProvider.requiresDestinationSelection(.extractHere))
         XCTAssertFalse(FinderServiceProvider.requiresDestinationSelection(.extractFolder))
         XCTAssertTrue(FinderServiceProvider.requiresDestinationSelection(.extractTo))
+        XCTAssertFalse(FinderServiceProvider.requiresDestinationSelection(.test))
     }
 
     func testCompletionSoundOnlyPlaysOncePerSuccess() {

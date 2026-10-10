@@ -17,3 +17,5 @@ ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_engine.py -v
 ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_creation.py -v
 
 ARKIV_SEVEN_LIBRARY="$PWD/.build/sevenzip/$(basename "$library" | sed "s/libarkiv/libArkivSeven/")" python3 tests/test_sevenzip.py -v
+
+ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_integrity.py -v

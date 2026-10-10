@@ -15,6 +15,7 @@ Arkiv >
     Extract Here
     Extract to “Example/”
     Extract To…
+    Test Archive
 ```
 
 The folder title uses the actual filename with the same sanitization and byte

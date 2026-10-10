@@ -490,3 +490,130 @@ int arkiv_unlock_seven(const char *path, const char *output, const char *passwor
 }
 
 const char *arkiv_seven_loaded_library(void) { return arkiv_seven_library_path(); }
+
+/* libarchive's seekable reader may recover a damaged central directory as empty.
+   Check the directory envelope/count before letting the backend decode entries.
+   This is not a codec/parser replacement; all payload/CRC work stays in libarchive. */
+static uint16_t integrity_u16(const unsigned char *p) { return (uint16_t)(p[0] | ((uint16_t)p[1] << 8)); }
+static uint32_t integrity_u32(const unsigned char *p) { return (uint32_t)integrity_u16(p) | ((uint32_t)integrity_u16(p+2) << 16); }
+static uint64_t integrity_u64(const unsigned char *p) { return (uint64_t)integrity_u32(p) | ((uint64_t)integrity_u32(p+4) << 32); }
+static int integrity_zip_directory(int fd, uint64_t size, arkiv_limits limits, arkiv_cancel *token,
+                                   uint64_t *entries, char *error, size_t capacity) {
+    unsigned char tail[65557];
+    size_t length = size < sizeof(tail) ? (size_t)size : sizeof(tail);
+    if (length < 22 || pread(fd, tail, length, (off_t)(size-length)) != (ssize_t)length) return 6;
+    size_t position = length-22;
+    for (;;) {
+        if (!memcmp(tail+position, "PK\x05\x06", 4) && integrity_u16(tail+position+20) == length-position-22) break;
+        if (!position) return 6;
+        position--;
+    }
+    const unsigned char *end = tail+position;
+    uint64_t end_offset = size-length+position;
+    uint64_t count = integrity_u16(end+10), directory_size = integrity_u32(end+12), offset = integrity_u32(end+16);
+    if (integrity_u16(end+4) || integrity_u16(end+6) || integrity_u16(end+8) != count) {
+        fail(error, capacity, "Multipart ZIP testing is unsupported."); return 8;
+    }
+    if (count == 0xffff || directory_size == UINT32_MAX || offset == UINT32_MAX) {
+        unsigned char locator[20], record[56];
+        if (end_offset < 20 || pread(fd, locator, 20, (off_t)(end_offset-20)) != 20 || memcmp(locator,"PK\x06\x07",4)) return 6;
+        uint64_t zip64 = integrity_u64(locator+8);
+        if (integrity_u32(locator+4) || integrity_u32(locator+16) != 1) return 8;
+        if (zip64 > end_offset-20 || end_offset-20-zip64 < 56 ||
+            pread(fd,record,56,(off_t)zip64) != 56 || memcmp(record,"PK\x06\x06",4) ||
+            integrity_u64(record+4) < 44 || integrity_u64(record+4) != end_offset-20-zip64-12) return 6;
+        if (integrity_u32(record+16) || integrity_u32(record+20) || integrity_u64(record+24) != integrity_u64(record+32)) return 8;
+        count = integrity_u64(record+32); directory_size = integrity_u64(record+40); offset = integrity_u64(record+48);
+        end_offset = zip64;
+    }
+    if (count > limits.max_entries) return fail(error,capacity,"Archive entry limit exceeded.");
+    if (offset > end_offset || directory_size != end_offset-offset || (!count && offset)) return 6;
+    uint64_t cursor = offset;
+    for (uint64_t i=0; i<count; i++) {
+        if (cancelled(token)) return 2;
+        unsigned char header[46];
+        if (end_offset-cursor < sizeof(header) || pread(fd,header,sizeof(header),(off_t)cursor) != sizeof(header) || memcmp(header,"PK\x01\x02",4)) return 6;
+        uint64_t length = 46u + integrity_u16(header+28) + integrity_u16(header+30) + integrity_u16(header+32);
+        if (length > end_offset-cursor) return 6;
+        cursor += length;
+    }
+    if (cursor != end_offset) return 6;
+    *entries = count;
+    return 0;
+}
+
+static int integrity_error(struct archive *a, char *error, size_t capacity) {
+    const char *detail = archive_error_string(a);
+    if (detail && (strstr(detail, "CRC") || strstr(detail, "crc"))) {
+        fail(error, capacity, "Archive payload CRC does not match."); return 7;
+    }
+    if (detail && (strstr(detail, "Unsupported compression") || strstr(detail, "unsupported compression"))) {
+        fail(error, capacity, "Archive compression method is unsupported."); return 8;
+    }
+    fail(error, capacity, "Archive structure or payload is damaged."); return 6;
+}
+int arkiv_test(const char *path, const char *password, arkiv_limits limits, arkiv_cancel *token,
+               arkiv_progress_callback progress, void *context, char *error, size_t capacity) {
+    if (cancelled(token)) return 2;
+    int fd = create_open(path);
+    struct stat before, after;
+    if (fd < 0) return fail(error, capacity, "Cannot safely open archive.");
+    if (fstat(fd, &before) || !S_ISREG(before.st_mode)) { close(fd); return fail(error, capacity, "Choose a regular archive file."); }
+    unsigned char signature[6]; ssize_t n = pread(fd, signature, 6, 0);
+    int result = 0;
+    if (n == 6 && !memcmp(signature, "7z\xbc\xaf\x27\x1c", 6)) {
+        locale_t utf8 = newlocale(LC_CTYPE_MASK, "en_US.UTF-8", NULL);
+        if (!utf8) utf8 = newlocale(LC_CTYPE_MASK, "C.UTF-8", NULL);
+        if (!utf8) { close(fd); return fail(error, capacity, "UTF-8 support unavailable."); }
+        locale_t previous = uselocale(utf8);
+        result = arkiv_seven_test(fd, password, limits.max_entries, limits.max_bytes, seven_cancel, token, progress, context);
+        uselocale(previous); freelocale(utf8);
+        if (result == 1) result = 6;
+    } else {
+        uint64_t zip_entries = UINT64_MAX;
+        int is_zip = n >= 4 && !memcmp(signature, "PK", 2);
+        if (is_zip) result = integrity_zip_directory(fd, (uint64_t)before.st_size, limits, token, &zip_entries, error, capacity);
+        if (result || (is_zip && zip_entries == 0)) goto integrity_done;
+        struct archive *a = archive_read_new();
+        if (!a) { result = fail(error,capacity,"Cannot allocate archive reader."); goto integrity_done; }
+        archive_read_support_filter_none(a);
+        archive_read_support_format_zip_seekable(a); archive_read_support_format_tar(a);
+        if (archive_read_open_fd(a, fd, 65536) != ARCHIVE_OK) result = integrity_error(a, error, capacity);
+        struct archive_entry *entry; int status = ARCHIVE_EOF; uint64_t files = 0, bytes = 0;
+        char buffer[65536];
+        while (!result && (status = archive_read_next_header(a, &entry)) == ARCHIVE_OK) {
+            if (cancelled(token)) { result = 2; break; }
+            if (files >= limits.max_entries || !safe_path(archive_entry_pathname_utf8(entry)) || !entry_kind(entry)) {
+                result = fail(error, capacity, "Archive entry limit or safe path/type policy exceeded."); break;
+            }
+            if (archive_entry_is_encrypted(entry) > 0) { result = 8; fail(error, capacity, "Encrypted ZIP testing is unsupported."); break; }
+            int64_t expected = archive_entry_size(entry); uint64_t read_bytes = 0;
+            if (expected < 0 || (uint64_t)expected > limits.max_bytes - bytes) {
+                result = fail(error, capacity, "Expanded size limit exceeded."); break;
+            }
+            for (;;) {
+                if (cancelled(token)) { result = 2; break; }
+                la_ssize_t amount = archive_read_data(a, buffer, sizeof(buffer));
+                if (amount < 0) { result = integrity_error(a, error, capacity); break; }
+                if (!amount) break;
+                if ((uint64_t)amount > limits.max_bytes - bytes) { result = fail(error, capacity, "Expanded size limit exceeded."); break; }
+                bytes += amount; read_bytes += amount;
+                if (progress) progress(context, files, bytes);
+            }
+            if (!result && read_bytes != (uint64_t)expected) result = 6;
+            if (!result) { files++; if (progress) progress(context, files, bytes); }
+        }
+        if (!result && status != ARCHIVE_EOF) result = integrity_error(a, error, capacity);
+        if (!result && !is_zip && (archive_format(a) & ARCHIVE_FORMAT_BASE_MASK) == ARCHIVE_FORMAT_ZIP) {
+            result = integrity_zip_directory(fd, (uint64_t)before.st_size, limits, token, &zip_entries, error, capacity);
+            is_zip = 1;
+        }
+        if (!result && is_zip && files != zip_entries) result = 6;
+        if (!result && (archive_format(a) & ARCHIVE_FORMAT_BASE_MASK) == ARCHIVE_FORMAT_TAR) result = 9;
+        archive_read_free(a);
+    }
+integrity_done:
+    if (cancelled(token)) result = 2;
+    if (fstat(fd, &after) || !create_same_stat(&before, &after)) result = fail(error, capacity, "Archive changed during testing.");
+    close(fd); return result;
+}

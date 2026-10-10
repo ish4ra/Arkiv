@@ -4,14 +4,27 @@ These are **fixture results on Linux with libarchive 3.7.4 and in [macOS CI](htt
 
 | Format | Browse/extract evidence | Create/modify | Encryption/multipart/comments/integrity command |
 | --- | --- | --- | --- |
-| ZIP | Stored and Deflate; nested Unicode paths, empty, corrupt CRC | Create Store/Deflate; modification deferred | Not implemented; CRC errors caught during extraction |
-| TAR | Regular file, nested paths, rejection of links/devices | Not implemented | Not implemented |
-| 7z | LZMA/LZMA2; plain/encrypted fixtures and round trips | Create LZMA2; no modification | AES-256 content, optional filenames; no multipart/integrity command |
+| ZIP | Stored and Deflate; nested Unicode paths, empty, corrupt CRC | Default creation: Store/Deflate; modification deferred | Test reads data and checks CRC; encryption/multipart/comments deferred |
+| TAR | Regular file, nested paths, rejection of links/devices | Not implemented | Test checks structure/readability; warning: no payload checksum |
+| 7z | LZMA/LZMA2; plain/encrypted fixtures and round trips | Create LZMA2; no modification | AES-256 content, optional filenames; full-data/CRC Test; no multipart |
 | RAR5 | One stored upstream fixture, byte-for-byte extraction | Never create RAR | Not implemented |
 | RAR4 | Decoder registered; no fixture validation yet | Not implemented | Not implemented |
 | All other spec formats | Deferred, not advertised | Not implemented | Not implemented |
 
 An accepted file extension does not prove a compression method is available. 7z encrypted extraction is supported through the bundled backend; encrypted ZIP remains rejected. ZIPX, compressed TAR filters, solid/multipart RAR and advanced 7z compatibility require dedicated fixtures before support claims. The app initially registers only ZIP/TAR document associations.
+
+## Creation policy
+
+ZIP is the primary/default creation format for normal macOS use. Store/Deflate
+remain available. 7z is a secondary choice for LZMA2 compression or AES-256 with
+optional filename encryption, and remains available in Finder and Create Archive.
+Compress with Password uses 7z because ZIP AES has not passed interoperability
+validation; Arkiv never silently falls back to ZipCrypto.
+
+Read support does not imply write support. Only legally redistributable,
+fixture-verified writers are exposed. RAR/RAR5 are read/browse/extract only within
+the evidence above: Arkiv will not implement or depend on restricted RAR encoding.
+No broad RAR codec or multipart claim is made.
 
 ## Backend research (2026-10-07)
 

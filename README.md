@@ -55,8 +55,8 @@ not notarized; keyless builds clearly report that updates are not configured.
 ### Direct Finder menu
 
 Use the first-run Finder setup, or **Arkiv → Finder Integration…**, for a direct **Arkiv** submenu when
-right-clicking one ZIP or uncompressed TAR in your home folder. Actions include
-Open, Extract Here, Extract to an archive-named folder, and Extract To. Extraction
+right-clicking one ZIP, 7z or uncompressed TAR in your home folder. Actions include
+Open, Extract Here, Extract to an archive-named folder, Extract To, and Test Archive. Extraction
 requests execute directly after validation; Extract To retains its destination chooser.
 The custom-URL trust tradeoff is documented in [Finder integration](docs/finder-sync.md).
 Services remain the fallback outside this scope.
@@ -67,8 +67,19 @@ when you return. **Not Now** is remembered; setup remains available from the men
 
 ### Archive creation
 
-Select files/folders in Finder for **Add to Archive…**, direct **Compress to ZIP/7z**, or **Compress with Password…**.
+ZIP is the default creation format. Select files/folders in Finder for **Add to Archive…**,
+**Compress to “Name.zip”**, or **Compress with Password…**. Direct **Compress to “Name.7z”**
+and 7z in the format selector remain secondary options. Password compression uses 7z AES-256.
 The File menu also offers **Create Archive…**. Store/Deflate, mixed selections,
 nested/empty folders, Unicode, progress and cancellation are supported with
 transactional no-overwrite publication. 7z offers LZMA2, AES-256 and optional encrypted filenames; ZIP AES remains unavailable. Passwords are not saved.
 See [creation behavior and real-Mac tests](docs/creation.md) and [7z backend, temporary plaintext handling and licensing](docs/sevenzip.md).
+
+### Test Archive
+
+Use **Test Archive** in Finder’s Arkiv submenu or the app’s Test action to read and
+verify archive data without publishing extracted files. ZIP and 7z verify decoded
+data and available CRCs; TAR checks headers and payload readability but reports a
+warning because TAR has no payload checksum. Encrypted 7z requests a password and
+supports retry. Testing is cancellable and does not play the extraction sound.
+See [integrity checks, limits, and real-Mac tests](docs/integrity.md).

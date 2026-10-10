@@ -15,6 +15,10 @@ final class FinderActionTests: XCTestCase {
     private func extract(_ action: FinderAction, to destination: URL? = nil, token: ArchiveCancellation = ArchiveCancellation()) throws -> URL {
         try FinderExtractor().extract(FinderRequest(action: action, urls: [archive]), destination: destination, cancellation: token, progress: { _ in })
     }
+    func testIntegrityRequestCannotExtract() throws {
+        let request = try FinderRequest(action: .test, urls: [archive])
+        XCTAssertThrowsError(try FinderExtractor().extract(request, cancellation: ArchiveCancellation(), progress: { _ in }))
+    }
     func testSelectionRejectsMultipleRemoteDirectoriesAndSymlinks() throws {
         XCTAssertThrowsError(try FinderRequest(action: .extractHere, urls: []))
         XCTAssertThrowsError(try FinderRequest(action: .extractHere, urls: [archive, archive]))

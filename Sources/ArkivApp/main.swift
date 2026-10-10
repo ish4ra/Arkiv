@@ -127,6 +127,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         return .terminateNow
     }
+    @objc func testArchiveFile(_ sender: Any?) {
+        let panel = NSOpenPanel(); panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false; panel.canChooseFiles = true
+        panel.prompt = "Test"; panel.message = "Select a ZIP, 7z, or TAR archive to test, including a damaged archive."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do { try finderServices.perform(FinderRequest(action: .test, urls: [url])) }
+        catch { NSAlert(error: error).runModal() }
+    }
     private func buildMenus() {
         let main = NSMenu()
         let application = NSMenu()
@@ -144,6 +152,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         file.addItem(.separator())
         file.addItem(withTitle: "Extract Selected…", action: #selector(BrowserWindowController.extractSelected(_:)), keyEquivalent: "e")
         file.addItem(withTitle: "Extract All…", action: #selector(BrowserWindowController.extractAll(_:)), keyEquivalent: "E")
+        file.addItem(withTitle: "Test Archive", action: #selector(BrowserWindowController.testArchive(_:)), keyEquivalent: "t")
+        let testFile = file.addItem(withTitle: "Test Archive File…", action: #selector(testArchiveFile(_:)), keyEquivalent: "T"); testFile.target = self
         file.addItem(withTitle: "Archive Info", action: #selector(BrowserWindowController.showInfo(_:)), keyEquivalent: "i")
         file.addItem(.separator())
         file.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")

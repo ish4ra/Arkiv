@@ -67,7 +67,7 @@ enum ArchivePasswordPrompt {
     static func ask(archive: URL, retry: Bool, parent: NSWindow? = nil, completion: @escaping (String?) -> Void) {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = retry ? "Couldn’t unlock archive" : "Unlock archive"
+        alert.messageText = retry ? "Wrong Password" : "Unlock archive"
         alert.informativeText = (retry ? "The password was incorrect or the encrypted archive is damaged. Try again.\n\n" : "") + archive.lastPathComponent + "\nYour password is not saved."
         let fields = PasswordEntryView(confirm: false)
         fields.setFrameSize(NSSize(width: 320, height: 64))

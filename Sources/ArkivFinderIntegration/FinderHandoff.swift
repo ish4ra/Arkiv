@@ -2,7 +2,7 @@ import Foundation
 
 /// The extension depends only on this routing module, never on the archive engine.
 public enum FinderCommand: String, CaseIterable, Sendable {
-    case open, extractHere, extractFolder, extractTo
+    case open, extractHere, extractFolder, extractTo, test
 }
 
 public enum FinderHandoffError: Error, LocalizedError {

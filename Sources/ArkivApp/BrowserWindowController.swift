@@ -223,6 +223,41 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     private func selectedPaths() -> Set<String> {
         Set(table.selectedRowIndexes.compactMap { rows.indices.contains($0) ? rows[$0].path : nil })
     }
+    @objc func testArchive(_ sender: Any?) {
+        guard !isBusy, let url = snapshot?.url else { return }
+        test(url)
+    }
+    private func test(_ url: URL, password: String? = nil) {
+        let token = begin("Testing archive…")
+        worker.async { [self] in
+            let throttle = ProgressThrottle()
+            let result = Result {
+                try engine.test(url, cancellation: token, password: password) { progress in
+                    guard throttle.shouldUpdate() else { return }
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.isBusy else { return }
+                        self.status.stringValue = "\(progress.files) entries · \(ByteCountFormatter.string(fromByteCount: Int64(progress.bytes), countStyle: .file)) tested"
+                    }
+                }
+            }
+            DispatchQueue.main.async { [self] in
+                finish()
+                switch result {
+                case .success(let value):
+                    status.stringValue = "Test Archive — " + value.state.rawValue
+                    let alert = NSAlert(); alert.messageText = status.stringValue; alert.informativeText = value.detail
+                    alert.alertStyle = value.state == .ok ? .informational : .warning
+                    if let window { alert.beginSheetModal(for: window) }
+                case .failure(let error):
+                    if ArchivePasswordPrompt.isPasswordFailure(error) {
+                        ArchivePasswordPrompt.ask(archive: url, retry: password != nil, parent: window) { [weak self] supplied in
+                            if let supplied { self?.test(url, password: supplied) }
+                        }
+                    } else { present(error) }
+                }
+            }
+        }
+    }
     @objc func extractSelected(_ sender: Any?) {
         guard let index else { return }
         let ids = index.entryIDs(for: selectedPaths())
@@ -348,7 +383,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(copyPath(_:)), #selector(extractSelected(_:)): return !isBusy && !selectedPaths().isEmpty
-        case #selector(extractAll(_:)), #selector(showInfo(_:)): return !isBusy && snapshot != nil
+        case #selector(testArchive(_:)), #selector(extractAll(_:)), #selector(showInfo(_:)): return !isBusy && snapshot != nil
         case #selector(goUp(_:)): return !isBusy && !currentPath.isEmpty
         case #selector(goBack(_:)): return !isBusy && !back.isEmpty
         case #selector(goForward(_:)): return !isBusy && !forward.isEmpty
@@ -367,13 +402,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     func windowWillClose(_ notification: Notification) { onClose?() }
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [NSToolbarItem.Identifier("open"), .flexibleSpace, NSToolbarItem.Identifier("extract"), NSToolbarItem.Identifier("all"), NSToolbarItem.Identifier("info")]
+        [NSToolbarItem.Identifier("open"), .flexibleSpace, NSToolbarItem.Identifier("extract"), NSToolbarItem.Identifier("all"), NSToolbarItem.Identifier("test"), NSToolbarItem.Identifier("info")]
     }
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
         let definitions: [String: (String, String, Selector)] = [
             "open": ("Open Archive", "folder", #selector(openArchive(_:))),
             "extract": ("Extract Selected", "arrow.down.doc", #selector(extractSelected(_:))),
             "all": ("Extract All", "square.and.arrow.down", #selector(extractAll(_:))),
+            "test": ("Test Archive", "checkmark.shield", #selector(testArchive(_:))),
             "info": ("Info", "info.circle", #selector(showInfo(_:)))
         ]
         guard let (title, symbol, action) = definitions[id.rawValue] else { return nil }

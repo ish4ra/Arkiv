@@ -56,6 +56,15 @@ final class SevenZipTests: XCTestCase {
                     guard case ArchiveFailure.wrongPassword = error else { return XCTFail("Unexpected \(error)") }
                 }
             }
+            XCTAssertEqual(try engine.test(archive, cancellation: ArchiveCancellation(), password: options.0).state, .ok)
+            if options.0 != nil {
+                XCTAssertThrowsError(try engine.test(archive, cancellation: ArchiveCancellation())) { error in
+                    guard case ArchiveFailure.passwordRequired = error else { return XCTFail("Unexpected \(error)") }
+                }
+                XCTAssertThrowsError(try engine.test(archive, cancellation: ArchiveCancellation(), password: "incorrect")) { error in
+                    guard case ArchiveFailure.wrongPassword = error else { return XCTFail("Unexpected \(error)") }
+                }
+            }
             var snapshot: ArchiveSnapshot? = try engine.inspect(archive, cancellation: ArchiveCancellation(), password: options.0)
             XCTAssertEqual(snapshot?.entries.count, 4)
             let spool = try XCTUnwrap(snapshot?.unlocked?.directory)

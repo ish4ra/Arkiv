@@ -30,8 +30,9 @@ final class BrowserWindowTests: XCTestCase {
             XCTAssertTrue(requestedOpen)
             let toolbar = window.toolbar!
             XCTAssertEqual(controller.toolbarDefaultItemIdentifiers(toolbar).map(\.rawValue),
-                ["open", NSToolbarItem.Identifier.flexibleSpace.rawValue, "extract", "all", "info"])
+                ["open", NSToolbarItem.Identifier.flexibleSpace.rawValue, "extract", "all", "test", "info"])
             XCTAssertFalse(controller.validateMenuItem(NSMenuItem(title: "", action: #selector(BrowserWindowController.extractAll(_:)), keyEquivalent: "")))
+            XCTAssertFalse(controller.validateMenuItem(NSMenuItem(title: "", action: #selector(BrowserWindowController.testArchive(_:)), keyEquivalent: "")))
         }
     }
     func testExplicitNewWindowRetainsIndependentWindows() async {

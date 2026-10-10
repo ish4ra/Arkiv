@@ -1,4 +1,4 @@
-// macOS CI: deliver all eight custom URLs through real NSWorkspace to the packaged
+// macOS CI: deliver all nine custom URLs through real NSWorkspace to the packaged
 // Arkiv executable, then await AppKit receiver acknowledgements. No extraction.
 import AppKit
 
@@ -10,7 +10,7 @@ try FileManager.default.createDirectory(at: root, withIntermediateDirectories: f
 defer { try? FileManager.default.removeItem(at: root) }
 let archive = root.appendingPathComponent("日本語 & # percent%.zip")
 try Data([0x50, 0x4b, 0x05, 0x06] + Array(repeating: UInt8(0), count: 18)).write(to: archive)
-let expected: Set<String> = ["zip", "sevenZip", "password", "addArchive", "open", "extractHere", "extractFolder", "extractTo"]
+let expected: Set<String> = ["zip", "sevenZip", "password", "addArchive", "open", "extractHere", "extractFolder", "extractTo", "test"]
 var received: Set<String> = []
 var failure = false
 var launched = false
@@ -38,7 +38,7 @@ defer {
         }
     }
 }
-let commands = [firstCommand] + ["zip", "sevenZip", "password", "addArchive", "open", "extractHere", "extractFolder", "extractTo"].filter { $0 != firstCommand }
+let commands = [firstCommand] + ["zip", "sevenZip", "password", "addArchive", "open", "extractHere", "extractFolder", "extractTo", "test"].filter { $0 != firstCommand }
 let urls = commands.map { command -> URL in
     var components = URLComponents()
     components.scheme = "arkiv-finder"; components.host = ["zip", "sevenZip", "password", "addArchive"].contains(command) ? "create" : "action"; components.path = "/v1"
@@ -71,14 +71,14 @@ while !failure && (!launched || !warmCompleted || received != expected) && Date(
     RunLoop.main.run(until: Date().addingTimeInterval(0.05))
 }
 guard launched, warmCompleted, !failure, received == expected else {
-    fputs("Packaged Finder URL delivery failed or did not reach all eight app routing callbacks\n", stderr)
+    fputs("Packaged Finder URL delivery failed or did not reach all nine app routing callbacks\n", stderr)
     return 1
 }
-print("Verified real NSWorkspace → packaged AppKit URL receipt → all eight Finder action callbacks (read-only extraction dispatch intercepted)")
+print("Verified real NSWorkspace → packaged AppKit URL receipt → all nine Finder action callbacks (read-only extraction dispatch intercepted)")
 
 return 0
 }
-for command in ["zip", "sevenZip", "extractHere", "extractFolder"] {
+for command in ["zip", "sevenZip", "extractHere", "extractFolder", "test"] {
     let result = try runProbe(firstCommand: command)
     if result != 0 { exit(result) }
 }

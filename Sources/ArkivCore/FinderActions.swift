@@ -3,7 +3,7 @@ import CArkiv
 import ArkivFinderIntegration
 
 public enum FinderAction: String, CaseIterable, Sendable {
-    case open, extractHere, extractFolder, extractTo
+    case open, extractHere, extractFolder, extractTo, test
 }
 
 public struct FinderRequest: Sendable {
@@ -43,7 +43,7 @@ public struct FinderExtractor {
     public func extract(_ request: FinderRequest, destination: URL? = nil, password: String? = nil,
                         cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
-        guard request.action != .open else { throw ArchiveFailure.message("Open requests must go to the archive browser.") }
+        guard [.extractHere, .extractFolder, .extractTo].contains(request.action) else { throw ArchiveFailure.message("Open requests must go to the archive browser.") }
         let parent: URL
         if request.action == .extractTo {
             guard let destination, destination.isFileURL else { throw ArchiveFailure.message("Choose a destination folder.") }

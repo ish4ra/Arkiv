@@ -1,6 +1,6 @@
 # ZIP / 7z creation and Finder compression
 
-Arkiv creates ZIP archives using system libarchive and 7z archives using a bundled, in-process 7-Zip library.
+ZIP is Arkiv’s primary/default creation format. Arkiv creates ZIP archives using system libarchive and offers 7z as a secondary format using a bundled, in-process 7-Zip library. RAR/RAR5 creation is not supported; read support never implies write support.
 There is no shell compression command, bundled 7zz executable, or Homebrew/runtime
 installation requirement. Existing archive modification is not implemented.
 

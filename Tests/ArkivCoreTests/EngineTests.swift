@@ -12,6 +12,26 @@ final class EngineTests: XCTestCase {
         try Data(base64Encoded: "UEsDBBQAAAAAAIBRR12GphA2BQAAAAUAAAAQAAAAZm9sZGVyL2hlbGxvLnR4dGhlbGxvUEsDBBQAAAAAAIBRR10gNVjZBQAAAAUAAAAJAAAAb3RoZXIudHh0b3RoZXJQSwECFAMUAAAAAACAUUddhqYQNgUAAAAFAAAAEAAAAAAAAAAAAAAAgAEAAAAAZm9sZGVyL2hlbGxvLnR4dFBLAQIUAxQAAAAAAIBRR10gNVjZBQAAAAUAAAAJAAAAAAAAAAAAAACAATMAAABvdGhlci50eHRQSwUGAAAAAAIAAgB1AAAAXwAAAAAA")!.write(to: archive)
     }
     override func tearDownWithError() throws { try FileManager.default.removeItem(at: root) }
+    func testIntegrityReadsPayloadAndDetectsCRCWithoutPublishing() throws {
+        XCTAssertEqual(try engine.test(archive, cancellation: ArchiveCancellation()).state, .ok)
+        var bytes = try Data(contentsOf: archive)
+        bytes[46] ^= 1 // stored first payload, preserving valid headers
+        try bytes.write(to: archive)
+        XCTAssertEqual(try engine.test(archive, cancellation: ArchiveCancellation()).state, .crcError)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.path), ["fixture.zip"])
+    }
+    func testIntegrityCancellationAndCorruptHeader() throws {
+        let token = ArchiveCancellation(); token.cancel()
+        XCTAssertThrowsError(try engine.test(archive, cancellation: token)) { error in
+            guard case ArchiveFailure.cancelled = error else { return XCTFail("Expected cancellation") }
+        }
+        let during = ArchiveCancellation()
+        XCTAssertThrowsError(try engine.test(archive, cancellation: during, progress: { _ in during.cancel() })) { error in
+            guard case ArchiveFailure.cancelled = error else { return XCTFail("Expected streaming cancellation") }
+        }
+        try Data("broken".utf8).write(to: archive)
+        XCTAssertEqual(try engine.test(archive, cancellation: ArchiveCancellation()).state, .corrupt)
+    }
     func testInspectAndSelectiveExtraction() throws {
         let snapshot = try engine.inspect(archive, cancellation: ArchiveCancellation())
         XCTAssertEqual(snapshot.entries.map(\.path), ["folder/hello.txt", "other.txt"])

@@ -10,7 +10,7 @@
 | Create/read 7z / AES-256 / filename encryption | LZMA2, content/header encryption, native password prompt/retry; [backend and limits](sevenzip.md) |
 | Modify / ZIP AES | Deferred; no enabled UI claims |
 | Solid archives / multipart / comments | Deferred compatibility work |
-| Integrity test command | Deferred; extraction checks data/CRC but is not a dedicated Test action |
+| Integrity test command | ZIP/7z full-data/CRC checks; TAR structure/readability with explicit checksum warning; native progress/cancellation/password retry |
 | Checksums / split-combine / benchmark / CLI | Deferred |
 | Finder extraction | AppKit Services for one ZIP/uncompressed TAR: open, here, archive folder, destination chooser; real-Finder registration/invocation checks pending |
 | Drag in-out | Deferred |
