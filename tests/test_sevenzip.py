@@ -1,5 +1,8 @@
 """In-process 7z/AES boundary tests. Passwords are passed only in memory."""
 import ctypes as C
+import io
+import stat
+import tarfile
 import os
 import pathlib
 import struct
@@ -30,6 +33,22 @@ def stored(name, attributes=0x20, data=b'payload'):
     return b"7z\xbc\xaf\x27\x1c\x00\x04" + struct.pack('<I', zlib.crc32(start)) + start + data + header
 
 
+def stored_many(entries):
+    """Independent 7z Copy fixture with one unpack stream per file."""
+    count = number(len(entries))
+    payload = b''.join(data for name, mode, data in entries)
+    paths = b''.join(name.encode('utf-16le') + b'\0\0' for name, mode, data in entries)
+    sizes = b''.join(number(len(data)) for name, mode, data in entries)
+    attrs = b''.join(struct.pack('<I', mode) for name, mode, data in entries)
+    header = (b'\x01\x04\x06\x00' + count + b'\x09' + sizes + b'\x00'
+              + b'\x07\x0b' + count + b'\x00' + b'\x01\x01\x00' * len(entries)
+              + b'\x0c' + sizes + b'\x00\x08\x00\x00'
+              + b'\x05' + count + b'\x11' + number(len(paths) + 1) + b'\x00' + paths
+              + b'\x15' + number(len(attrs) + 2) + b'\x01\x00' + attrs + b'\x00\x00')
+    start = struct.pack('<QQI', len(payload), len(header), zlib.crc32(header))
+    return b"7z\xbc\xaf\x27\x1c\x00\x04" + struct.pack('<I', zlib.crc32(start)) + start + payload + header
+
+
 class SevenZipTests(unittest.TestCase):
     def decode(self, data, password=None, cancel=None):
         with tempfile.TemporaryFile() as source, tempfile.TemporaryFile() as output:
@@ -56,9 +75,65 @@ class SevenZipTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(self.decode(stored(name))[0], 1)
 
-    def test_symlink_device_and_reparse_attributes_rejected(self):
-        for attr in [(0o120777 << 16) | 0x8000, (0o020600 << 16) | 0x8000, 0x400]:
+    def test_reparse_attributes_rejected(self):
+        for attr in [0x400]:
             self.assertEqual(self.decode(stored('unsafe', attr))[0], 1)
+
+    def test_posix_symlink_targets_and_executable_modes(self):
+        for target in [b'other', b'../outside', b'/absolute']:
+            result, decoded = self.decode(stored('link', (0o120777 << 16) | 0x8000, target))
+            self.assertEqual(result, 0)
+            with tarfile.open(fileobj=io.BytesIO(decoded)) as z:
+                self.assertTrue(z.getmember('link').issym())
+                self.assertEqual(z.getmember('link').linkname.encode(), target)
+        result, decoded = self.decode(stored('run', (0o107777 << 16) | 0x8000, b'executable'))
+        self.assertEqual(result, 0)
+        with tarfile.open(fileobj=io.BytesIO(decoded)) as z:
+            self.assertEqual(z.getmember('run').mode, 0o755)
+        for target in [b'', b'a\0b', b'x' * 4097]:
+            self.assertNotEqual(self.decode(stored('bad', (0o120777 << 16) | 0x8000, target))[0], 0)
+
+    def test_special_types_survive_private_spool(self):
+        for mode, kind in [(0o010600, tarfile.FIFOTYPE), (0o020600, tarfile.CHRTYPE), (0o060600, tarfile.BLKTYPE)]:
+            result, decoded = self.decode(stored('special', (mode << 16) | 0x8000, b'discard payload'))
+            self.assertEqual(result, 0)
+            with tarfile.open(fileobj=io.BytesIO(decoded)) as t:
+                self.assertEqual(t.getmember('special').type, kind)
+                self.assertEqual(t.getmember('special').size, 0)
+
+    def test_special_and_normal_entry_share_spool(self):
+        result, decoded = self.decode(stored_many([('fifo', (0o010600 << 16) | 0x8000, b'ignored'), ('ok', (0o100755 << 16) | 0x8000, b'payload')]))
+        self.assertEqual(result, 0)
+        with tarfile.open(fileobj=io.BytesIO(decoded)) as t:
+            self.assertTrue(t.getmember('fifo').isfifo())
+            self.assertEqual(t.extractfile('ok').read(), b'payload')
+            self.assertEqual(t.getmember('ok').mode, 0o755)
+
+    def test_socket_marker_warns_and_normal_file_extracts(self):
+        result, decoded = self.decode(stored_many([('socket', (0o140600 << 16) | 0x8000, b'ignored'), ('ok', (0o100755 << 16) | 0x8000, b'payload')]))
+        self.assertEqual(result, 0)
+        with tarfile.open(fileobj=io.BytesIO(decoded)) as t:
+            self.assertTrue(t.getmember('socket').isfifo())
+        # Exercise the actual private-spool consumer: the marker must never become
+        # an on-disk FIFO, and its warning must not prevent ordinary extraction.
+        seven = pathlib.Path(os.environ['ARKIV_SEVEN_LIBRARY'])
+        engine = C.CDLL(str(seven.parent.parent / 'engine-tests' / seven.name.replace('libArkivSeven', 'libarkiv')))
+        class Limits(C.Structure):
+            _fields_ = [('entries', C.c_uint64), ('bytes', C.c_uint64)]
+        progress_type = C.CFUNCTYPE(None, C.c_void_p, C.c_uint64, C.c_uint64)
+        warning_type = C.CFUNCTYPE(None, C.c_void_p, C.c_char_p, C.c_char_p)
+        engine.arkiv_extract_with_warnings.argtypes = [C.c_char_p, C.c_char_p, C.c_void_p, C.c_size_t, Limits, C.c_void_p, progress_type, warning_type, C.c_void_p, C.c_char_p, C.c_size_t]
+        warnings = []
+        with tempfile.TemporaryDirectory() as base:
+            root = pathlib.Path(base); archive = root / 'spool.tar'; archive.write_bytes(decoded)
+            out = root / 'out'; out.mkdir(); error = C.create_string_buffer(256)
+            result = engine.arkiv_extract_with_warnings(bytes(archive), bytes(out), None, 0, Limits(100, 100000), None, progress_type(lambda *args: None), warning_type(lambda _, name, message: warnings.append((name, message))), None, error, len(error))
+            self.assertEqual(result, 0, error.value)
+            self.assertEqual(len(warnings), 1)
+            self.assertEqual(warnings[0][0], b'socket')
+            self.assertIn(b'Unsupported special', warnings[0][1])
+            self.assertFalse((out / 'socket').exists())
+            self.assertEqual((out / 'ok').read_bytes(), b'payload')
 
     def test_aes_header_content_wrong_password_and_retry(self):
         for headers in [False, True]:
@@ -70,10 +145,10 @@ class SevenZipTests(unittest.TestCase):
             self.assertEqual(result, 0)
             with tempfile.TemporaryFile() as f:
                 f.write(decoded); f.seek(0)
-                with zipfile.ZipFile(f) as z:
-                    self.assertEqual(z.read('資料 🐈/hello.txt'), b'content' * 10000)
-                    self.assertEqual(z.read('zero'), b'')
-                    self.assertIsNone(z.testzip())
+                with tarfile.open(fileobj=f) as z:
+                    self.assertEqual(z.extractfile('資料 🐈/hello.txt').read(), b'content' * 10000)
+                    self.assertEqual(z.extractfile('zero').read(), b'')
+                    self.assertTrue(z.getmember('empty').isdir())
 
     def test_cancelled_and_corrupt(self):
         callback = C.CFUNCTYPE(C.c_int, C.c_void_p)(lambda _: 1)

@@ -41,7 +41,7 @@ final class UnlockedArchive: @unchecked Sendable {
     let url: URL
     init() throws {
         directory = FileManager.default.temporaryDirectory.appendingPathComponent("arkiv-unlocked-" + UUID().uuidString, isDirectory: true)
-        url = directory.appendingPathComponent("contents.zip")
+        url = directory.appendingPathComponent("contents.tar")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
     }
     deinit { try? FileManager.default.removeItem(at: directory) }
@@ -72,7 +72,16 @@ public protocol ArchiveEngine: Sendable {
 private final class EntryCollector {
     var entries: [ArchiveEntry] = []
 }
+public struct ArchiveExtractionWarning: Equatable, Sendable {
+    public let path: String
+    public let reason: String
+}
+public struct ArchiveExtractionReport: Sendable {
+    public let url: URL
+    public let warnings: [ArchiveExtractionWarning]
+}
 private final class ProgressReceiver {
+    var warnings: [ArchiveExtractionWarning] = []
     let callback: @Sendable (ArchiveProgress) -> Void
     init(_ callback: @escaping @Sendable (ArchiveProgress) -> Void) { self.callback = callback }
 }
@@ -115,7 +124,7 @@ public struct LibArchiveEngine: ArchiveEngine {
             guard let context, let path, let name = String(validatingUTF8: path) else { return 1 }
             let collector = Unmanaged<EntryCollector>.fromOpaque(context).takeUnretainedValue()
             collector.entries.append(ArchiveEntry(id: id, path: name, size: size,
-                kind: kind == 1 ? .file : kind == 2 ? .directory : .unsupported))
+                kind: kind == 1 ? .file : kind == 2 ? .directory : kind == 3 ? .symbolicLink : kind == 4 ? .hardLink : .unsupported))
             return 0
         }, context, &error, error.count)
         try check(result, error)
@@ -125,6 +134,11 @@ public struct LibArchiveEngine: ArchiveEngine {
     public func extract(_ snapshot: ArchiveSnapshot, ids: [Int64]?, into parent: URL,
                         cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
+        try extractReporting(snapshot, ids: ids, into: parent, cancellation: cancellation, progress: progress).url
+    }
+    public func extractReporting(_ snapshot: ArchiveSnapshot, ids: [Int64]?, into parent: URL,
+                                 cancellation: ArchiveCancellation,
+                                 progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> ArchiveExtractionReport {
         if let ids, ids.isEmpty { throw ArchiveFailure.message("Select an entry to extract.") }
         guard try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
@@ -147,15 +161,20 @@ public struct LibArchiveEngine: ArchiveEngine {
             Unmanaged<ProgressReceiver>.fromOpaque(context).takeUnretainedValue()
                 .callback(ArchiveProgress(files: files, bytes: bytes))
         }
+        let warning: arkiv_warning_callback = { context, path, reason in
+            guard let context, let path, let reason else { return }
+            Unmanaged<ProgressReceiver>.fromOpaque(context).takeUnretainedValue().warnings.append(
+                ArchiveExtractionWarning(path: String(cString: path), reason: String(cString: reason)))
+        }
         let result: Int32
         if let ids {
             result = ids.sorted().withUnsafeBufferPointer { buffer in
-                arkiv_extract(snapshot.backingURL.path, staging.path, buffer.baseAddress, buffer.count,
-                    limits, cancellation.pointer, callback, context, &error, error.count)
+                arkiv_extract_with_warnings(snapshot.backingURL.path, staging.path, buffer.baseAddress, buffer.count,
+                    limits, cancellation.pointer, callback, warning, context, &error, error.count)
             }
         } else {
-            result = arkiv_extract(snapshot.backingURL.path, staging.path, nil, 0,
-                limits, cancellation.pointer, callback, context, &error, error.count)
+            result = arkiv_extract_with_warnings(snapshot.backingURL.path, staging.path, nil, 0,
+                limits, cancellation.pointer, callback, warning, context, &error, error.count)
         }
         try check(result, error)
         guard try SourceStamp(snapshot.url) == snapshot.stamp else {
@@ -163,7 +182,7 @@ public struct LibArchiveEngine: ArchiveEngine {
         }
         let destination = parent.appendingPathComponent("Arkiv Extracted " + UUID().uuidString, isDirectory: true)
         try manager.moveItem(at: staging, to: destination)
-        return destination
+        return ArchiveExtractionReport(url: destination, warnings: receiver.warnings)
     }
 }
 

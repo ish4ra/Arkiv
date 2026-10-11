@@ -127,7 +127,7 @@ final class FinderServiceProvider: NSObject {
             // The callback is serial on this worker; throttle updates without touching AppKit here.
             let throttle = FinderProgressThrottle()
             let result = Result {
-                try FinderExtractor().extract(request, destination: parent, password: password, cancellation: token) { progress in
+                try FinderExtractor().extractReporting(request, destination: parent, password: password, cancellation: token) { progress in
                     guard throttle.shouldUpdate() else { return }
                     DispatchQueue.main.async { [weak operation] in
                         operation?.showProgress(progress)
@@ -139,7 +139,9 @@ final class FinderServiceProvider: NSObject {
                 operation.finish(); operation.close(); self.operation = nil
                 ExtractionFeedback.completed(result)
                 switch result {
-                case .success(let output): Self.showExtractionResult(output, action: request.action)
+                case .success(let output):
+                    Self.showExtractionResult(output.url, action: request.action)
+                    ExtractionFeedback.showWarnings(output)
                 case .failure(let failure):
                     if case ArchiveFailure.cancelled = failure { return }
                     if ArchivePasswordPrompt.isPasswordFailure(failure) {

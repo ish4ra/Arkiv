@@ -14,13 +14,17 @@ typedef struct {
 } arkiv_limits;
 /* Callback strings are borrowed and valid only during the callback. */
 typedef int (*arkiv_entry_callback)(void *, int64_t, const char *, int64_t, int);
+typedef void (*arkiv_warning_callback)(void *, const char *, const char *);
 typedef void (*arkiv_progress_callback)(void *, uint64_t, uint64_t);
 /* Return 0 success, 1 error, 2 cancellation. Error buffer never contains archive data. */
 int arkiv_list(const char *, arkiv_limits, arkiv_cancel *, arkiv_entry_callback, void *, char *, size_t);
 /* Root must be a private, caller-owned directory. Never overwrites. IDs are sorted, unique archive ordinals;
-   NULL IDs means all entries. Only regular files/directories; no links or special entries. */
+   NULL IDs means all entries. Symlinks are preserved without traversal; hardlinks target only extracted regular files.
+   Unsupported special entries are skipped. The warning variant reports each skipped entry. */
 int arkiv_extract(const char *, const char *, const int64_t *, size_t, arkiv_limits,
                  arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
+int arkiv_extract_with_warnings(const char *, const char *, const int64_t *, size_t, arkiv_limits,
+                 arkiv_cancel *, arkiv_progress_callback, arkiv_warning_callback, void *, char *, size_t);
 /* Test streams all payload into a discard sink. 0 OK, 2 cancelled, 4 password required,
    5 wrong password or encrypted damage, 6 corrupt, 7 CRC error, 8 unsupported method,
    9 warning: format has no payload checksum. 1 operational/security error. */

@@ -64,6 +64,11 @@ jobs:
         run: scripts/ci-check.sh dmg scripts/build-dmg.sh
       - name: Package ZIP alternative
         run: ditto -c -k --sequesterRsrc --keepParent build/Arkiv.app "build/Arkiv-${ARKIV_ARCH}.zip"
+      - name: Extract actual packaged ZIP with Arkiv and verify app
+        run: |
+          ARKIV_PACKAGE_ZIP="$PWD/build/Arkiv-${ARKIV_ARCH}.zip" ARKIV_PACKAGE_OUTPUT="$PWD/build/extracted-package" scripts/ci-check.sh package-extract swift test --filter PackageExtractionTests -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
+          python3 scripts/verify-extracted-package.py build/Arkiv.app build/extracted-package/Arkiv.app
+          scripts/ci-check.sh extracted-app scripts/verify-app.sh build/extracted-package/Arkiv.app "$ARKIV_ARCH"
       - name: Validate update archive and appcast generation
         if: matrix.architecture == 'universal'
         run: |

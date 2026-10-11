@@ -43,7 +43,7 @@ public:
  Z7_COM7F_IMF(Seek(Int64 off,UInt32 origin,UInt64 *out)) {off_t p=lseek(fd,off,origin);if(p<0)return E_FAIL;if(out)*out=p;return S_OK;}
  Z7_COM7F_IMF(SetSize(UInt64 n)) {return ftruncate(fd,n)?E_FAIL:S_OK;}
 };
-struct Item {UString name;std::string utf8;uint64_t size=0,offset=0;bool dir=false;};
+struct Item {UString name;std::string utf8;uint64_t size=0,offset=0;bool dir=false,symlink=false;unsigned permissions=0600,type=0;};
 static bool safe(const std::string &p) {
  if(p.empty()||p.size()>4096||p[0]=='/')return false;unsigned depth=0;size_t start=0;
  for(size_t i=0;i<=p.size();i++){unsigned char c=i<p.size()?p[i]:0;if(c=='\\'||c==':'||(c&&c<32))return false;if(c=='/'||!c){auto part=p.substr(start,i-start);if(part.empty()||part=="."||part==".."||++depth>256)return false;start=i+1;if(i+1==p.size())break;}}return true;
@@ -73,19 +73,20 @@ public: State*s;Open(State*st):s(st){}
 class ZipOut: public ISequentialOutStream, public CMyUnknownImp {
 public:
  Z7_COM_UNKNOWN_IMP_1(ISequentialOutStream)
-public:archive*a;State*s;uint64_t remaining;ZipOut(archive*z,State*st,uint64_t n):a(z),s(st),remaining(n){}
- Z7_COM7F_IMF(Write(const void*p,UInt32 n,UInt32*done)){if(done)*done=0;if(s->stopped())return E_ABORT;if(n>remaining){s->error=1;return E_FAIL;}auto r=a?archive_write_data(a,p,n):n;if(r<0)return E_FAIL;remaining-=r;if(done)*done=r;return S_OK;}
+public:archive*a;State*s;uint64_t remaining;std::string *target;ZipOut(archive*z,State*st,uint64_t n,std::string*t=nullptr):a(z),s(st),remaining(n),target(t){}
+ Z7_COM7F_IMF(Write(const void*p,UInt32 n,UInt32*done)){if(done)*done=0;if(s->stopped())return E_ABORT;if(n>remaining){s->error=1;return E_FAIL;}if(target)target->append(static_cast<const char*>(p),n);auto r=a&&!target?archive_write_data(a,p,n):n;if(r<0)return E_FAIL;remaining-=r;if(done)*done=r;return S_OK;}
 };
 class Extract: public IArchiveExtractCallback, public ICryptoGetTextPassword, public CMyUnknownImp {
 public:
  Z7_COM_UNKNOWN_IMP_2(IArchiveExtractCallback,ICryptoGetTextPassword)
-public: State*s;archive*zip;std::vector<Item>items;CMyComPtr<ISequentialOutStream> active; ZipOut *activeRaw=nullptr;
+public: State*s;archive*zip;std::vector<Item>items;CMyComPtr<ISequentialOutStream> active; ZipOut *activeRaw=nullptr; Item *current=nullptr; std::string target;
  Extract(State*st,archive*z):s(st),zip(z){}
  Z7_COM7F_IMF(SetTotal(UInt64 n)){if(n>s->maxBytes){s->error=1;return E_FAIL;}return s->tick();}
  Z7_COM7F_IMF(SetCompleted(const UInt64*n)){if(s->progress&&n)s->progress(s->progressContext,s->files,*n);return s->tick();}
- Z7_COM7F_IMF(GetStream(UInt32 i,ISequentialOutStream**out,Int32 mode)){*out=nullptr;if(i>=items.size()||mode!=0)return E_FAIL;auto&a=items[i];if(zip){archive_entry*e=archive_entry_new();archive_entry_set_pathname_utf8(e,a.utf8.c_str());archive_entry_set_size(e,a.size);archive_entry_set_filetype(e,a.dir?AE_IFDIR:AE_IFREG);archive_entry_set_perm(e,a.dir?0700:0600);int r=archive_write_header(zip,e);archive_entry_free(e);if(r!=ARCHIVE_OK)return E_FAIL;}activeRaw=new ZipOut(zip,s,a.size);active=activeRaw;if(!a.dir){active->AddRef();*out=active;}return s->tick();}
+ int header(Item &a,const char *link=nullptr){if(!zip)return ARCHIVE_OK;archive_entry*e=archive_entry_new();archive_entry_set_pathname_utf8(e,a.utf8.c_str());archive_entry_set_size(e,a.type==AE_IFREG?a.size:0);archive_entry_set_filetype(e,a.type);archive_entry_set_perm(e,a.permissions);if(link)archive_entry_set_symlink(e,link);int r=archive_write_header(zip,e);archive_entry_free(e);return r;}
+ Z7_COM7F_IMF(GetStream(UInt32 i,ISequentialOutStream**out,Int32 mode)){*out=nullptr;if(i>=items.size()||mode!=0)return E_FAIL;auto&a=items[i];current=&a;target.clear();if(!a.symlink&&header(a)!=ARCHIVE_OK)return E_FAIL;activeRaw=new ZipOut(a.type==AE_IFREG?zip:nullptr,s,a.size,a.symlink?&target:nullptr);active=activeRaw;if(!a.dir){active->AddRef();*out=active;}return s->tick();}
  Z7_COM7F_IMF(PrepareOperation(Int32)){return s->tick();}
- Z7_COM7F_IMF(SetOperationResult(Int32 r)){if(r){s->error=s->testing&&r==NArchive::NExtract::NOperationResult::kUnsupportedMethod?8:s->asked&&s->password?5:s->testing?(r==NArchive::NExtract::NOperationResult::kCRCError?7:6):1;return E_FAIL;}if(active&&activeRaw->remaining)return E_FAIL;active.Release();s->files++;return (!zip||archive_write_finish_entry(zip)==ARCHIVE_OK)?s->tick():E_FAIL;}
+ Z7_COM7F_IMF(SetOperationResult(Int32 r)){if(r){s->error=s->testing&&r==NArchive::NExtract::NOperationResult::kUnsupportedMethod?8:s->asked&&s->password?5:s->testing?(r==NArchive::NExtract::NOperationResult::kCRCError?7:6):1;return E_FAIL;}if(active&&activeRaw->remaining)return E_FAIL;if(current&&current->symlink){if(target.empty()||target.find('\0')!=std::string::npos||header(*current,target.c_str())!=ARCHIVE_OK)return E_FAIL;}active.Release();s->files++;return (!zip||archive_write_finish_entry(zip)==ARCHIVE_OK)?s->tick():E_FAIL;}
  Z7_COM7F_IMF(CryptoGetTextPassword(BSTR*p)){return s->secret(p);}
 };
 static int decode(int input,int output,State&s) {
@@ -96,7 +97,7 @@ static int decode(int input,int output,State&s) {
  UInt32 count=0;if(handler->GetNumberOfItems(&count)!=S_OK||count>s.maxEntries)return 1;
  archive*z=s.testing?nullptr:archive_write_new();if(!z&&!s.testing)return 1;
  struct Guard {archive*z;~Guard(){if(z)archive_write_free(z);}}guard{z};
- if(z&&(archive_write_set_format_zip(z)!=ARCHIVE_OK||archive_write_set_format_option(z,"zip","compression","store")!=ARCHIVE_OK||archive_write_set_format_option(z,"zip","hdrcharset","UTF-8")!=ARCHIVE_OK||archive_write_open_fd(z,output)!=ARCHIVE_OK))return 1;
+ if(z&&(archive_write_set_format_pax_restricted(z)!=ARCHIVE_OK||archive_write_open_fd(z,output)!=ARCHIVE_OK))return 1;
  auto ex=new Extract(&s,z);CMyComPtr<IArchiveExtractCallback> exRef=ex;uint64_t total=0;
  for(UInt32 i=0;i<count;i++){
   if(s.stopped())return 2;Item item;CPropVariant p;
@@ -104,8 +105,16 @@ static int decode(int input,int output,State&s) {
   p.Clear();if(handler->GetProperty(i,kpidIsDir,&p)!=S_OK||p.vt!=VT_BOOL)return 1;item.dir=p.boolVal!=0;
   p.Clear();if(handler->GetProperty(i,kpidSize,&p)!=S_OK)return 1;if(p.vt==VT_UI8)item.size=p.uhVal.QuadPart;else if(p.vt!=VT_EMPTY)return 1;
   if(item.size>s.maxBytes-total||(item.dir&&item.size))return 1;total+=item.size;
-  // 7z stores POSIX type in the upper 16 attribute bits. Reject links/specials before normalizing metadata.
-  p.Clear();if(handler->GetProperty(i,kpidAttrib,&p)!=S_OK)return 1;if(p.vt==VT_UI4){unsigned attr=p.ulVal;unsigned type=(attr>>16)&S_IFMT;if((attr&0x400)||(type&&type!=(item.dir?S_IFDIR:S_IFREG)))return 1;}
+  // Preserve POSIX link objects and executable permissions in the private TAR spool.
+  item.permissions=item.dir?0700:0600;item.type=item.dir?AE_IFDIR:AE_IFREG;
+  p.Clear();if(handler->GetProperty(i,kpidAttrib,&p)!=S_OK)return 1;if(p.vt==VT_UI4){unsigned attr=p.ulVal;unsigned mode=attr>>16;unsigned type=mode&S_IFMT;if(attr&0x400)return 1;item.symlink=type==S_IFLNK;if(type){if(type!=S_IFREG&&type!=S_IFDIR&&type!=S_IFLNK&&type!=S_IFIFO&&type!=S_IFCHR&&type!=S_IFBLK&&type!=S_IFSOCK)return 1;if(item.dir!=(type==S_IFDIR))return 1;item.type=type;}if(type)item.permissions=(mode&0555)|(item.dir?0700:0600);}
+  // PAX cannot encode sockets. A FIFO is an internal unsupported-special marker:
+  // C extraction skips both types with the same truthful per-entry warning and
+  // never creates either object. Preserve the original name and consume payload.
+  if(item.type==S_IFSOCK)item.type=AE_IFIFO;
+  if(item.symlink&&(item.dir||!item.size||item.size>4096))return 1;
+  // 7z POSIX symlinks store their target as the entry payload. Other link encodings
+  // are rejected until their backend metadata can be represented without guessing.
   for(PROPID id:{kpidSymLink,kpidHardLink}){p.Clear();if(handler->GetProperty(i,id,&p)!=S_OK)return 1;if(p.vt!=VT_EMPTY)return 1;}
   ex->items.push_back(item);
  }

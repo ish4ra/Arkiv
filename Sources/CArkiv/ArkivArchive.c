@@ -60,7 +60,8 @@ static int safe_path(const char *path) {
     }
 }
 static int entry_kind(struct archive_entry *e) {
-    if (archive_entry_symlink(e) || archive_entry_hardlink(e)) return 0;
+    if (archive_entry_hardlink(e)) return 4;
+    if (archive_entry_symlink(e)) return 3;
     if (archive_entry_filetype(e) == AE_IFREG) return 1;
     if (archive_entry_filetype(e) == AE_IFDIR) return 2;
     return 0;
@@ -91,7 +92,7 @@ int arkiv_list(const char *path, arkiv_limits limits, arkiv_cancel *token,
 }
 
 /* Walk from an already-open root, refusing symlinks at EVERY component.
-   The caller owns a private root; archive metadata can never create a link. */
+   The caller owns a private root; created links are never traversed. */
 static int open_output(int root, const char *name, int directory) {
     char *copy = strdup(name);
     if (!copy) return -1;
@@ -119,6 +120,80 @@ static int open_output(int root, const char *name, int directory) {
     free(copy);
     return result;
 }
+/* Resolve the parent without following any archive-created symlink. */
+static int output_parent(int root, const char *name, int create, char **leaf) {
+    char *copy = strdup(name);
+    if (!copy) return -1;
+    size_t n = strlen(copy);
+    if (n && copy[n - 1] == '/') copy[n - 1] = 0;
+    int parent = dup(root);
+    char *part = copy, *slash;
+    while (parent >= 0 && (slash = strchr(part, '/'))) {
+        *slash = 0;
+        if (create && mkdirat(parent, part, 0700) && errno != EEXIST) { close(parent); parent = -1; break; }
+        int next = openat(parent, part, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        close(parent); parent = next; part = slash + 1;
+    }
+    *leaf = parent >= 0 ? strdup(part) : NULL;
+    if (parent >= 0 && !*leaf) { close(parent); parent = -1; }
+    free(copy); return parent;
+}
+struct extracted_item {
+    char *name, *target;
+    dev_t device; ino_t inode;
+    int ready;
+    struct extracted_item *next;
+};
+static void free_items(struct extracted_item *item) {
+    while (item) { struct extracted_item *next = item->next; free(item->name); free(item->target); free(item); item = next; }
+}
+static int remember_item(struct extracted_item **items, const char *name, const char *target, int fd) {
+    struct extracted_item *item = calloc(1, sizeof(*item));
+    if (!item) return -1;
+    item->name = strdup(name); item->target = target ? strdup(target) : NULL;
+    struct stat st;
+    if (!item->name || (target && !item->target) || (!target && fstat(fd, &st))) { free_items(item); return -1; }
+    if (!target) { item->device = st.st_dev; item->inode = st.st_ino; item->ready = 1; }
+    item->next = *items; *items = item; return 0;
+}
+static int finish_hardlinks(int root, struct extracted_item *items, arkiv_cancel *token,
+                            arkiv_progress_callback progress, void *context, uint64_t *files, uint64_t total,
+                            char *error, size_t capacity) {
+    int pending, changed;
+    uint64_t work = 0;
+    do {
+        pending = changed = 0;
+        for (struct extracted_item *item = items; item; item = item->next) {
+            if (cancelled(token)) return 2;
+            if (item->ready) continue;
+            pending++;
+            struct extracted_item *source;
+            for (source = items; source; source = source->next) {
+                if (cancelled(token)) return 2;
+                if (++work > 10000000) return fail(error, capacity, "Hardlink resolution work limit exceeded.");
+                if (source->ready && !strcmp(source->name, item->target)) break;
+            }
+            if (!source) continue;
+            char *src = NULL, *dst = NULL;
+            int from = output_parent(root, source->name, 0, &src);
+            int to = output_parent(root, item->name, 1, &dst);
+            struct stat st;
+            int bad = from < 0 || to < 0 || fstatat(from, src, &st, AT_SYMLINK_NOFOLLOW) ||
+                !S_ISREG(st.st_mode) || st.st_dev != source->device || st.st_ino != source->inode;
+            if (!bad) bad = linkat(from, src, to, dst, 0);
+            if (from >= 0) close(from);
+            if (to >= 0) close(to);
+            free(src); free(dst);
+            if (bad) return fail(error, capacity, "Hardlink output conflict or unsafe target.");
+            item->ready = 1; item->device = source->device; item->inode = source->inode;
+            changed++; (*files)++;
+            if (progress) progress(context, *files, total);
+        }
+    } while (pending && changed);
+    if (cancelled(token)) return 2;
+    if (pending) return fail(error, capacity, "Hardlink target is missing, unselected, cyclic, or not an extracted regular file.");
+    return 0;
+}
 static int selected(int64_t id, const int64_t *ids, size_t count) {
     if (!ids) return 1;
     size_t low = 0, high = count;
@@ -129,9 +204,9 @@ static int selected(int64_t id, const int64_t *ids, size_t count) {
     }
     return 0;
 }
-int arkiv_extract(const char *path, const char *root_path, const int64_t *ids, size_t selected_count,
+int arkiv_extract_with_warnings(const char *path, const char *root_path, const int64_t *ids, size_t selected_count,
                  arkiv_limits limits, arkiv_cancel *token, arkiv_progress_callback progress,
-                 void *context, char *error, size_t capacity) {
+                 arkiv_warning_callback warning, void *context, char *error, size_t capacity) {
     if (cancelled(token)) return 2;
     for (size_t i = 0; i < selected_count; i++) {
         if (ids[i] < 0) return fail(error, capacity, "Invalid selection.");
@@ -145,6 +220,7 @@ int arkiv_extract(const char *path, const char *root_path, const int64_t *ids, s
     int status, result = 0;
     uint64_t count = 0, total = 0, files = 0, found = 0;
     char buffer[65536];
+    struct extracted_item *items = NULL;
     while ((status = archive_read_next_header(a, &e)) == ARCHIVE_OK) {
         if (cancelled(token)) { result = 2; break; }
         if (count >= limits.max_entries) { result = fail(error, capacity, "Archive entry limit exceeded."); break; }
@@ -156,10 +232,33 @@ int arkiv_extract(const char *path, const char *root_path, const int64_t *ids, s
         found++;
         const char *name = archive_entry_pathname_utf8(e);
         int kind = entry_kind(e);
-        if (!safe_path(name) || !kind) { result = fail(error, capacity, "Unsafe archive path, link, or special file."); break; }
+        if (!safe_path(name)) { result = fail(error, capacity, "Unsafe archive path."); break; }
+        if (!kind) {
+            if (warning) warning(context, name, "Unsupported special file was skipped.");
+            if (archive_read_data_skip(a) != ARCHIVE_OK) { result = fail(error, capacity, "Damaged archive data."); break; }
+            continue;
+        }
         if (archive_entry_is_encrypted(e) > 0) { result = fail(error, capacity, "Encrypted extraction is not available yet."); break; }
         int64_t size = archive_entry_size(e);
         if (size < 0 || (uint64_t)size > limits.max_bytes - total) { result = fail(error, capacity, "Expanded size limit exceeded."); break; }
+        if (kind == 3 || kind == 4) {
+            if (kind == 3) {
+                char *leaf = NULL;
+                int parent = output_parent(root, name, 1, &leaf);
+                int bad = parent < 0 || symlinkat(archive_entry_symlink(e), parent, leaf);
+                if (parent >= 0) close(parent);
+                free(leaf);
+                if (bad) { result = fail(error, capacity, "Symlink output conflict or unsafe directory."); break; }
+                files++;
+                if (progress) progress(context, files, total);
+            } else {
+                const char *target = archive_entry_hardlink(e);
+                if (!safe_path(target)) { result = fail(error, capacity, "Unsafe hardlink target."); break; }
+                if (remember_item(&items, name, target, -1)) { result = fail(error, capacity, "Cannot track hardlink."); break; }
+            }
+            if (archive_read_data_skip(a) != ARCHIVE_OK) { result = fail(error, capacity, "Damaged archive data."); break; }
+            continue;
+        }
         int output = open_output(root, name, kind == 2);
         if (output < 0) { result = fail(error, capacity, "Output conflict, unsafe directory, or permission denied."); break; }
         if (kind == 1) {
@@ -181,6 +280,10 @@ int arkiv_extract(const char *path, const char *root_path, const int64_t *ids, s
                 if (progress) progress(context, files, total);
             }
         }
+        if (!result && fchmod(output, (archive_entry_perm(e) & 0555) | (kind == 2 ? 0700 : 0600)))
+            result = fail(error, capacity, "Cannot set safe output permissions.");
+        if (!result && kind == 1 && remember_item(&items, name, NULL, output))
+            result = fail(error, capacity, "Cannot track extracted file.");
         if (close(output) != 0 && !result) result = fail(error, capacity, "Cannot finish writing output.");
         if (result) break;
         files++;
@@ -189,9 +292,17 @@ int arkiv_extract(const char *path, const char *root_path, const int64_t *ids, s
     if (!result && cancelled(token)) result = 2;
     if (!result && status != ARCHIVE_EOF) result = fail(error, capacity, "Archive is truncated, damaged, or unsupported.");
     if (!result && ids && found != selected_count) result = fail(error, capacity, "Selected entries no longer exist in the archive.");
+    if (!result) result = finish_hardlinks(root, items, token, progress, context, &files, total, error, capacity);
+    free_items(items);
     archive_read_free(a);
     close(root);
     return result;
+}
+int arkiv_extract(const char *path, const char *root_path, const int64_t *ids, size_t selected_count,
+                  arkiv_limits limits, arkiv_cancel *token, arkiv_progress_callback progress,
+                  void *context, char *error, size_t capacity) {
+    return arkiv_extract_with_warnings(path, root_path, ids, selected_count, limits, token,
+                                       progress, NULL, context, error, capacity);
 }
 
 #include <dirent.h>
@@ -416,7 +527,7 @@ static int create_archive(const char *const *sources, size_t count, const char *
         archive_read_support_format_zip(verify) != ARCHIVE_OK || archive_read_open_fd(verify, output, 65536) != ARCHIVE_OK) goto done;
     struct archive_entry *entry; int r; uint64_t entries = 0, bytes = 0; char buffer[65536];
     while ((r = archive_read_next_header(verify, &entry)) == ARCHIVE_OK) {
-        if (++entries > limits.max_entries || !entry_kind(entry)) goto done;
+        if (++entries > limits.max_entries || (entry_kind(entry) != 1 && entry_kind(entry) != 2)) goto done;
         ssize_t n;
         while ((n = archive_read_data(verify, buffer, sizeof(buffer))) > 0) {
             if (cancelled(token)) { status = 2; goto done; }
@@ -583,7 +694,7 @@ int arkiv_test(const char *path, const char *password, arkiv_limits limits, arki
         char buffer[65536];
         while (!result && (status = archive_read_next_header(a, &entry)) == ARCHIVE_OK) {
             if (cancelled(token)) { result = 2; break; }
-            if (files >= limits.max_entries || !safe_path(archive_entry_pathname_utf8(entry)) || !entry_kind(entry)) {
+            if (files >= limits.max_entries || !safe_path(archive_entry_pathname_utf8(entry)) || (entry_kind(entry) != 1 && entry_kind(entry) != 2)) {
                 result = fail(error, capacity, "Archive entry limit or safe path/type policy exceeded."); break;
             }
             if (archive_entry_is_encrypted(entry) > 0) { result = 8; fail(error, capacity, "Encrypted ZIP testing is unsupported."); break; }

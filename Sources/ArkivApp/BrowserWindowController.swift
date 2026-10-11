@@ -328,7 +328,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         let panel = NSOpenPanel()
         panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.canCreateDirectories = true
         panel.prompt = "Extract Here"
-        panel.message = "Arkiv creates a new folder here. Existing files are never replaced. Links and special files are rejected."
+        panel.message = "Arkiv creates a new folder here. Existing files are never replaced. Links are preserved; unsupported special files are reported."
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let parent = panel.url, let self else { return }
             let token = self.begin("Extracting…")
@@ -336,7 +336,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                 // C callbacks run serially on this worker. Throttle main-thread traffic.
                 let throttle = ProgressThrottle()
                 let result = Result {
-                    try self.engine.extract(snapshot, ids: ids, into: parent, cancellation: token) { [weak self] progress in
+                    try self.engine.extractReporting(snapshot, ids: ids, into: parent, cancellation: token) { [weak self] progress in
                         guard throttle.shouldUpdate() else { return }
                         DispatchQueue.main.async {
                             guard let self, self.isBusy else { return }
@@ -349,8 +349,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                     ExtractionFeedback.completed(result)
                     switch result {
                     case .success(let output):
-                        self.status.stringValue = "Extraction complete"
-                        NSWorkspace.shared.activateFileViewerSelecting([output])
+                        self.status.stringValue = output.warnings.isEmpty ? "Extraction complete" : "Extraction completed with warnings"
+                        if output.warnings.isEmpty { NSWorkspace.shared.activateFileViewerSelecting([output.url]) }
+                        ExtractionFeedback.showWarnings(output, parent: self.window)
                     case .failure(let error): self.present(error)
                     }
                 }

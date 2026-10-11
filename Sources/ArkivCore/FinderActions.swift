@@ -43,6 +43,11 @@ public struct FinderExtractor {
     public func extract(_ request: FinderRequest, destination: URL? = nil, password: String? = nil,
                         cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
+        try extractReporting(request, destination: destination, password: password, cancellation: cancellation, progress: progress).url
+    }
+    public func extractReporting(_ request: FinderRequest, destination: URL? = nil, password: String? = nil,
+                                 cancellation: ArchiveCancellation,
+                                 progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> ArchiveExtractionReport {
         guard [.extractHere, .extractFolder, .extractTo].contains(request.action) else { throw ArchiveFailure.message("Open requests must go to the archive browser.") }
         let parent: URL
         if request.action == .extractTo {
@@ -50,7 +55,8 @@ public struct FinderExtractor {
             parent = destination
         } else { parent = request.parent }
         let snapshot = try engine.inspect(request.archive, cancellation: cancellation, password: password)
-        let staging = try engine.extract(snapshot, ids: nil, into: parent, cancellation: cancellation, progress: progress)
+        let report = try engine.extractReporting(snapshot, ids: nil, into: parent, cancellation: cancellation, progress: progress)
+        let staging = report.url
         for attempt in 1...1000 {
             let name = request.folderName + (attempt == 1 ? "" : " (\(attempt))")
             var error = [CChar](repeating: 0, count: 256)
@@ -59,7 +65,7 @@ public struct FinderExtractor {
             let result = arkiv_publish_extracted(parent.path, staging.lastPathComponent, name,
                 here ? 1 : 0, cancellation.pointer, &published, &error, error.count)
             if result == 0 {
-                return here ? parent : parent.appendingPathComponent(name, isDirectory: true)
+                return ArchiveExtractionReport(url: here ? parent : parent.appendingPathComponent(name, isDirectory: true), warnings: report.warnings)
             }
             if result == 3 && !here { continue }
             if result == 2 && published == 0 {

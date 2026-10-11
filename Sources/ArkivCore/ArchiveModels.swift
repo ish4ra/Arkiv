@@ -1,7 +1,7 @@
 import Foundation
 
 public struct ArchiveEntry: Equatable, Sendable {
-    public enum Kind: Sendable { case file, directory, unsupported }
+    public enum Kind: Sendable { case file, directory, symbolicLink, hardLink, unsupported }
     public let id: Int64
     public let path: String
     public let size: Int64

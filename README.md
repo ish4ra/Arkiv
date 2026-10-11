@@ -8,6 +8,8 @@ The first foundation contains an AppKit archive table, folder navigation, search
 
 Fixture-verified formats include ZIP Store/Deflate, TAR, 7z/LZMA2 and stored RAR5. Creation supports ZIP and 7z, including 7z AES-256 content and optional filename encryption. This is not blanket codec/multipart support. ZIP root additions are available for supported writable archives; other modification, preview/open, Quick Look, drag/drop and advanced tools remain deferred.
 
+Extraction preserves symbolic links and safe executable permissions for macOS app/framework bundles. Hard links are supported within extracted content; unsupported special files produce per-entry warnings. See [extraction compatibility](docs/extraction-compatibility.md).
+
 ## Download for Mac testing
 
 Open the [macOS foundation Actions page](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml?query=branch%3Amain), sign in, and choose a successful `main` run with DMG artifacts. Download **`Arkiv-arm64-development-dmg`** for Apple Silicon or **`Arkiv-universal-development-dmg`** for Intel/Apple Silicon. Unzip GitHub's artifact wrapper, open the enclosed **`Arkiv-…-development.dmg`**, and drag **Arkiv.app** to the **Applications** shortcut. Eject the **Arkiv** volume and launch the installed app from Applications.
