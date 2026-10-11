@@ -25,6 +25,10 @@ public struct ArchiveCreator: Sendable {
     public init() {}
     public func create(_ request: ArchiveCreationRequest, cancellation: ArchiveCancellation,
                        progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
+        try create(request, archiveFolder: "", cancellation: cancellation, progress: progress)
+    }
+    func create(_ request: ArchiveCreationRequest, archiveFolder: String, cancellation: ArchiveCancellation,
+                progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         try validateArchivePassword(request.password)
         if request.format == .zip, request.password != nil {
             throw ArchiveFailure.message("Password protection is available for 7z archives only.")
@@ -93,7 +97,13 @@ public struct ArchiveCreator: Sendable {
             var published = [CChar](repeating: 0, count: 512)
             var error = [CChar](repeating: 0, count: 256)
             let result = pointers.withUnsafeBufferPointer { buffer in
-                arkiv_create_archive(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
+                if !archiveFolder.isEmpty {
+                    return arkiv_create_zip_at(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
+                        filename, &published, published.count, request.compression == .store ? 0 : 1,
+                        arkiv_limits(max_entries: 100_000, max_bytes: 20 * 1024 * 1024 * 1024),
+                        cancellation.pointer, callback, context, &error, error.count, archiveFolder)
+                }
+                return arkiv_create_archive(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
                     filename, &published, published.count, request.compression == .store ? 0 : 1,
                     arkiv_limits(max_entries: 100_000, max_bytes: 20 * 1024 * 1024 * 1024),
                     cancellation.pointer, callback, context, &error, error.count,

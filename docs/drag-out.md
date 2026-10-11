@@ -3,7 +3,7 @@
 Select a file, folder, or multiple rows in an open archive and drag them to Finder.
 Arkiv uses AppKit `NSFilePromiseProvider` objects and the table's native drag UI.
 Only copy operations are advertised. Ordinary selection and double-click behavior
-are unchanged. Dragging into Arkiv is not implemented.
+are unchanged. Dragging Finder files into supported writable ZIPs is also available; see [drag-in](drag-in.md).
 
 A folder promises its complete hierarchy. A selected child beneath a selected
 folder is omitted from the promise list. Items are placed separately at Finder's

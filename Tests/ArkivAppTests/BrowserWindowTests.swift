@@ -196,4 +196,66 @@ final class BrowserWindowTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: destination.appendingPathComponent("Contents/data")), Data("payload".utf8))
     }
 
+    @MainActor
+    func testFinderDropTargetsAndReadOnlyRejection() async throws {
+        _ = NSApplication.shared
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? fm.removeItem(at: root) }
+        let folder = root.appendingPathComponent("Folder")
+        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = root.appendingPathComponent("Dropped 🐘.txt")
+        try Data("payload".utf8).write(to: file)
+        let archive = try ArchiveCreator().create(.init(sources: [folder], destination: root, name: "Writable"), cancellation: ArchiveCancellation(), progress: { _ in })
+        var sounds = 0
+        let controller = BrowserWindowController(modificationFeedback: { result in
+            ExtractionFeedback.completed(result, play: { sounds += 1 })
+        })
+        defer { controller.close() }
+        func idle() async throws {
+            for _ in 0..<400 {
+                if !controller.isBusy { return }
+                try await Task.sleep(nanoseconds: 25_000_000)
+            }
+            XCTFail("Operation did not finish")
+        }
+        let pasteboard = NSPasteboard.withUniqueName()
+        defer { pasteboard.releaseGlobally() }
+        pasteboard.writeObjects([file as NSURL])
+        XCTAssertFalse(controller.acceptFiles(pasteboard, row: -1, operation: .on))
+        controller.load(archive); try await idle()
+        XCTAssertEqual(controller.dropFolder(proposedRow: -1, operation: .on), "")
+        XCTAssertEqual(controller.dropFolder(proposedRow: 0, operation: .on), "Folder")
+        controller.activate(row: 0)
+        XCTAssertEqual(controller.dropFolder(proposedRow: -1, operation: .on), "Folder")
+        XCTAssertTrue(controller.acceptFiles(pasteboard, row: -1, operation: .on))
+        XCTAssertNil(controller.dropFolder(proposedRow: -1, operation: .on), "Busy archives must reject drops")
+        try await idle()
+        XCTAssertEqual(sounds, 1)
+        XCTAssertEqual(controller.dropFolder(proposedRow: -1, operation: .on), "Folder")
+        let snapshot = try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation())
+        XCTAssertNotNil(snapshot.index.row(at: "Folder/Dropped 🐘.txt"))
+        let table = try XCTUnwrap(descendants(controller.window!.contentView!).compactMap { $0 as? NSTableView }.first)
+        table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        XCTAssertNotNil(controller.tableView(table, pasteboardWriterForRow: 0), "Drag-out must remain available")
+        let second = root.appendingPathComponent("Second.txt")
+        try Data("second".utf8).write(to: second)
+        pasteboard.clearContents(); pasteboard.writeObjects([second as NSURL])
+        controller.goUp(nil)
+        XCTAssertTrue(controller.acceptFiles(pasteboard, row: 0, operation: .on))
+        try await idle()
+        XCTAssertEqual(sounds, 2)
+        XCTAssertNotNil(try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation()).index.row(at: "Folder/Second.txt"))
+        let seven = try ArchiveCreator().create(.init(sources: [file], destination: root, name: "ReadOnly", format: .sevenZip), cancellation: ArchiveCancellation(), progress: { _ in })
+        controller.load(seven); try await idle()
+        XCTAssertNil(controller.dropFolder(proposedRow: -1, operation: .on))
+        XCTAssertFalse(controller.acceptFiles(pasteboard, row: -1, operation: .on))
+        let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("tests/fixtures")
+        for name in ["links-and-special.tar", "rar5-stored.rar"] {
+            controller.load(fixtures.appendingPathComponent(name)); try await idle()
+            XCTAssertNil(controller.dropFolder(proposedRow: -1, operation: .on))
+            XCTAssertFalse(controller.acceptFiles(pasteboard, row: -1, operation: .on))
+        }
+    }
+
 }

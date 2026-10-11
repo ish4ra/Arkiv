@@ -48,6 +48,8 @@ int arkiv_publish_promised(const char *, const char *, const char *, const char 
 int arkiv_create_zip(const char *const *, size_t, const char *, const char *, const char *, char *, size_t, int,
                      arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 
+int arkiv_create_zip_at(const char *const *, size_t, const char *, const char *, const char *, char *, size_t, int,
+ arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t, const char *);
 int arkiv_create_archive(const char *const *, size_t, const char *, const char *, const char *, char *, size_t, int,
  arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t, int, const char *, int);
 const char *arkiv_seven_loaded_library(void);

@@ -15,7 +15,7 @@
 | Checksums / split-combine / benchmark / CLI | Deferred |
 | Finder extraction | AppKit Services for one ZIP/uncompressed TAR: open, here, archive folder, destination chooser; real-Finder registration/invocation checks pending |
 | Drag out | Native lazy file promises; selected files/folders to Finder; [details](drag-out.md) |
-| Drag in | Deferred |
+| Drag in | Native Finder file URLs into writable ZIPs; current folder or folder-row destination |
 | ZIP/TAR associations | Viewer/alternate registration implemented; real-Mac validation pending |
 | Open internal file / Quick Look / nested archives | Deferred to next Priority A increment |
 | Icon / document icons | Original procedural app icon generated and packaged in macOS CI, visual validation pending; document family deferred |

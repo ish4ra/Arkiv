@@ -107,4 +107,37 @@ final class ZIPAdditionTests: XCTestCase {
         }
     }
 
+    func testArchiveSubfolderAdditionAndFailureAtomicity() throws {
+        try fixture { root, archive, snapshot in
+            let fm = FileManager.default
+            let target = root.appendingPathComponent("Target 🐘/Inside")
+            try fm.createDirectory(at: target, withIntermediateDirectories: true)
+            try ArchiveZIPUpdater().add(sources: [target.deletingLastPathComponent()], to: snapshot, cancellation: ArchiveCancellation())
+            let before = try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation())
+            let file = root.appendingPathComponent("Unicode é.txt")
+            try Data("payload".utf8).write(to: file)
+            let folder = root.appendingPathComponent("Nested folder")
+            try fm.createDirectory(at: folder.appendingPathComponent("empty"), withIntermediateDirectories: true)
+            try Data("child".utf8).write(to: folder.appendingPathComponent("child"))
+            let destination = "Target 🐘/Inside"
+            try ArchiveZIPUpdater().add(sources: [file, folder], to: before, folder: destination, cancellation: ArchiveCancellation())
+            let fresh = try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation())
+            XCTAssertNotNil(fresh.index.row(at: destination + "/Unicode é.txt"))
+            XCTAssertNotNil(fresh.index.row(at: destination + "/Nested folder/empty"))
+            XCTAssertNil(fresh.index.row(at: "Unicode é.txt"))
+            let output = try LibArchiveEngine().extract(fresh, ids: nil, into: root, cancellation: ArchiveCancellation(), progress: { _ in })
+            XCTAssertEqual(try Data(contentsOf: output.appendingPathComponent(destination + "/Nested folder/child")), Data("child".utf8))
+            let original = try Data(contentsOf: archive)
+            for invalid in ["../outside", "/absolute", "Target 🐘//Inside", "missing", "existing.txt", destination] {
+                XCTAssertThrowsError(try ArchiveZIPUpdater().add(sources: [file], to: fresh, folder: invalid, cancellation: ArchiveCancellation()))
+                XCTAssertEqual(try Data(contentsOf: archive), original)
+            }
+            let next = root.appendingPathComponent("new.txt")
+            try Data("new".utf8).write(to: next)
+            let token = ArchiveCancellation()
+            XCTAssertThrowsError(try ArchiveZIPUpdater().add(sources: [next], to: fresh, folder: destination, cancellation: token, progress: { _ in token.cancel() }))
+            XCTAssertEqual(try Data(contentsOf: archive), original)
+        }
+    }
+
 }

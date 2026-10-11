@@ -72,6 +72,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         table.style = .plain
         table.backgroundColor = .textBackgroundColor
         table.allowsMultipleSelection = true
+        table.registerForDraggedTypes([.fileURL])
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
         table.setDraggingSourceOperationMask(.copy, forLocal: true)
         table.allowsColumnReordering = true
@@ -200,7 +201,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
         window?.toolbar?.validateVisibleItems()
     }
-    func load(_ url: URL, password: String? = nil) {
+    func load(_ url: URL, password: String? = nil, browsingFolder: String = "") {
         guard !isBusy else { return }
         if !dragIsActive { dragSession = nil }
         pendingURL = url
@@ -214,7 +215,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                 switch result {
                 case .success(let value):
                     self.snapshot = value; self.index = value.index; self.zipAdditionAvailable = canAdd
-                    self.currentPath = ""; self.back = []; self.forward = []
+                    self.currentPath = value.index.row(at: browsingFolder)?.isDirectory == true ? browsingFolder : ""; self.back = []; self.forward = []
                     self.window?.title = url.lastPathComponent
                     self.window?.representedURL = url
                     self.reload()
@@ -274,6 +275,44 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         // Providers retain the session through promised writes, including after the browser closes.
         dragSession = nil; dragIsActive = false
     }
+    func dropFolder(proposedRow: Int, operation: NSTableView.DropOperation) -> String? {
+        guard canAddToZIP, window?.attachedSheet == nil else { return nil }
+        if operation == .on, rows.indices.contains(proposedRow), rows[proposedRow].isDirectory {
+            return rows[proposedRow].path
+        }
+        return currentPath
+    }
+    func droppedFiles(_ pasteboard: NSPasteboard) -> [URL] {
+        guard let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty,
+              urls.allSatisfy({ url in
+                  guard url.isFileURL, url.host == nil || url.host == "" || url.host == "localhost",
+                        let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+                        let kind = attributes[.type] as? FileAttributeType else { return false }
+                  return kind == .typeRegular || kind == .typeDirectory
+              }) else { return [] }
+        return urls
+    }
+    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo,
+                   proposedRow row: Int, proposedDropOperation operation: NSTableView.DropOperation) -> NSDragOperation {
+        guard !droppedFiles(info.draggingPasteboard).isEmpty,
+              dropFolder(proposedRow: row, operation: operation) != nil,
+              info.draggingSourceOperationMask.contains(.copy) else { return [] }
+        if operation != .on || !rows.indices.contains(row) || !rows[row].isDirectory {
+            tableView.setDropRow(-1, dropOperation: .on)
+        }
+        return .copy
+    }
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo,
+                   row: Int, dropOperation operation: NSTableView.DropOperation) -> Bool {
+        guard info.draggingSourceOperationMask.contains(.copy) else { return false }
+        return acceptFiles(info.draggingPasteboard, row: row, operation: operation)
+    }
+    func acceptFiles(_ pasteboard: NSPasteboard, row: Int, operation: NSTableView.DropOperation) -> Bool {
+        let urls = droppedFiles(pasteboard)
+        guard !urls.isEmpty, let folder = dropFolder(proposedRow: row, operation: operation) else { return false }
+        addItems(urls, folder: folder)
+        return true
+    }
     private func selectedPaths() -> Set<String> {
         Set(table.selectedRowIndexes.compactMap { rows.indices.contains($0) ? rows[$0].path : nil })
     }
@@ -332,13 +371,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
     }
     /// Shared by both native pickers; all transaction work stays in ArkivCore.
-    func addItems(_ urls: [URL]) {
+    func addItems(_ urls: [URL], folder: String = "") {
         guard canAddToZIP, !urls.isEmpty, let snapshot else { return }
         let token = begin("Adding to ZIP…")
         worker.async { [self] in
             let throttle = ProgressThrottle()
             let result = Result {
-                try ArchiveZIPUpdater().add(sources: urls, to: snapshot, cancellation: token) { progress in
+                try ArchiveZIPUpdater().add(sources: urls, to: snapshot, folder: folder, cancellation: token) { progress in
                     guard throttle.shouldUpdate() else { return }
                     DispatchQueue.main.async { [weak self] in
                         guard let self, self.isBusy else { return }
@@ -355,7 +394,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                     // not a failed transaction and never trigger another success sound.
                     self.snapshot = nil; self.index = nil; self.zipAdditionAvailable = false
                     search.stringValue = ""
-                    load(url)
+                    load(url, browsingFolder: folder)
                 case .failure(let error): present(error)
                 }
             }

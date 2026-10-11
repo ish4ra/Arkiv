@@ -599,7 +599,8 @@ static int seven_cancel(void *token) { return cancelled(token); }
 static int create_archive(const char *const *sources, size_t count, const char *parent,
                      const char *stage, const char *name, char *published_name, size_t published_capacity, int compression, arkiv_limits limits,
                      arkiv_cancel *token, arkiv_progress_callback progress, void *context,
-                     char *error, size_t capacity, int seven, const char *password, int headers) {
+                     char *error, size_t capacity, int seven, const char *password, int headers, const char *prefix) {
+    if (prefix && *prefix && !safe_path(prefix)) return fail(error, capacity, "Invalid archive folder.");
     if (cancelled(token)) return 2;
     size_t extension = seven ? 3 : 4;
     const char *suffix = seven ? ".7z" : ".zip";
@@ -631,7 +632,12 @@ static int create_archive(const char *const *sources, size_t count, const char *
         int fd = create_open(sources[i]);
         if (fd < 0) goto done;
         const char *base = strrchr(sources[i], '/');
-        status = create_walk(&state, fd, base ? base + 1 : sources[i], 0); close(fd);
+        char *entry_path = NULL;
+        if (prefix && *prefix) {
+            if (asprintf(&entry_path, "%s/%s", prefix, base ? base + 1 : sources[i]) < 0) { close(fd); goto done; }
+        }
+        status = create_walk(&state, fd, entry_path ? entry_path : (base ? base + 1 : sources[i]), 0);
+        free(entry_path); close(fd);
         if (status) goto done;
     }
     status = 1;
@@ -689,16 +695,21 @@ done:
     return status;
 }
 
+int arkiv_create_zip_at(const char *const *sources, size_t count, const char *parent, const char *stage,
+ const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
+ arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity, const char *prefix) {
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,prefix);
+}
 int arkiv_create_archive(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity,
  int seven, const char *password, int headers) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers,"");
 }
 int arkiv_create_zip(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,"");
 }
 int arkiv_is_seven(const char *path) {
  int fd=create_open(path); if(fd<0)return 0;unsigned char b[6];ssize_t n=read(fd,b,6);close(fd);

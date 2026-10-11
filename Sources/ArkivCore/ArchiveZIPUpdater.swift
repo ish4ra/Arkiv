@@ -6,7 +6,7 @@ private final class ZIPAdditionProgress {
     init(_ callback: @escaping @Sendable (ArchiveProgress) -> Void) { self.callback = callback }
 }
 
-/// Adds distinct root items without rewriting existing compressed data or entry metadata.
+/// Adds distinct items without rewriting existing compressed data or entry metadata.
 /// ZIP64, encrypted, multipart, and ambiguous metadata/layouts remain read-only.
 public struct ArchiveZIPUpdater: Sendable {
     public init() {}
@@ -27,7 +27,7 @@ public struct ArchiveZIPUpdater: Sendable {
         return true
     }
     @discardableResult
-    public func add(sources: [URL], to snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
+    public func add(sources: [URL], to snapshot: ArchiveSnapshot, folder: String = "", cancellation: ArchiveCancellation,
                     progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
         guard snapshot.unlocked == nil, snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
@@ -45,11 +45,16 @@ public struct ArchiveZIPUpdater: Sendable {
         func key(_ value: String) -> String {
             value.precomposedStringWithCanonicalMapping.folding(options: [.caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
         }
-        var roots = Set(snapshot.entries.compactMap { $0.path.split(separator: "/").first.map { key(String($0)) } })
+        let components = folder.split(separator: "/", omittingEmptySubsequences: false)
+        guard folder.isEmpty || (components.allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." && !$0.contains("\\") && !$0.contains(":") && !$0.unicodeScalars.contains(where: { $0.value < 32 }) }
+            && snapshot.index.row(at: folder)?.isDirectory == true) else {
+            throw ArchiveFailure.message("Choose an existing archive folder.")
+        }
+        var roots = Set(snapshot.index.children(of: folder).map { key($0.name) })
         for sourceURL in sources {
             let source = canonical(sourceURL)
             guard roots.insert(key(source.lastPathComponent)).inserted else {
-                throw ArchiveFailure.message("An item named ‘\(source.lastPathComponent)’ already exists at the archive root. Rename the source item before adding it.")
+                throw ArchiveFailure.message("An item named ‘\(source.lastPathComponent)’ already exists in the destination archive folder. Rename the source item before adding it.")
             }
             guard canonical(source) != archive, (try? SourceStamp(source).inode) != snapshot.stamp.inode else {
                 throw ArchiveFailure.message("An archive cannot be added to itself.")
@@ -60,7 +65,7 @@ public struct ArchiveZIPUpdater: Sendable {
         try manager.createDirectory(at: stage, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? manager.removeItem(at: stage) }
         let additions = try ArchiveCreator().create(ArchiveCreationRequest(sources: sources, destination: stage, name: "additions"),
-                                                    cancellation: cancellation, progress: progress)
+                                                    archiveFolder: folder, cancellation: cancellation, progress: progress)
         let receiver = ZIPAdditionProgress(progress)
         let retained = Unmanaged.passRetained(receiver)
         defer { retained.release() }
