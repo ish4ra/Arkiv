@@ -6,6 +6,10 @@ import sys
 text = Path(sys.argv[1]).read_text(errors='replace')
 labels = []
 categories = {
+    'DMG image creation failure': 'hdiutil: create failed',
+    'DMG image attachment failure': 'hdiutil: attach failed',
+    'DMG resource busy': 'Resource busy',
+    'DMG device not configured': 'Device not configured',
     'Universal slice collision': 'have the same architectures',
     'Code signing file attributes': 'resource fork, Finder information',
     'Code signing format failure': 'bundle format unrecognized',
