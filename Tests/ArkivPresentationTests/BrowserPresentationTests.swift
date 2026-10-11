@@ -3,6 +3,25 @@ import ArkivCore
 @testable import ArkivPresentation
 
 final class BrowserPresentationTests: XCTestCase {
+    func testPackageRecognitionNavigationAndRecursiveSelection() throws {
+        for suffix in ["app", "framework", "bundle", "plugin", "appex", "xpc", "APP"] {
+            let path = "Example." + suffix
+            let index = ArchiveIndex(entries: [ArchiveEntry(id: 1, path: path + "/Contents/nested/data", size: 3, kind: .file)])
+            let row = try XCTUnwrap(index.row(at: path))
+            XCTAssertNotNil(BrowserPresentation.packageKind(row))
+            XCTAssertNil(BrowserPresentation.navigationPath(row))
+            XCTAssertEqual(BrowserPresentation.navigationPath(row, showPackageContents: true), path)
+            XCTAssertTrue(row.isDirectory)
+            XCTAssertEqual(index.entryIDs(for: [path]), [1])
+            XCTAssertEqual(index.search("nested").count, 2)
+        }
+        let index = ArchiveIndex(entries: [ArchiveEntry(id: 1, path: "ordinary/file", size: 3, kind: .file),
+                                           ArchiveEntry(id: 2, path: "not-a-directory.app", size: 3, kind: .file)])
+        let folder = try XCTUnwrap(index.row(at: "ordinary"))
+        XCTAssertNil(BrowserPresentation.packageKind(folder))
+        XCTAssertEqual(BrowserPresentation.navigationPath(folder), "ordinary")
+        XCTAssertNil(BrowserPresentation.packageKind(try XCTUnwrap(index.row(at: "not-a-directory.app"))))
+    }
     private let archive = URL(fileURLWithPath: "/tmp/example.zip")
     private func state(_ url: URL? = nil, available: Bool = true) -> ArchiveWindowState {
         ArchiveWindowState(id: UUID(), archiveURL: url, isAvailable: available)

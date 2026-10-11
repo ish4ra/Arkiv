@@ -91,6 +91,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
         table.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
         let menu = NSMenu()
+        let contents = menu.addItem(withTitle: "Show Package Contents", action: #selector(showPackageContents(_:)), keyEquivalent: "")
+        contents.target = self
         let extract = menu.addItem(withTitle: "Extract Selected…", action: #selector(extractSelected(_:)), keyEquivalent: "")
         extract.target = self
         let copy = menu.addItem(withTitle: "Copy Path", action: #selector(copyPath(_:)), keyEquivalent: "")
@@ -414,8 +416,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         search.stringValue = ""; reload(preservingSelection: false)
     }
     @objc func activateRow(_ sender: Any?) {
-        guard rows.indices.contains(table.clickedRow), rows[table.clickedRow].isDirectory else { return }
-        navigate(rows[table.clickedRow].path)
+        activate(row: table.clickedRow)
+    }
+    func activate(row: Int) {
+        guard rows.indices.contains(row), let path = BrowserPresentation.navigationPath(rows[row]) else { return }
+        navigate(path)
+    }
+    private var selectedPackage: BrowserRow? {
+        guard table.selectedRowIndexes.count == 1, rows.indices.contains(table.selectedRow),
+              BrowserPresentation.packageKind(rows[table.selectedRow]) != nil else { return nil }
+        return rows[table.selectedRow]
+    }
+    @objc func showPackageContents(_ sender: Any?) {
+        guard let row = selectedPackage,
+              let path = BrowserPresentation.navigationPath(row, showPackageContents: true) else { return }
+        navigate(path)
     }
     @objc func goUp(_ sender: Any?) { if !currentPath.isEmpty { navigate(currentPath.split(separator: "/").dropLast().joined(separator: "/")) } }
     @objc func goBack(_ sender: Any?) {
@@ -484,6 +499,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(showPackageContents(_:)): return !isBusy && selectedPackage != nil
         case #selector(addFiles(_:)), #selector(addFolder(_:)): return canAddToZIP && window?.attachedSheet == nil
         case #selector(copyPath(_:)), #selector(extractSelected(_:)): return !isBusy && !selectedPaths().isEmpty
         case #selector(testArchive(_:)), #selector(extractAll(_:)), #selector(showInfo(_:)): return !isBusy && snapshot != nil

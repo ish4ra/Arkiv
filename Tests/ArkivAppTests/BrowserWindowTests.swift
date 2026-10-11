@@ -151,4 +151,49 @@ final class BrowserWindowTests: XCTestCase {
         XCTAssertFalse(controller.validateMenuItem(addFolder))
     }
 
+    @MainActor
+    func testPackageContextNavigationAndDragHierarchy() async throws {
+        _ = NSApplication.shared
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? fm.removeItem(at: root) }
+        let bundle = root.appendingPathComponent("Example.app")
+        try fm.createDirectory(at: bundle.appendingPathComponent("Contents"), withIntermediateDirectories: true)
+        try Data("payload".utf8).write(to: bundle.appendingPathComponent("Contents/data"))
+        let archive = try ArchiveCreator().create(ArchiveCreationRequest(sources: [bundle], destination: root, name: "Fixture"),
+            cancellation: ArchiveCancellation(), progress: { _ in })
+        let controller = BrowserWindowController()
+        defer { controller.close() }
+        controller.load(archive)
+        for _ in 0..<400 {
+            if !controller.isBusy { break }
+            try await Task.sleep(nanoseconds: 25_000_000)
+        }
+        XCTAssertFalse(controller.isBusy)
+        let table = try XCTUnwrap(descendants(controller.window!.contentView!).compactMap { $0 as? NSTableView }.first)
+        let menu = try XCTUnwrap(table.menu?.items.first { $0.title == "Show Package Contents" })
+        table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        XCTAssertTrue(controller.validateMenuItem(menu))
+        let cell = try XCTUnwrap(controller.tableView(table, viewFor: table.tableColumns[2], row: 0) as? NSTableCellView)
+        XCTAssertEqual(cell.textField?.stringValue, "Application")
+        controller.activate(row: 0)
+        XCTAssertTrue(controller.validateMenuItem(menu), "Double-click must leave the package selected at its parent")
+        let promise = try XCTUnwrap(controller.tableView(table, pasteboardWriterForRow: 0) as? NSFilePromiseProvider)
+        XCTAssertEqual(promise.delegate?.filePromiseProvider(promise, fileNameForType: promise.fileType), "Example.app")
+        controller.showPackageContents(nil)
+        XCTAssertFalse(controller.validateMenuItem(menu))
+        let contents = try XCTUnwrap(controller.tableView(table, viewFor: table.tableColumns[0], row: 0) as? NSTableCellView)
+        XCTAssertEqual(contents.textField?.stringValue, "Contents")
+        controller.activate(row: 0)
+        let data = try XCTUnwrap(controller.tableView(table, viewFor: table.tableColumns[0], row: 0) as? NSTableCellView)
+        XCTAssertEqual(data.textField?.stringValue, "data", "Ordinary folders still descend")
+        controller.goBack(nil); controller.goBack(nil)
+        XCTAssertEqual(table.numberOfRows, 1)
+        let snapshot = try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation())
+        let session = try ArchiveDragSession(snapshot: snapshot, paths: ["Example.app"])
+        let destination = root.appendingPathComponent("Delivered.app")
+        _ = try session.write(item: session.items[0], to: destination)
+        XCTAssertEqual(try Data(contentsOf: destination.appendingPathComponent("Contents/data")), Data("payload".utf8))
+    }
+
 }

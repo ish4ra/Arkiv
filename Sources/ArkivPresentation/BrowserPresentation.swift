@@ -11,6 +11,24 @@ public struct ArchiveWindowState {
 }
 
 public enum BrowserPresentation {
+    /// Presentation only: packages remain directories for selection and extraction.
+    public static func packageKind(_ row: BrowserRow) -> String? {
+        guard row.isDirectory else { return nil }
+        switch (row.name as NSString).pathExtension.lowercased() {
+        case "app": return "Application"
+        case "framework": return "Framework"
+        case "bundle": return "Bundle"
+        case "plugin": return "Plug-in"
+        case "appex": return "App Extension"
+        case "xpc": return "XPC Service"
+        default: return nil
+        }
+    }
+    public static func navigationPath(_ row: BrowserRow, showPackageContents: Bool = false) -> String? {
+        guard row.isDirectory, packageKind(row) == nil || showPackageContents else { return nil }
+        return row.path
+    }
+
     public static func window(for url: URL, preferred: UUID?, among windows: [ArchiveWindowState]) -> UUID? {
         let normalized = url.standardizedFileURL
         if let existing = windows.first(where: { $0.archiveURL?.standardizedFileURL == normalized }) {

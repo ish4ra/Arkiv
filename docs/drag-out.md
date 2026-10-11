@@ -68,3 +68,13 @@ and [delegate](https://developer.apple.com/documentation/appkit/nsfilepromisepro
 contracts. The public SDK header specifies a weak delegate, a receiver-supplied
 exact URL, and an optional background operation queue; Arkiv explicitly retains
 its delegate/session for asynchronous delivery.
+
+## macOS packages in the browser
+
+Directory entries ending in `.app`, `.framework`, `.bundle`, `.plugin`, `.appex`
+or `.xpc` use package type labels and native type icons. Double-click does not
+enter or launch them. Select one and choose **Show Package Contents** from the
+context menu to browse inside; Back, Forward, Up and search keep their normal
+behavior. Recognition is by directory/name, not execution or bundle validation.
+Packages remain directories in the archive model: extraction and drag-out include
+the complete hierarchy. No archive data is changed by this presentation policy.

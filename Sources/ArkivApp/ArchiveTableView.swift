@@ -1,6 +1,7 @@
 import AppKit
 import UniformTypeIdentifiers
 import ArkivCore
+import ArkivPresentation
 
 /// Keep the context menu attached to the row under the pointer without losing a multi-selection.
 final class ArchiveTableView: NSTableView {
@@ -44,10 +45,15 @@ final class ArchiveCellView: NSTableCellView {
     func configure(_ row: BrowserRow, column: String, searching: Bool) {
         switch column {
         case "size": label.stringValue = row.size.flatMap { $0 >= 0 ? ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) : nil } ?? "—"
-        case "type": label.stringValue = row.isDirectory ? "Folder" : "File"
+        case "type": label.stringValue = BrowserPresentation.packageKind(row) ?? (row.isDirectory ? "Folder" : "File")
         default:
             label.stringValue = searching ? row.path : row.name
-            let type = row.isDirectory ? UTType.folder : UTType(filenameExtension: (row.name as NSString).pathExtension) ?? .data
+            let type: UTType
+            if BrowserPresentation.packageKind(row) != nil {
+                type = UTType(filenameExtension: (row.name as NSString).pathExtension.lowercased()) ?? .bundle
+            } else {
+                type = row.isDirectory ? .folder : UTType(filenameExtension: (row.name as NSString).pathExtension) ?? .data
+            }
             icon.image = NSWorkspace.shared.icon(for: type)
         }
         toolTip = column == "name" ? row.path : label.stringValue
