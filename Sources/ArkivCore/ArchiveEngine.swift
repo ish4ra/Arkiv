@@ -137,6 +137,7 @@ public struct LibArchiveEngine: ArchiveEngine {
         try extractReporting(snapshot, ids: ids, into: parent, cancellation: cancellation, progress: progress).url
     }
     public func extractReporting(_ snapshot: ArchiveSnapshot, ids: [Int64]?, into parent: URL,
+                                 includeHardlinkDependencies: Bool = false,
                                  cancellation: ArchiveCancellation,
                                  progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> ArchiveExtractionReport {
         if let ids, ids.isEmpty { throw ArchiveFailure.message("Select an entry to extract.") }
@@ -169,7 +170,8 @@ public struct LibArchiveEngine: ArchiveEngine {
         let result: Int32
         if let ids {
             result = ids.sorted().withUnsafeBufferPointer { buffer in
-                arkiv_extract_with_warnings(snapshot.backingURL.path, staging.path, buffer.baseAddress, buffer.count,
+                let extract = includeHardlinkDependencies ? arkiv_extract_promised : arkiv_extract_with_warnings
+                return extract(snapshot.backingURL.path, staging.path, buffer.baseAddress, buffer.count,
                     limits, cancellation.pointer, callback, warning, context, &error, error.count)
             }
         } else {

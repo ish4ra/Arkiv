@@ -47,6 +47,7 @@ public struct ArchiveIndex: Sendable {
         if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }
         return lhs.path < rhs.path
     }
+    public func row(at path: String) -> BrowserRow? { rows[path] }
     public func children(of path: String) -> [BrowserRow] { folders[path] ?? [] }
     public func entryIDs(for paths: Set<String>) -> [Int64] {
         entries.filter { entry in

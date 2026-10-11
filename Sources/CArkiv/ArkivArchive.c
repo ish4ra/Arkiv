@@ -204,7 +204,75 @@ static int selected(int64_t id, const int64_t *ids, size_t count) {
     }
     return 0;
 }
-int arkiv_extract_with_warnings(const char *path, const char *root_path, const int64_t *ids, size_t selected_count,
+struct selection_entry { char *name, *target; int64_t id; };
+static int selection_compare(const void *a, const void *b) {
+    return strcmp(((const struct selection_entry *)a)->name, ((const struct selection_entry *)b)->name);
+}
+/* Resolve selected hardlinks before extracting, so their data dependency can precede
+   or follow the link in the archive. No unrelated file payload is materialized. */
+static int selection_dependencies(const char *path, const int64_t *ids, size_t count,
+                                  arkiv_limits limits, arkiv_cancel *token,
+                                  int64_t **expanded, size_t *expanded_count, char *error, size_t capacity) {
+    struct archive *a = reader(path);
+    if (!a) return fail(error, capacity, "Cannot read archive dependencies.");
+    struct selection_entry *entries = NULL;
+    size_t used = 0; int result = 0, status; struct archive_entry *e;
+    while ((status = archive_read_next_header(a, &e)) == ARCHIVE_OK) {
+        if (cancelled(token)) { result = 2; break; }
+        if (used >= limits.max_entries) { result = fail(error, capacity, "Archive entry limit exceeded."); break; }
+        const char *name = archive_entry_pathname_utf8(e), *target = archive_entry_hardlink(e);
+        if (!name) { result = fail(error, capacity, "Invalid archive path."); break; }
+        struct selection_entry *next = realloc(entries, (used + 1) * sizeof(*entries));
+        if (!next) { result = fail(error, capacity, "Cannot track archive dependencies."); break; }
+        entries = next;
+        entries[used] = (struct selection_entry){strdup(name), target ? strdup(target) : NULL, (int64_t)used};
+        used++;
+        if (!entries[used-1].name || (target && !entries[used-1].target)) { result = fail(error, capacity, "Cannot track archive dependencies."); break; }
+        if (archive_read_data_skip(a) != ARCHIVE_OK) { result = fail(error, capacity, "Damaged archive data."); break; }
+    }
+    archive_read_free(a);
+    if (!result && status != ARCHIVE_EOF) result = fail(error, capacity, "Cannot read archive dependencies.");
+    unsigned char *wanted = NULL;
+    int64_t *queue = NULL;
+    struct selection_entry **by_id = NULL;
+    if (!result) {
+        wanted = calloc(used ? used : 1, 1); queue = malloc((used ? used : 1) * sizeof(*queue));
+        by_id = malloc((used ? used : 1) * sizeof(*by_id));
+        if (!wanted || !queue || !by_id) result = fail(error, capacity, "Cannot track selection.");
+    }
+    size_t tail = 0;
+    if (!result) {
+        qsort(entries, used, sizeof(*entries), selection_compare);
+        for (size_t i = 0; i < used; i++) by_id[entries[i].id] = &entries[i];
+        for (size_t i = 0; i < count; i++) {
+            if ((uint64_t)ids[i] >= used) { result = fail(error, capacity, "Selected entry no longer exists."); break; }
+            wanted[ids[i]] = 1; queue[tail++] = ids[i];
+        }
+        for (size_t head = 0; !result && head < tail; head++) {
+            if (cancelled(token)) { result = 2; break; }
+            const char *target = by_id[queue[head]]->target;
+            if (!target) continue;
+            struct selection_entry key = {(char *)target, NULL, 0};
+            struct selection_entry *dependency = bsearch(&key, entries, used, sizeof(*entries), selection_compare);
+            if (!dependency || !safe_path(target)) { result = fail(error, capacity, "Hardlink target is unavailable or unsafe."); break; }
+            size_t position = (size_t)(dependency - entries);
+            if ((position && !strcmp(entries[position-1].name, target)) ||
+                (position + 1 < used && !strcmp(entries[position+1].name, target))) {
+                result = fail(error, capacity, "Hardlink target is ambiguous."); break;
+            }
+            if (!wanted[dependency->id]) { wanted[dependency->id] = 1; queue[tail++] = dependency->id; }
+        }
+        if (!result) {
+            size_t n = 0;
+            for (size_t i = 0; i < used; i++) if (wanted[i]) queue[n++] = (int64_t)i;
+            *expanded = queue; *expanded_count = n; queue = NULL;
+        }
+    }
+    for (size_t i = 0; i < used; i++) { free(entries[i].name); free(entries[i].target); }
+    free(entries); free(wanted); free(queue); free(by_id);
+    return result;
+}
+static int extract_reporting(int dependencies, const char *path, const char *root_path, const int64_t *ids, size_t selected_count,
                  arkiv_limits limits, arkiv_cancel *token, arkiv_progress_callback progress,
                  arkiv_warning_callback warning, void *context, char *error, size_t capacity) {
     if (cancelled(token)) return 2;
@@ -212,10 +280,17 @@ int arkiv_extract_with_warnings(const char *path, const char *root_path, const i
         if (ids[i] < 0) return fail(error, capacity, "Invalid selection.");
         if (i && ids[i] <= ids[i - 1]) return fail(error, capacity, "Selection must be sorted and unique.");
     }
+    int64_t *expanded = NULL;
+    if (ids && dependencies) {
+        int dependency_result = selection_dependencies(path, ids, selected_count, limits, token,
+            &expanded, &selected_count, error, capacity);
+        if (dependency_result) return dependency_result;
+        ids = expanded;
+    }
     int root = open(root_path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-    if (root < 0) return fail(error, capacity, "Output directory is unavailable or unsafe.");
+    if (root < 0) { free(expanded); return fail(error, capacity, "Output directory is unavailable or unsafe."); }
     struct archive *a = reader(path);
-    if (!a) { close(root); return fail(error, capacity, "Cannot read archive: unsupported, encrypted, corrupt, or inaccessible."); }
+    if (!a) { free(expanded); close(root); return fail(error, capacity, "Cannot read archive: unsupported, encrypted, corrupt, or inaccessible."); }
     struct archive_entry *e;
     int status, result = 0;
     uint64_t count = 0, total = 0, files = 0, found = 0;
@@ -294,9 +369,20 @@ int arkiv_extract_with_warnings(const char *path, const char *root_path, const i
     if (!result && ids && found != selected_count) result = fail(error, capacity, "Selected entries no longer exist in the archive.");
     if (!result) result = finish_hardlinks(root, items, token, progress, context, &files, total, error, capacity);
     free_items(items);
+    free(expanded);
     archive_read_free(a);
     close(root);
     return result;
+}
+int arkiv_extract_with_warnings(const char *path, const char *root, const int64_t *ids, size_t count,
+    arkiv_limits limits, arkiv_cancel *token, arkiv_progress_callback progress,
+    arkiv_warning_callback warning, void *context, char *error, size_t capacity) {
+    return extract_reporting(0, path, root, ids, count, limits, token, progress, warning, context, error, capacity);
+}
+int arkiv_extract_promised(const char *path, const char *root, const int64_t *ids, size_t count,
+    arkiv_limits limits, arkiv_cancel *token, arkiv_progress_callback progress,
+    arkiv_warning_callback warning, void *context, char *error, size_t capacity) {
+    return extract_reporting(1, path, root, ids, count, limits, token, progress, warning, context, error, capacity);
 }
 int arkiv_extract(const char *path, const char *root_path, const int64_t *ids, size_t selected_count,
                   arkiv_limits limits, arkiv_cancel *token, arkiv_progress_callback progress,
@@ -403,6 +489,35 @@ static int create_open(const char *path) {
         close(fd); fd = next;
     }
     free(copy); return fd;
+}
+int arkiv_prepare_promise_staging(const char *parent_path, const char *name, char *error, size_t capacity) {
+    if (!component(name)) return fail(error, capacity, "Invalid staging name.");
+    int parent = create_open(parent_path);
+    if (parent < 0) return fail(error, capacity, "Promise destination is unavailable or unsafe.");
+    int result = mkdirat(parent, name, 0700);
+    close(parent);
+    return result ? fail(error, capacity, "Cannot create private promise staging.") : 0;
+}
+int arkiv_publish_promised(const char *root_path, const char *path, const char *parent_path,
+                           const char *name, arkiv_cancel *token, char *error, size_t capacity) {
+    if (!safe_path(path) || !component(name)) return fail(error, capacity, "Invalid promised path.");
+    if (cancelled(token)) return 2;
+    int root = create_open(root_path), parent = create_open(parent_path);
+    if (root < 0 || parent < 0) {
+        if (root >= 0) close(root);
+        if (parent >= 0) close(parent);
+        return fail(error, capacity, "Promise destination is unavailable or unsafe.");
+    }
+    char *leaf = NULL;
+    int source = output_parent(root, path, 0, &leaf);
+    int result = 0;
+    if (source < 0) result = fail(error, capacity, "Promised output is unavailable or unsafe.");
+    else if (cancelled(token)) result = 2;
+    else if (move_exclusive(source, leaf, parent, name))
+        result = fail(error, capacity, "Cannot place promised item; an item already exists or the destination is unavailable.");
+    if (source >= 0) close(source);
+    free(leaf); close(root); close(parent);
+    return result;
 }
 static int create_same_stat(const struct stat *a, const struct stat *b) {
 #ifdef __APPLE__

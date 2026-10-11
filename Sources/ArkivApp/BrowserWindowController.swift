@@ -15,6 +15,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     }
     private(set) var isBusy = false
     private let table = ArchiveTableView()
+    private var dragSession: ArchiveDragSession?
+    private var dragIsActive = false
+    private let dragQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "xyz.isharalakshan.arkiv.file-promises"
+        queue.maxConcurrentOperationCount = 1
+        queue.qualityOfService = .userInitiated
+        return queue
+    }()
     private let search = NSSearchField()
     private let pathLabel = NSTextField(labelWithString: "Open an archive to begin")
     private let status = NSTextField(labelWithString: "ZIP and TAR • Browse before extracting")
@@ -63,6 +72,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         table.style = .plain
         table.backgroundColor = .textBackgroundColor
         table.allowsMultipleSelection = true
+        table.setDraggingSourceOperationMask(.copy, forLocal: false)
+        table.setDraggingSourceOperationMask(.copy, forLocal: true)
         table.allowsColumnReordering = true
         table.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         table.rowHeight = 26
@@ -189,6 +200,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     }
     func load(_ url: URL, password: String? = nil) {
         guard !isBusy else { return }
+        if !dragIsActive { dragSession = nil }
         pendingURL = url
         let token = begin("Reading archive…")
         worker.async { [self] in
@@ -229,6 +241,37 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     }
     @objc func cancel(_ sender: Any?) { cancellation?.cancel(); status.stringValue = "Cancelling…" }
     @objc func focusSearch(_ sender: Any?) { window?.makeFirstResponder(search) }
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        guard !isBusy, let snapshot, rows.indices.contains(row) else { return nil }
+        if dragSession == nil {
+            var paths = selectedPaths()
+            if !paths.contains(rows[row].path) { paths = [rows[row].path] }
+            dragSession = try? ArchiveDragSession(snapshot: snapshot, paths: paths)
+        }
+        guard let dragSession, let item = dragSession.items.first(where: { $0.path == rows[row].path }) else { return nil }
+        return ArchiveDragPromiseProvider(session: dragSession, item: item, queue: dragQueue) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let report):
+                self.status.stringValue = report.warnings.isEmpty ? "Dragged item extracted" : "Dragged item extracted with warnings"
+                if let window = self.window { ExtractionFeedback.showWarnings(report, parent: window) }
+            case .failure(let error): self.present(error)
+            }
+        }
+    }
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession,
+                   willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
+        dragIsActive = true
+    }
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession,
+                   endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        if operation.isEmpty, let cancelledSession = dragSession {
+            cancelledSession.requestCancellation()
+            dragQueue.addOperation { cancelledSession.cancel() }
+        }
+        // Providers retain the session through promised writes, including after the browser closes.
+        dragSession = nil; dragIsActive = false
+    }
     private func selectedPaths() -> Set<String> {
         Set(table.selectedRowIndexes.compactMap { rows.indices.contains($0) ? rows[$0].path : nil })
     }
@@ -422,7 +465,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         status.toolTip = text
     }
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
-    func tableViewSelectionDidChange(_ notification: Notification) { updateStatus(); window?.toolbar?.validateVisibleItems() }
+    func tableViewSelectionDidChange(_ notification: Notification) { if !dragIsActive { dragSession = nil }; updateStatus(); window?.toolbar?.validateVisibleItems() }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let id = tableColumn?.identifier ?? NSUserInterfaceItemIdentifier("name")
         let cell = tableView.makeView(withIdentifier: id, owner: self) as? ArchiveCellView ?? ArchiveCellView(column: id.rawValue)

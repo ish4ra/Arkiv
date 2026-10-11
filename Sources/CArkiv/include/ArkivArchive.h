@@ -25,6 +25,8 @@ int arkiv_extract(const char *, const char *, const int64_t *, size_t, arkiv_lim
                  arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 int arkiv_extract_with_warnings(const char *, const char *, const int64_t *, size_t, arkiv_limits,
                  arkiv_cancel *, arkiv_progress_callback, arkiv_warning_callback, void *, char *, size_t);
+int arkiv_extract_promised(const char *, const char *, const int64_t *, size_t, arkiv_limits,
+                 arkiv_cancel *, arkiv_progress_callback, arkiv_warning_callback, void *, char *, size_t);
 /* Test streams all payload into a discard sink. 0 OK, 2 cancelled, 4 password required,
    5 wrong password or encrypted damage, 6 corrupt, 7 CRC error, 8 unsupported method,
    9 warning: format has no payload checksum. 1 operational/security error. */
@@ -36,6 +38,10 @@ const char *arkiv_backend_version(void);
    top-level items; remaining output stays in staging for recovery. */
 int arkiv_publish_extracted(const char *parent, const char *staging, const char *name,
                            int here, arkiv_cancel *, size_t *published, char *, size_t);
+
+/* Publish one selected archive path to the exact promised filename, atomically and exclusively. */
+int arkiv_prepare_promise_staging(const char *, const char *, char *, size_t);
+int arkiv_publish_promised(const char *, const char *, const char *, const char *, arkiv_cancel *, char *, size_t);
 
 /* Transactional ZIP creation. sources are absolute paths; stage/name are single components.
    3 means publication conflict. Compression: 0 Store, 1 Deflate. */
