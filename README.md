@@ -6,7 +6,7 @@ The first foundation contains an AppKit archive table, folder navigation, search
 
 **Validation:** [macOS CI](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml) runs engine/security fixtures, Swift/AppKit tests, branding checks, arm64 and Universal app verification, and mounted DMG verification. Interactive Finder discovery, UI/accessibility, and Gatekeeper behavior still require a real Mac; this is not a production release.
 
-Fixture-verified formats include ZIP Store/Deflate, TAR, 7z/LZMA2 and stored RAR5. Creation supports ZIP and 7z, including 7z AES-256 content and optional filename encryption. This is not blanket codec/multipart support. ZIP additions and native [Finder drag-in](docs/drag-in.md) to existing archive folders are available for supported writable archives; other modification, preview/open, Quick Look and advanced tools remain deferred. Native [drag-out to Finder](docs/drag-out.md) uses lazy file promises.
+Fixture-verified formats include ZIP Store/Deflate, TAR, 7z/LZMA2 and stored RAR5. Creation supports ZIP and 7z, including 7z AES-256 content and optional filename encryption. This is not blanket codec/multipart support. ZIP additions and native [Finder drag-in](docs/drag-in.md) to existing archive folders are available for supported writable archives; [ZIP Delete](docs/zip-edits.md) is available; Rename, Replace/Update, other-format modification, preview/open, Quick Look and advanced tools remain deferred. Native [drag-out to Finder](docs/drag-out.md) uses lazy file promises.
 
 Extraction preserves symbolic links and safe executable permissions for macOS app/framework bundles. Hard links are supported within extracted content; unsupported special files produce per-entry warnings. See [extraction compatibility](docs/extraction-compatibility.md).
 
@@ -39,7 +39,7 @@ The repository is already isolated in Codex cloud tasks; reuse its checkout and 
 - [Original icon direction](docs/branding.md)
 - [Third-party notices](docs/third-party-licenses.md)
 
-Next: confirm/fix macOS CI and real-Mac browser behavior, then implement owned preview workspaces, single-entry Open/Quick Look and TAR creation with round-trip tests. ZIP/7z creation and 7z AES-256 are implemented; ZIP Add Files/Add Folder are implemented; other modification remains deferred.
+Next: confirm/fix macOS CI and real-Mac browser behavior, then implement owned preview workspaces, single-entry Open/Quick Look and TAR creation with round-trip tests. ZIP/7z creation and 7z AES-256 are implemented; ZIP Add Files/Add Folder and Delete are implemented; Rename, Replace/Update and other-format modification remain deferred.
 
 ## Finder extraction
 

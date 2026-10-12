@@ -6,7 +6,7 @@ private final class ZIPAdditionProgress {
     init(_ callback: @escaping @Sendable (ArchiveProgress) -> Void) { self.callback = callback }
 }
 
-/// Adds distinct items without rewriting existing compressed data or entry metadata.
+/// Adds distinct items or deletes selected entries without rewriting existing compressed data or entry metadata.
 /// ZIP64, encrypted, multipart, and ambiguous metadata/layouts remain read-only.
 public struct ArchiveZIPUpdater: Sendable {
     public init() {}
@@ -26,9 +26,31 @@ public struct ArchiveZIPUpdater: Sendable {
         arkiv_zip_end(transaction)
         return true
     }
+    private func deletionPlan(_ snapshot: ArchiveSnapshot, paths: Set<String>) throws -> [UInt8] {
+        let index = snapshot.index
+        guard !paths.isEmpty, paths.allSatisfy({ index.row(at: $0) != nil }),
+              snapshot.entries.enumerated().allSatisfy({ $0.element.id == Int64($0.offset) }) else {
+            throw ArchiveFailure.message("Choose archive items to delete.")
+        }
+        return snapshot.entries.map { entry in
+            let path = entry.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            return paths.contains { selected in
+                path == selected || (index.row(at: selected)?.isDirectory == true && path.hasPrefix(selected + "/"))
+            } ? 0 : 1
+        }
+    }
+    @discardableResult
+    public func delete(paths: Set<String>, from snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
+                       progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
+        try update(sources: [], snapshot: snapshot, folder: "", plan: deletionPlan(snapshot, paths: paths), cancellation: cancellation, progress: progress)
+    }
     @discardableResult
     public func add(sources: [URL], to snapshot: ArchiveSnapshot, folder: String = "", cancellation: ArchiveCancellation,
                     progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
+        try update(sources: sources, snapshot: snapshot, folder: folder, plan: nil, cancellation: cancellation, progress: progress)
+    }
+    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, cancellation: ArchiveCancellation,
+                        progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         guard snapshot.unlocked == nil, snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
         }
@@ -64,15 +86,21 @@ public struct ArchiveZIPUpdater: Sendable {
         let stage = archive.deletingLastPathComponent().appendingPathComponent(".arkiv-add-" + UUID().uuidString, isDirectory: true)
         try manager.createDirectory(at: stage, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? manager.removeItem(at: stage) }
-        let additions = try ArchiveCreator().create(ArchiveCreationRequest(sources: sources, destination: stage, name: "additions"),
-                                                    archiveFolder: folder, cancellation: cancellation, progress: progress)
+        let additions = try plan == nil ? ArchiveCreator().create(ArchiveCreationRequest(sources: sources, destination: stage, name: "additions"),
+                                                    archiveFolder: folder, cancellation: cancellation, progress: progress) : nil
         let receiver = ZIPAdditionProgress(progress)
         let retained = Unmanaged.passRetained(receiver)
         defer { retained.release() }
-        let result = arkiv_zip_prepare(transaction, additions.path, stage.path, cancellation.pointer, { context, files, bytes in
+        let callback: arkiv_progress_callback = { context, files, bytes in
             guard let context else { return }
             Unmanaged<ZIPAdditionProgress>.fromOpaque(context).takeUnretainedValue().callback(ArchiveProgress(files: files, bytes: bytes))
-        }, retained.toOpaque(), &error, error.count)
+        }
+        let result: Int32
+        if let plan {
+            result = arkiv_zip_prepare_delete(transaction, plan, plan.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+        } else {
+            result = arkiv_zip_prepare(transaction, additions!.path, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+        }
         func check(_ result: Int32) throws {
             if result == 2 { throw ArchiveFailure.cancelled }
             if result != 0 { throw ArchiveFailure.message(String(cString: error)) }

@@ -152,6 +152,56 @@ final class BrowserWindowTests: XCTestCase {
     }
 
     @MainActor
+    func testDeleteConfirmationCancellationRefreshAndSound() async throws {
+        _ = NSApplication.shared
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("file.txt")
+        try Data("payload".utf8).write(to: source)
+        let archive = try ArchiveCreator().create(.init(sources: [source], destination: root, name: "Delete"), cancellation: ArchiveCancellation(), progress: { _ in })
+        var sounds = 0
+        let controller = BrowserWindowController(modificationFeedback: { result in
+            ExtractionFeedback.completed(result, play: { sounds += 1 })
+        })
+        defer { controller.close() }
+        let item = NSMenuItem(title: "Delete…", action: #selector(BrowserWindowController.deleteSelected(_:)), keyEquivalent: "")
+        XCTAssertFalse(controller.validateMenuItem(item))
+        controller.load(archive)
+        for _ in 0..<400 {
+            if !controller.isBusy { break }
+            try await Task.sleep(nanoseconds: 25_000_000)
+        }
+        let table = try XCTUnwrap(descendants(controller.window!.contentView!).compactMap { $0 as? NSTableView }.first)
+        XCTAssertNotNil(table.menu?.items.first { $0.action == item.action })
+        XCTAssertFalse(controller.validateMenuItem(item))
+        table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        XCTAssertTrue(controller.validateMenuItem(item))
+        let before = try Data(contentsOf: archive)
+        controller.deleteSelected(nil)
+        let sheet = try XCTUnwrap(controller.window?.attachedSheet)
+        let buttons = descendants(sheet.contentView!).compactMap { $0 as? NSButton }
+        XCTAssertTrue(try XCTUnwrap(buttons.first { $0.title == "Delete" }).hasDestructiveAction)
+        let cancel = try XCTUnwrap(buttons.first { $0.title == "Cancel" })
+        XCTAssertEqual(cancel.keyEquivalent, "\r")
+        cancel.performClick(nil)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(try Data(contentsOf: archive), before)
+        XCTAssertEqual(sounds, 0)
+        controller.deleteItems(["file.txt"])
+        XCTAssertFalse(controller.validateMenuItem(item))
+        for _ in 0..<400 {
+            if !controller.isBusy { break }
+            try await Task.sleep(nanoseconds: 25_000_000)
+        }
+        XCTAssertFalse(controller.isBusy)
+        XCTAssertEqual(table.numberOfRows, 0)
+        XCTAssertEqual(sounds, 1)
+        XCTAssertFalse(controller.validateMenuItem(item))
+        XCTAssertTrue(try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation()).entries.isEmpty)
+    }
+
+    @MainActor
     func testPackageContextNavigationAndDragHierarchy() async throws {
         _ = NSApplication.shared
         let fm = FileManager.default

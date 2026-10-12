@@ -103,6 +103,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
             let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
             item.target = self
         }
+        let delete = menu.addItem(withTitle: "Delete…", action: #selector(deleteSelected(_:)), keyEquivalent: "")
+        delete.target = self
         table.menu = menu
         let scroll = NSScrollView()
         scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
@@ -351,6 +353,63 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
             }
         }
     }
+    @objc func deleteSelected(_ sender: Any?) {
+        guard canAddToZIP, let window, window.attachedSheet == nil else { return }
+        let paths = selectedPaths()
+        guard !paths.isEmpty else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Delete selected items from this archive?"
+        alert.informativeText = "Selected folders and packages include all their contents. This cannot be undone."
+        let delete = alert.addButton(withTitle: "Delete")
+        delete.hasDestructiveAction = true
+        delete.keyEquivalent = ""
+        alert.addButton(withTitle: "Cancel").keyEquivalent = "\r"
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            self?.deleteItems(paths)
+        }
+    }
+    /// Called only after the native destructive confirmation.
+    func deleteItems(_ paths: Set<String>) {
+        guard canAddToZIP, !paths.isEmpty, let snapshot else { return }
+        var folder = currentPath
+        let index = snapshot.index
+        let deleted = Set(snapshot.entries.filter { entry in
+            let path = entry.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            return paths.contains { selected in
+                path == selected || (index.row(at: selected)?.isDirectory == true && path.hasPrefix(selected + "/"))
+            }
+        }.map(\.id))
+        while !folder.isEmpty && (index.entryIDs(for: [folder]).allSatisfy { deleted.contains($0) }) {
+            folder = folder.split(separator: "/").dropLast().joined(separator: "/")
+        }
+        let parent = folder
+        let token = begin("Deleting from ZIP…")
+        worker.async { [self] in
+            let throttle = ProgressThrottle()
+            let result = Result {
+                try ArchiveZIPUpdater().delete(paths: paths, from: snapshot, cancellation: token) { progress in
+                    guard throttle.shouldUpdate() else { return }
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.isBusy else { return }
+                        self.status.stringValue = "\(progress.files) entries verified"
+                    }
+                }
+            }
+            DispatchQueue.main.async { [self] in
+                finish()
+                modificationFeedback(result)
+                switch result {
+                case .success(let url):
+                    self.snapshot = nil; self.index = nil; self.zipAdditionAvailable = false
+                    search.stringValue = ""
+                    load(url, browsingFolder: parent)
+                case .failure(let error): present(error)
+                }
+            }
+        }
+    }
     @objc func addFiles(_ sender: Any?) { chooseAdditions(folder: false) }
     @objc func addFolder(_ sender: Any?) { chooseAdditions(folder: true) }
     private var canAddToZIP: Bool {
@@ -484,7 +543,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         guard let snapshot, let window else { return }
         let alert = NSAlert()
         alert.messageText = snapshot.url.lastPathComponent
-        alert.informativeText = "\(snapshot.entries.count) entries\nBackend: \(LibArchiveEngine.version)\n\nExtraction limit: 100,000 entries / 20 GiB. ZIP and 7z creation are available from File → Create Archive. 7z supports AES-256. Add Files/Add Folder are available for supported writable ZIPs. Other modification is unavailable."
+        alert.informativeText = "\(snapshot.entries.count) entries\nBackend: \(LibArchiveEngine.version)\n\nExtraction limit: 100,000 entries / 20 GiB. ZIP and 7z creation are available from File → Create Archive. 7z supports AES-256. Add Files/Add Folder and Delete are available for supported writable ZIPs. Other modification is unavailable."
         alert.beginSheetModal(for: window)
     }
     @objc func copyPath(_ sender: Any?) {
@@ -539,6 +598,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(showPackageContents(_:)): return !isBusy && selectedPackage != nil
+        case #selector(deleteSelected(_:)): return canAddToZIP && window?.attachedSheet == nil && !selectedPaths().isEmpty
         case #selector(addFiles(_:)), #selector(addFolder(_:)): return canAddToZIP && window?.attachedSheet == nil
         case #selector(copyPath(_:)), #selector(extractSelected(_:)): return !isBusy && !selectedPaths().isEmpty
         case #selector(testArchive(_:)), #selector(extractAll(_:)), #selector(showInfo(_:)): return !isBusy && snapshot != nil

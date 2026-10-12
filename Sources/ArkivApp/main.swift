@@ -163,6 +163,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let create = file.addItem(withTitle: "Create Archive…", action: #selector(createArchive(_:)), keyEquivalent: "N"); create.target = self
         let open = file.addItem(withTitle: "Open Archive…", action: #selector(openArchive(_:)), keyEquivalent: "o"); open.target = self
         file.addItem(.separator())
+        let delete = file.addItem(withTitle: "Delete…", action: #selector(BrowserWindowController.deleteSelected(_:)), keyEquivalent: "\u{8}")
+        delete.keyEquivalentModifierMask = [.command]
         file.addItem(withTitle: "Add Files…", action: #selector(BrowserWindowController.addFiles(_:)), keyEquivalent: "")
         file.addItem(withTitle: "Add Folder…", action: #selector(BrowserWindowController.addFolder(_:)), keyEquivalent: "")
         file.addItem(.separator())
