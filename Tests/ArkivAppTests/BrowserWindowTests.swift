@@ -179,19 +179,49 @@ final class BrowserWindowTests: XCTestCase {
         XCTAssertTrue(controller.validateMenuItem(item))
         let before = try Data(contentsOf: archive)
         controller.deleteSelected(nil)
+        func sheetButton(_ sheet: NSWindow, _ title: String) throws -> NSButton {
+            try XCTUnwrap(descendants(sheet.contentView!).compactMap { $0 as? NSButton }.first { $0.title == title })
+        }
+        func key(_ characters: String, code: UInt16, in sheet: NSWindow) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+                timestamp: 0, windowNumber: sheet.windowNumber, context: nil,
+                characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code))
+        }
+        func dismissed() async throws {
+            for _ in 0..<200 {
+                if controller.window?.attachedSheet == nil { return }
+                try await Task.sleep(nanoseconds: 10_000_000)
+            }
+            XCTFail("Confirmation sheet should dismiss")
+        }
         let sheet = try XCTUnwrap(controller.window?.attachedSheet)
-        let buttons = descendants(sheet.contentView!).compactMap { $0 as? NSButton }
-        XCTAssertTrue(try XCTUnwrap(buttons.first { $0.title == "Delete" }).hasDestructiveAction)
-        let cancel = try XCTUnwrap(buttons.first { $0.title == "Cancel" })
-        XCTAssertEqual(cancel.keyEquivalent, "\r")
-        cancel.performClick(nil)
-        try await Task.sleep(nanoseconds: 100_000_000)
+        let delete = try sheetButton(sheet, "Delete")
+        XCTAssertTrue(delete.hasDestructiveAction)
+        XCTAssertFalse(sheet.defaultButtonCell === delete.cell, "Delete must never be the default action")
+        XCTAssertNotEqual(delete.keyEquivalent, "\r")
+        _ = sheet.performKeyEquivalent(try key("\r", code: 36, in: sheet))
+        XCTAssertFalse(controller.isBusy, "Return must not start destructive work")
         XCTAssertEqual(try Data(contentsOf: archive), before)
         XCTAssertEqual(sounds, 0)
-        controller.deleteItems(["file.txt"])
-        XCTAssertFalse(controller.validateMenuItem(item))
+        // Test explicit Cancel independently of AppKit's default-button representation.
+        if controller.window?.attachedSheet != nil {
+            try sheetButton(sheet, "Cancel").performClick(nil)
+        }
+        try await dismissed()
+        XCTAssertEqual(try Data(contentsOf: archive), before)
+        XCTAssertEqual(sounds, 0)
+        controller.deleteSelected(nil)
+        let escapeSheet = try XCTUnwrap(controller.window?.attachedSheet)
+        XCTAssertTrue(escapeSheet.performKeyEquivalent(try key("\u{1b}", code: 53, in: escapeSheet)), "Native Escape must cancel")
+        try await dismissed()
+        XCTAssertEqual(try Data(contentsOf: archive), before)
+        XCTAssertEqual(sounds, 0)
+        controller.deleteSelected(nil)
+        let confirmedSheet = try XCTUnwrap(controller.window?.attachedSheet)
+        try sheetButton(confirmedSheet, "Delete").performClick(nil)
+        try await dismissed()
         for _ in 0..<400 {
-            if !controller.isBusy { break }
+            if !controller.isBusy && sounds == 1 && table.numberOfRows == 0 { break }
             try await Task.sleep(nanoseconds: 25_000_000)
         }
         XCTAssertFalse(controller.isBusy)

@@ -364,7 +364,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         let delete = alert.addButton(withTitle: "Delete")
         delete.hasDestructiveAction = true
         delete.keyEquivalent = ""
-        alert.addButton(withTitle: "Cancel").keyEquivalent = "\r"
+        // Let NSAlert assign its native Cancel/Escape behavior. Destructive
+        // actions must not acquire the Return/default-button shortcut.
+        alert.addButton(withTitle: "Cancel")
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
             self?.deleteItems(paths)
