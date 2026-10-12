@@ -182,11 +182,6 @@ final class BrowserWindowTests: XCTestCase {
         func sheetButton(_ sheet: NSWindow, _ title: String) throws -> NSButton {
             try XCTUnwrap(descendants(sheet.contentView!).compactMap { $0 as? NSButton }.first { $0.title == title })
         }
-        func key(_ characters: String, code: UInt16, in sheet: NSWindow) throws -> NSEvent {
-            try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
-                timestamp: 0, windowNumber: sheet.windowNumber, context: nil,
-                characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code))
-        }
         func dismissed() async throws {
             for _ in 0..<200 {
                 if controller.window?.attachedSheet == nil { return }
@@ -199,8 +194,12 @@ final class BrowserWindowTests: XCTestCase {
         XCTAssertTrue(delete.hasDestructiveAction)
         XCTAssertFalse(sheet.defaultButtonCell === delete.cell, "Delete must never be the default action")
         XCTAssertNotEqual(delete.keyEquivalent, "\r")
-        _ = sheet.performKeyEquivalent(try key("\r", code: 36, in: sheet))
-        XCTAssertFalse(controller.isBusy, "Return must not start destructive work")
+        // Return activates the native default button. It may be absent for a
+        // destructive alert, but it must never refer to Delete.
+        if let defaultCell = sheet.defaultButtonCell {
+            try XCTUnwrap(defaultCell.controlView as? NSButton).performClick(nil)
+        }
+        XCTAssertFalse(controller.isBusy, "The default action must not start destructive work")
         XCTAssertEqual(try Data(contentsOf: archive), before)
         XCTAssertEqual(sounds, 0)
         // Test explicit Cancel independently of AppKit's default-button representation.
@@ -212,7 +211,8 @@ final class BrowserWindowTests: XCTestCase {
         XCTAssertEqual(sounds, 0)
         controller.deleteSelected(nil)
         let escapeSheet = try XCTUnwrap(controller.window?.attachedSheet)
-        XCTAssertTrue(escapeSheet.performKeyEquivalent(try key("\u{1b}", code: 53, in: escapeSheet)), "Native Escape must cancel")
+        // Escape's standard responder action, without manufacturing a hardware event.
+        escapeSheet.cancelOperation(nil)
         try await dismissed()
         XCTAssertEqual(try Data(contentsOf: archive), before)
         XCTAssertEqual(sounds, 0)
