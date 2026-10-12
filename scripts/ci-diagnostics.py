@@ -58,6 +58,10 @@ for line in text.splitlines():
         if identifier in source_identifiers:
             labels.append('Referenced source identifier: ' + identifier)
 for source in Path('Tests').rglob('*.swift'):
+    # Expose only checked-in test paths and valid line numbers, never error text.
+    for number in re.findall(re.escape(source.name) + r':(\d+):(?:\d+:)?\s*error:', text):
+        if 1 <= int(number) <= len(source.read_text().splitlines()):
+            labels.append('Failing test source: ' + str(source) + ':' + number)
     for test in re.findall(r'func (test[A-Za-z_0-9]+)', source.read_text()):
         if re.search(re.escape(test) + r'.*(?:failed|error)', text):
             labels.append('Failing Swift test: ' + test)
