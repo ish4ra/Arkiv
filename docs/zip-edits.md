@@ -1,7 +1,8 @@
-# Delete and Rename inside writable ZIPs
+# Editing writable ZIPs
 
 Open an eligible ZIP and select entries in the browser. **File → Delete…** is also available in the table context menu. Other archive formats
-remain read-only for modification; Replace/Update remains deferred.
+remain read-only for modification. Folder replacement and multi-file update
+remain deferred.
 
 Delete requires a native destructive confirmation. Files, folders and packages
 can be selected together. Folder/package deletion includes all descendants;
@@ -25,9 +26,28 @@ filenames are not renamed. Converting an ASCII name to Unicode also requires
 an ASCII entry comment when the original ZIP UTF-8 flag is unset; otherwise
 the operation is refused to avoid reinterpreting that comment.
 
+## Replace File
+
+Select exactly one regular file and choose **File → Replace File…** or the
+matching context-menu command. Choose one local regular disk file in the native
+file panel. Its bytes replace the selected entry's contents; the archive path
+and filename stay unchanged, even when the chosen disk file has a different
+name. Folder/package replacement and multi-file updates are unavailable.
+
+Replacement uses the same transaction and full verification as other ZIP edits.
+Unrelated entries are not recompressed, and the archive comment is preserved.
+The selected entry keeps its Store or Deflate method, raw filename, accepted
+extra fields, timestamps, attributes and comment. The disk file supplies content,
+not replacement permissions or timestamps. CRC and compressed/uncompressed sizes
+are rebuilt. Compression flags and minimum-reader version are adjusted when
+needed; a data descriptor, if present, is regenerated. Ambiguous filenames or
+unsupported metadata fail closed. Encrypted, ZIP64 and multipart archives remain
+read-only.
+The refreshed browser keeps the replaced entry selected in its original parent.
+
 ## Transaction and preservation
 
-Delete, Rename and Add share `ArchiveZIPUpdater` and the same pinned-source,
+Delete, Rename, Replace File and Add share `ArchiveZIPUpdater` and the same pinned-source,
 private sibling replacement, full verification and coordinated atomic commit
 architecture. The original ZIP is never edited in place. Stale snapshots and
 changed source/replacement files are rejected before commit. Cancellation or
@@ -76,3 +96,15 @@ or a crash-recovery mechanism.
 4. Cancel the sheet and a large rewrite; verify no edit or completion sound.
 5. Add/Delete items and drag files into/out of the edited ZIP.
 6. Open a read-only format or select multiple items: Rename must be disabled.
+
+## Replace File checks on a real Mac
+
+1. Open a disposable Store or Deflate ZIP. Select one file and choose
+   **Replace File…**, then choose a differently named disk file. The archive
+   filename must stay unchanged while its contents and size change.
+2. Repeat with a smaller, larger and empty replacement and a Unicode path.
+3. Run Test Archive and extract the ZIP; compare the replaced file's bytes with
+   the chosen source and verify unrelated files are unchanged.
+4. Cancel the chooser and a large rewrite before commit: no edit or sound.
+5. Verify multiple selections, folders and read-only archive formats disable
+   Replace File. Check Add/Delete/Rename and Finder drag-in/out still work.

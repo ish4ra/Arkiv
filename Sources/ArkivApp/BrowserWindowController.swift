@@ -103,6 +103,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
             let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
             item.target = self
         }
+        menu.addItem(withTitle: "Replace File…", action: #selector(replaceSelected(_:)), keyEquivalent: "").target = self
         let rename = menu.addItem(withTitle: "Rename…", action: #selector(renameSelected(_:)), keyEquivalent: "")
         rename.target = self
         let delete = menu.addItem(withTitle: "Delete…", action: #selector(deleteSelected(_:)), keyEquivalent: "")
@@ -359,6 +360,53 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
             }
         }
     }
+    private var canReplaceFile: Bool {
+        guard canAddToZIP, window?.attachedSheet == nil, selectedPaths().count == 1,
+              let path = selectedPaths().first else { return false }
+        return snapshot?.entries.filter { $0.path == path && $0.kind == .file }.count == 1 && index?.row(at: path)?.isDirectory == false
+    }
+    @objc func replaceSelected(_ sender: Any?) {
+        guard canReplaceFile, let window, let path = selectedPaths().first else { return }
+        let panel = NSOpenPanel()
+        panel.title = "Replace File"
+        panel.message = "Choose a file to replace the contents of ‘\(path)’. Its archive name stays unchanged."
+        panel.prompt = "Replace"
+        panel.canChooseFiles = true; panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false; panel.resolvesAliases = false
+        panel.treatsFilePackagesAsDirectories = true
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let source = panel.url else { return }
+            self?.replaceItem(path, with: source)
+        }
+    }
+    func replaceItem(_ path: String, with source: URL) {
+        guard canAddToZIP, let snapshot else { return }
+        let folder = path.split(separator: "/").dropLast().joined(separator: "/")
+        let token = begin("Replacing file in ZIP…")
+        worker.async { [self] in
+            let throttle = ProgressThrottle()
+            let result = Result {
+                try ArchiveZIPUpdater().replace(path: path, with: source, in: snapshot, cancellation: token) { progress in
+                    guard throttle.shouldUpdate() else { return }
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.isBusy else { return }
+                        self.status.stringValue = "\(progress.files) entries verified"
+                    }
+                }
+            }
+            DispatchQueue.main.async { [self] in
+                finish()
+                modificationFeedback(result)
+                switch result {
+                case .success(let url):
+                    self.snapshot = nil; self.index = nil; self.zipAdditionAvailable = false
+                    search.stringValue = ""
+                    load(url, browsingFolder: folder, selectingPath: path)
+                case .failure(let error): present(error)
+                }
+            }
+        }
+    }
     @objc func renameSelected(_ sender: Any?) {
         guard canAddToZIP, let window, window.attachedSheet == nil,
               selectedPaths().count == 1, let path = selectedPaths().first,
@@ -600,7 +648,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         guard let snapshot, let window else { return }
         let alert = NSAlert()
         alert.messageText = snapshot.url.lastPathComponent
-        alert.informativeText = "\(snapshot.entries.count) entries\nBackend: \(LibArchiveEngine.version)\n\nExtraction limit: 100,000 entries / 20 GiB. ZIP and 7z creation are available from File → Create Archive. 7z supports AES-256. Add Files/Add Folder, Delete, and Rename are available for supported writable ZIPs. Other modification is unavailable."
+        alert.informativeText = "\(snapshot.entries.count) entries\nBackend: \(LibArchiveEngine.version)\n\nExtraction limit: 100,000 entries / 20 GiB. ZIP and 7z creation are available from File → Create Archive. 7z supports AES-256. Add Files/Add Folder, Delete, Rename, and Replace File are available for supported writable ZIPs. Other modification is unavailable."
         alert.beginSheetModal(for: window)
     }
     @objc func copyPath(_ sender: Any?) {
@@ -655,6 +703,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(showPackageContents(_:)): return !isBusy && selectedPackage != nil
+        case #selector(replaceSelected(_:)): return canReplaceFile
         case #selector(renameSelected(_:)): return canAddToZIP && window?.attachedSheet == nil && selectedPaths().count == 1
         case #selector(deleteSelected(_:)): return canAddToZIP && window?.attachedSheet == nil && !selectedPaths().isEmpty
         case #selector(addFiles(_:)), #selector(addFolder(_:)): return canAddToZIP && window?.attachedSheet == nil

@@ -9,8 +9,8 @@
 | Create ZIP | Store/Deflate, native creation setup, direct Finder multi-selection compression; [details](creation.md) |
 | Create/read 7z / AES-256 / filename encryption | LZMA2, content/header encryption, native password prompt/retry; [backend and limits](sevenzip.md) |
 | Add to existing ZIP | Add Files/Add Folder at root; verified atomic rewrite of supported ZIP32; [limits](zip-additions.md) |
-| ZIP Delete / Rename | Verified transactional edits for eligible ZIP32 archives; [details](zip-edits.md) |
-| Replace/Update / other-format modification / ZIP AES | Deferred; no enabled UI claims |
+| ZIP Delete / Rename / Replace File | Verified transactional edits for eligible ZIP32 archives; [details](zip-edits.md) |
+| Folder/multi-file update / other-format modification / ZIP AES | Deferred; no enabled UI claims |
 | Solid archives / multipart / comments | Deferred compatibility work |
 | Integrity test command | ZIP/7z full-data/CRC checks; TAR structure/readability with explicit checksum warning; native progress/cancellation/password retry |
 | Checksums / split-combine / benchmark / CLI | Deferred |

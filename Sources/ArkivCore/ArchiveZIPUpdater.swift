@@ -6,7 +6,7 @@ private final class ZIPAdditionProgress {
     init(_ callback: @escaping @Sendable (ArchiveProgress) -> Void) { self.callback = callback }
 }
 
-/// Adds, deletes or renames items without recompressing retained entry data.
+/// Adds, deletes, renames or replaces items without recompressing unrelated entry data.
 /// ZIP64, encrypted, multipart, and ambiguous metadata/layouts remain read-only.
 public struct ArchiveZIPUpdater: Sendable {
     public init() {}
@@ -78,6 +78,25 @@ public struct ArchiveZIPUpdater: Sendable {
         }
         return try update(sources: [], snapshot: snapshot, folder: "", plan: nil, renameNames: names, cancellation: cancellation, progress: progress)
     }
+    /// Replaces exactly one regular file while retaining its archive name and metadata.
+    @discardableResult
+    public func replace(path: String, with source: URL, in snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
+                        progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
+        guard let entry = snapshot.entries.first(where: { $0.path == path }), entry.kind == .file,
+              snapshot.entries.filter({ $0.path == path }).count == 1,
+              snapshot.entries.enumerated().allSatisfy({ $0.element.id == Int64($0.offset) }),
+              snapshot.index.row(at: path)?.isDirectory == false,
+              !snapshot.entries.contains(where: { $0.path.hasPrefix(path + "/") }),
+              try FileManager.default.attributesOfItem(atPath: source.path)[.type] as? FileAttributeType == .typeRegular else {
+            throw ArchiveFailure.message("Choose one regular archive file and one regular replacement file.")
+        }
+        let components = path.split(separator: "/", omittingEmptySubsequences: false)
+        guard components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }),
+              components.dropLast().indices.allSatisfy({ snapshot.index.row(at: components.prefix($0 + 1).joined(separator: "/"))?.isDirectory == true }) else {
+            throw ArchiveFailure.message("Ambiguous archive paths cannot safely be replaced.")
+        }
+        return try update(sources: [source], snapshot: snapshot, folder: "", plan: nil, replacement: entry, cancellation: cancellation, progress: progress)
+    }
     @discardableResult
     public func delete(paths: Set<String>, from snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
                        progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
@@ -88,7 +107,7 @@ public struct ArchiveZIPUpdater: Sendable {
                     progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
         try update(sources: sources, snapshot: snapshot, folder: folder, plan: nil, cancellation: cancellation, progress: progress)
     }
-    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, cancellation: ArchiveCancellation,
+    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         guard snapshot.unlocked == nil, snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
@@ -114,7 +133,7 @@ public struct ArchiveZIPUpdater: Sendable {
         var roots = Set(snapshot.index.children(of: folder).map { key($0.name) })
         for sourceURL in sources {
             let source = canonical(sourceURL)
-            guard roots.insert(key(source.lastPathComponent)).inserted else {
+            guard replacement != nil || roots.insert(key(source.lastPathComponent)).inserted else {
                 throw ArchiveFailure.message("An item named ‘\(source.lastPathComponent)’ already exists in the destination archive folder. Rename the source item before adding it.")
             }
             guard canonical(source) != archive, (try? SourceStamp(source).inode) != snapshot.stamp.inode else {
@@ -125,7 +144,13 @@ public struct ArchiveZIPUpdater: Sendable {
         let stage = archive.deletingLastPathComponent().appendingPathComponent(".arkiv-add-" + UUID().uuidString, isDirectory: true)
         try manager.createDirectory(at: stage, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? manager.removeItem(at: stage) }
-        let additions = try plan == nil && renameNames == nil ? ArchiveCreator().create(ArchiveCreationRequest(sources: sources, destination: stage, name: "additions"),
+        var compression: ZIPCompression = .deflate
+        if let replacement {
+            let method = arkiv_zip_replacement_method(transaction, Int(replacement.id), snapshot.entries.count, replacement.path)
+            guard method == 0 || method == 8 else { throw ArchiveFailure.message("This entry cannot safely be replaced.") }
+            compression = method == 0 ? .store : .deflate
+        }
+        let additions = try plan == nil && renameNames == nil ? ArchiveCreator().create(ArchiveCreationRequest(sources: sources, destination: stage, name: "additions", compression: compression),
                                                     archiveFolder: folder, cancellation: cancellation, progress: progress) : nil
         let receiver = ZIPAdditionProgress(progress)
         let retained = Unmanaged.passRetained(receiver)
@@ -135,7 +160,9 @@ public struct ArchiveZIPUpdater: Sendable {
             Unmanaged<ZIPAdditionProgress>.fromOpaque(context).takeUnretainedValue().callback(ArchiveProgress(files: files, bytes: bytes))
         }
         let result: Int32
-        if let renameNames {
+        if let replacement {
+            result = arkiv_zip_prepare_replace(transaction, additions!.path, Int(replacement.id), snapshot.entries.count, replacement.path, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+        } else if let renameNames {
             let old = snapshot.entries.map { strdup($0.path) }
             let renamed = renameNames.map { $0.flatMap { strdup($0) } }
             defer { old.forEach { free($0) }; renamed.forEach { free($0) } }

@@ -395,4 +395,61 @@ final class BrowserWindowTests: XCTestCase {
         XCTAssertEqual(Set(try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation()).entries.map(\.path)), ["資料 🐘.txt", "other.txt"])
     }
 
+    @MainActor
+    func testReplacementAvailabilitySameParentReselectionAndOneSound() async throws {
+        _ = NSApplication.shared
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let folder = root.appendingPathComponent("Folder")
+        try manager.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? manager.removeItem(at: root) }
+        for name in ["a.txt", "b.txt"] { try Data("old".utf8).write(to: folder.appendingPathComponent(name)) }
+        let source = root.appendingPathComponent("different.txt")
+        try Data("chosen replacement".utf8).write(to: source)
+        let archive = try ArchiveCreator().create(.init(sources: [folder], destination: root, name: "Replace"), cancellation: ArchiveCancellation(), progress: { _ in })
+        var sounds = 0
+        let controller = BrowserWindowController(modificationFeedback: { result in
+            ExtractionFeedback.completed(result, play: { sounds += 1 })
+        })
+        defer { controller.close() }
+        let item = NSMenuItem(title: "Replace File…", action: #selector(BrowserWindowController.replaceSelected(_:)), keyEquivalent: "")
+        XCTAssertFalse(controller.validateMenuItem(item))
+        func idle() async throws {
+            for _ in 0..<400 {
+                if !controller.isBusy { return }
+                try await Task.sleep(nanoseconds: 25_000_000)
+            }
+            XCTFail("Replacement did not finish")
+        }
+        controller.load(archive); try await idle()
+        let table = try XCTUnwrap(descendants(controller.window!.contentView!).compactMap { $0 as? NSTableView }.first)
+        XCTAssertNotNil(table.menu?.items.first { $0.action == item.action })
+        XCTAssertFalse(controller.validateMenuItem(item))
+        table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        XCTAssertFalse(controller.validateMenuItem(item), "Folders cannot be replaced")
+        controller.activate(row: 0)
+        table.selectRowIndexes(IndexSet(integersIn: 0..<2), byExtendingSelection: false)
+        XCTAssertFalse(controller.validateMenuItem(item))
+        table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        XCTAssertTrue(controller.validateMenuItem(item))
+        controller.replaceItem("Folder/a.txt", with: source)
+        XCTAssertFalse(controller.validateMenuItem(item), "Busy archives cannot be edited")
+        try await idle()
+        XCTAssertEqual(sounds, 1)
+        XCTAssertEqual(table.numberOfRows, 2)
+        XCTAssertEqual(table.selectedRowIndexes, IndexSet(integer: 0))
+        XCTAssertEqual(controller.dropFolder(proposedRow: -1, operation: .on), "Folder")
+        XCTAssertTrue(controller.validateMenuItem(item))
+        XCTAssertNotNil(controller.tableView(table, pasteboardWriterForRow: 0))
+        let snapshot = try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation())
+        XCTAssertEqual(Set(snapshot.entries.map(\.path)), ["Folder/", "Folder/a.txt", "Folder/b.txt"])
+        let output = try LibArchiveEngine().extract(snapshot, ids: nil, into: root, cancellation: ArchiveCancellation(), progress: { _ in })
+        XCTAssertEqual(try Data(contentsOf: output.appendingPathComponent("Folder/a.txt")), Data("chosen replacement".utf8))
+        let seven = try ArchiveCreator().create(.init(sources: [source], destination: root, name: "ReadOnly", format: .sevenZip), cancellation: ArchiveCancellation(), progress: { _ in })
+        controller.load(seven); try await idle()
+        table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        XCTAssertFalse(controller.validateMenuItem(item))
+        XCTAssertEqual(sounds, 1)
+    }
+
 }
