@@ -956,7 +956,7 @@ int arkiv_zip_replacement_method(arkiv_zip_transaction *t, size_t ordinal, size_
    Replacement splices generated compressed bytes into the selected record, retaining its metadata. */
 static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsigned char *keep,const char *const *oldnames,const char *const *names,size_t count,size_t replacement,const char *expected,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
     int in=-1,out=-1,result=1;struct zip_envelope z;struct stat st;uint32_t *offsets=NULL;unsigned char content[46], contentLocal[30];uint64_t contentStart=0;
-    int replacing=replacement!=SIZE_MAX;
+    int replacing=replacement!=SIZE_MAX, emptyDeflate=0;
     if(t->stage>=0||t->ready)goto done;
     if(addition) {
         in=create_open(addition);
@@ -965,8 +965,18 @@ static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsig
         if(replacing) {
             int method=arkiv_zip_replacement_method(t,replacement,count,expected);
             if(method<0||z.count!=1||pread(in,content,46,z.offset)!=46||pread(in,contentLocal,30,0)!=30||
-               integrity_u16(content+10)!=method||(integrity_u32(content+38)&0x10)||
+               (integrity_u32(content+38)&0x10)||
                ((integrity_u32(content+38)>>16)&S_IFMT)!=S_IFREG)goto done;
+            /* Apple libarchive forces Store for empty input, even when Deflate was requested.
+               Preserve the target method using the RFC 1951 final fixed block containing only
+               end-of-block (03 00). Accept only a genuine zero-byte, zero-CRC stored record. */
+            if(method==8 && integrity_u16(content+10)==0 &&
+               integrity_u32(content+16)==0 && integrity_u32(content+20)==0 && integrity_u32(content+24)==0) {
+                emptyDeflate=1;
+                zip_put16(content+10,8);zip_put32(content+20,2);
+                if(integrity_u16(content+6)<20)zip_put16(content+6,20);
+            }
+            if(integrity_u16(content+10)!=method)goto done;
             contentStart=30u+integrity_u16(contentLocal+26)+integrity_u16(contentLocal+28);
         }
     } else if(replacing)goto done;
@@ -1015,7 +1025,12 @@ static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsig
                     if(integrity_u16(l+4)<integrity_u16(content+6))zip_put16(l+4,integrity_u16(content+6));
                     if(write(out,l,30)!=30)goto done;
                     result=zip_copy(t->source,out,off+30,n+integrity_u16(l+28),token);if(result)goto done;
-                    result=zip_copy(in,out,contentStart,integrity_u32(content+20),token);if(result)goto done;
+                    if(emptyDeflate) {
+                        const unsigned char emptyBlock[2]={3,0};
+                        result=1;if(write(out,emptyBlock,sizeof(emptyBlock))!=(ssize_t)sizeof(emptyBlock))goto done;
+                    } else {
+                        result=zip_copy(in,out,contentStart,integrity_u32(content+20),token);if(result)goto done;
+                    }
                     result=1;
                     if(integrity_u16(h+8)&8) {
                         unsigned char descriptor[16]={'P','K',7,8};memcpy(descriptor+4,content+16,12);

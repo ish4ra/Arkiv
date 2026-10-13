@@ -39,7 +39,9 @@ Unrelated entries are not recompressed, and the archive comment is preserved.
 The selected entry keeps its Store or Deflate method, raw filename, accepted
 extra fields, timestamps, attributes and comment. The disk file supplies content,
 not replacement permissions or timestamps. CRC and compressed/uncompressed sizes
-are rebuilt. Compression flags and minimum-reader version are adjusted when
+are rebuilt. On macOS, the backend may emit Store for empty input despite a
+Deflate request; replacement encodes the standard empty Deflate block to retain
+the original method, then verifies the complete ZIP as usual. Compression flags and minimum-reader version are adjusted when
 needed; a data descriptor, if present, is regenerated. Ambiguous filenames or
 unsupported metadata fail closed. Encrypted, ZIP64 and multipart archives remain
 read-only.

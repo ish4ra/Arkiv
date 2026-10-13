@@ -21,6 +21,23 @@ class ReplacementTests(unittest.TestCase):
             entry.external_attr = 0o100600 << 16
             z.writestr(entry, payload)
         return LIB.arkiv_zip_prepare_replace(self.t, os.fsencode(content), ordinal, count, name, os.fsencode(self.stage), token, None, None, self.error, 256)
+    def test_apple_stored_empty_content_keeps_original_deflate(self):
+        # Apple's libarchive writes empty files as Store even when Deflate is requested.
+        self.fixture(method=zipfile.ZIP_DEFLATED)
+        self.assertEqual(self.prepare_replacement(b'', method=zipfile.ZIP_STORED), 0, self.error.value)
+        self.assertEqual(self.path.read_bytes(), self.before)
+        self.assertEqual(self.commit(), 0, self.error.value)
+        import struct
+        with zipfile.ZipFile(self.path) as z:
+            item = z.getinfo('old')
+            self.assertEqual(item.compress_type, zipfile.ZIP_DEFLATED)
+            self.assertEqual((item.CRC, item.file_size, item.compress_size), (0, 0, 2))
+            self.assertEqual(z.read('old'), b'')
+            self.assertEqual(z.read('keep'), b'payload' * 100)
+            self.assertIsNone(z.testzip())
+            raw = self.path.read_bytes()
+            self.assertEqual(struct.unpack_from('<H', raw, item.header_offset + 8)[0], 8)
+            self.assertEqual(struct.unpack_from('<III', raw, item.header_offset + 14), (0, 2, 0))
     def test_content_sizes_methods_and_metadata(self):
         for method in [zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED]:
             for payload in [b'', b'x', b'large replacement'*10000]:
