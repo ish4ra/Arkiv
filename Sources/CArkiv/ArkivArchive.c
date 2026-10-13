@@ -932,15 +932,15 @@ static int zip_copy(int in,int out,uint64_t start,uint64_t length,arkiv_cancel *
     }return 0;
 }
 /* Keep masks follow listing ordinals: accepted ZIPs have identical local/central order.
-   Names are never decoded/re-encoded; all retained local records remain byte-identical. */
-static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsigned char *keep,size_t count,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
+   Deletion leaves retained local records byte-identical; rename changes only names and encoding flags. */
+static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsigned char *keep,const char *const *oldnames,const char *const *names,size_t count,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
     int in=-1,out=-1,result=1;struct zip_envelope z;struct stat st;uint32_t *offsets=NULL;
     if(t->stage>=0||t->ready)goto done;
     if(addition) {
         in=create_open(addition);
         if(in<0||!zip_envelope(in,&z)||t->zip.count+z.count>=65535||
            (uint64_t)t->zip.offset+z.offset+t->zip.size+z.size+22+t->zip.comment>=UINT32_MAX)goto done;
-    } else if(count!=t->zip.count||(!keep&&count))goto done;
+    } else if(count!=t->zip.count||(!keep&&!names&&count))goto done;
     t->stage=create_open(stage);if(t->stage<0)goto done;
     if(fstat(t->stage,&st)||!S_ISDIR(st.st_mode)||st.st_uid!=geteuid()||(st.st_mode&077)!=0||st.st_dev!=t->stamp.st_dev)goto done;
     out=openat(t->stage,"replacement.zip",O_CREAT|O_EXCL|O_RDWR|O_NOFOLLOW|O_CLOEXEC,0600);if(out<0)goto done;
@@ -968,16 +968,38 @@ static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsig
             if(cursor+46>centralEnd||pread(t->source,h,46,cursor)!=46||memcmp(h,"PK\001\002",4))goto done;
             unsigned n=integrity_u16(h+28),extra=integrity_u16(h+30),comment=integrity_u16(h+32);
             uint64_t off=integrity_u32(h+42),recordEnd;
-            if(keep[i]>1||cursor+46+n+extra+comment>centralEnd||off+30>t->zip.offset)goto done;
+            if((keep&&keep[i]>1)||cursor+46+n+extra+comment>centralEnd||off+30>t->zip.offset)goto done;
             if(pread(t->source,l,30,off)!=30||memcmp(l,"PK\003\004",4)||integrity_u16(l+26)!=n)goto done;
             recordEnd=off+30+n+integrity_u16(l+28)+integrity_u32(h+20);
             if(recordEnd>t->zip.offset)goto done;
             if(integrity_u16(h+8)&8) { unsigned char d[4];if(recordEnd+4>t->zip.offset||pread(t->source,d,4,recordEnd)!=4)goto done;recordEnd+=!memcmp(d,"PK\007\010",4)?16:12; }
             if(recordEnd>t->zip.offset)goto done;
-            if(keep[i]) {
+            if(!keep||keep[i]) {
                 off_t position=lseek(out,0,SEEK_CUR);if(position<0||(uint64_t)position+recordEnd-off>=UINT32_MAX)goto done;
                 offsets[i]=(uint32_t)position;
-                result=zip_copy(t->source,out,off,recordEnd-off,token);if(result)goto done;
+                if(names && names[i]) {
+                    unsigned char original[65535],commentBytes[65535];
+                    size_t length=strlen(names[i]);uint16_t flags=integrity_u16(h+8);
+                    if(!oldnames||!oldnames[i]||!length||length>65535||strlen(oldnames[i])!=n||
+                       pread(t->source,original,n,cursor+46)!=(ssize_t)n||memcmp(original,oldnames[i],n))goto done;
+                    /* Legacy non-ASCII names cannot be mapped to the decoded listing reliably.
+                       Bit 11 also governs comments: never reinterpret a legacy non-ASCII comment. */
+                    if(!(flags&0x800)) {
+                        for(unsigned q=0;q<n;q++)if(original[q]>=128)goto done;
+                        int unicode=0;for(size_t q=0;q<length;q++)if((unsigned char)names[i][q]>=128)unicode=1;
+                        if(unicode) {
+                            if(pread(t->source,commentBytes,comment,cursor+46+n+extra)!=(ssize_t)comment)goto done;
+                            for(unsigned q=0;q<comment;q++)if(commentBytes[q]>=128)goto done;
+                            flags|=0x800;
+                        }
+                    }
+                    if((uint64_t)position+recordEnd-off+length-n>=UINT32_MAX)goto done;
+                    zip_put16(l+6,flags);zip_put16(l+26,length);
+                    if(write(out,l,30)!=30||write(out,names[i],length)!=(ssize_t)length)goto done;
+                    result=zip_copy(t->source,out,off+30+n,recordEnd-off-30-n,token);if(result)goto done;
+                } else {
+                    result=zip_copy(t->source,out,off,recordEnd-off,token);if(result)goto done;
+                }
                 result=1;retained++;
             }
             if(callback)callback(context,i+1,recordEnd);
@@ -990,10 +1012,20 @@ static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsig
             unsigned char h[46];if(cursor+46>centralEnd||pread(t->source,h,46,cursor)!=46||memcmp(h,"PK\001\002",4))goto done;
             unsigned n=integrity_u16(h+28),rest=integrity_u16(h+30)+integrity_u16(h+32);
             if(cursor+46+n+rest>centralEnd)goto done;
-            if(keep[i]) {
+            if(!keep||keep[i]) {
                 zip_put32(h+42,offsets[i]);
-                if(write(out,h,46)!=46)goto done;
-                result=zip_copy(t->source,out,cursor+46,n+rest,token);if(result)goto done;result=1;
+                if(names && names[i]) {
+                    size_t length=strlen(names[i]);uint16_t flags=integrity_u16(h+8);
+                    for(size_t q=0;q<length;q++)if((unsigned char)names[i][q]>=128)flags|=0x800;
+                    zip_put16(h+8,flags);zip_put16(h+28,length);
+                    if(write(out,h,46)!=46||write(out,names[i],length)!=(ssize_t)length)goto done;
+                    result=zip_copy(t->source,out,cursor+46+n,rest,token);
+                } else {
+                    if(write(out,h,46)!=46)goto done;
+                    result=zip_copy(t->source,out,cursor+46,n+rest,token);
+                }
+                if(result)goto done;
+                result=1;
             }
             cursor+=46+n+rest;
         }
@@ -1015,10 +1047,15 @@ static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsig
 done:free(offsets);if(in>=0)close(in);if(out>=0)close(out);if(result==1)fail(error,cap,"Cannot safely build and verify the updated ZIP. Original archive unchanged.");return result;
 }
 int arkiv_zip_prepare(arkiv_zip_transaction *t,const char *addition,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
-    return zip_prepare(t,addition,NULL,0,stage,token,callback,context,error,cap);
+    return zip_prepare(t,addition,NULL,NULL,NULL,0,stage,token,callback,context,error,cap);
 }
 int arkiv_zip_prepare_delete(arkiv_zip_transaction *t,const unsigned char *keep,size_t count,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
-    return zip_prepare(t,NULL,keep,count,stage,token,callback,context,error,cap);
+    return zip_prepare(t,NULL,keep,NULL,NULL,count,stage,token,callback,context,error,cap);
+}
+
+int arkiv_zip_prepare_rename(arkiv_zip_transaction *t,const char *const *oldnames,const char *const *names,size_t count,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
+    if(!oldnames||!names)return fail(error,cap,"Missing rename plan.");
+    return zip_prepare(t,NULL,NULL,oldnames,names,count,stage,token,callback,context,error,cap);
 }
 
 int arkiv_zip_commit(arkiv_zip_transaction *t,arkiv_cancel *token,char *error,size_t cap) {

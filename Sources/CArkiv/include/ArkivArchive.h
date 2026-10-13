@@ -66,4 +66,7 @@ int arkiv_zip_commit(arkiv_zip_transaction *, arkiv_cancel *, char *, size_t);
 
 int arkiv_zip_prepare_delete(arkiv_zip_transaction *, const unsigned char *, size_t, const char *, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 
+
+int arkiv_zip_prepare_rename(arkiv_zip_transaction *, const char *const *, const char *const *, size_t, const char *, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
+
 #endif

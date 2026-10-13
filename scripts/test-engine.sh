@@ -23,3 +23,5 @@ ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_integrity.py -v
 ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_zip_addition.py -v
 
 ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_zip_deletion.py -v
+
+ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_zip_rename.py -v

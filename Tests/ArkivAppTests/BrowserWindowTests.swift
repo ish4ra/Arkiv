@@ -149,6 +149,8 @@ final class BrowserWindowTests: XCTestCase {
         XCTAssertFalse(controller.isBusy)
         XCTAssertFalse(controller.validateMenuItem(addFiles), "A .zip extension must not grant write support to 7z")
         XCTAssertFalse(controller.validateMenuItem(addFolder))
+        table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        XCTAssertFalse(controller.validateMenuItem(NSMenuItem(title: "Rename…", action: #selector(BrowserWindowController.renameSelected(_:)), keyEquivalent: "")))
     }
 
     @MainActor
@@ -336,6 +338,61 @@ final class BrowserWindowTests: XCTestCase {
             XCTAssertNil(controller.dropFolder(proposedRow: -1, operation: .on))
             XCTAssertFalse(controller.acceptFiles(pasteboard, row: -1, operation: .on))
         }
+    }
+
+    @MainActor
+    func testRenameSheetCancellationSelectionRefreshAndAvailability() async throws {
+        _ = NSApplication.shared
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sources = ["file.txt", "other.txt"].map { root.appendingPathComponent($0) }
+        for source in sources { try Data("payload".utf8).write(to: source) }
+        let archive = try ArchiveCreator().create(.init(sources: sources, destination: root, name: "Rename"), cancellation: ArchiveCancellation(), progress: { _ in })
+        var sounds = 0
+        let controller = BrowserWindowController(modificationFeedback: { result in
+            ExtractionFeedback.completed(result, play: { sounds += 1 })
+        })
+        defer { controller.close() }
+        let item = NSMenuItem(title: "Rename…", action: #selector(BrowserWindowController.renameSelected(_:)), keyEquivalent: "")
+        XCTAssertFalse(controller.validateMenuItem(item))
+        controller.load(archive)
+        func idle() async throws {
+            for _ in 0..<400 {
+                if !controller.isBusy && controller.window?.attachedSheet == nil { return }
+                try await Task.sleep(nanoseconds: 25_000_000)
+            }
+            XCTFail("Rename should finish and dismiss its sheet")
+        }
+        try await idle()
+        let table = try XCTUnwrap(descendants(controller.window!.contentView!).compactMap { $0 as? NSTableView }.first)
+        XCTAssertNotNil(table.menu?.items.first { $0.action == item.action })
+        XCTAssertFalse(controller.validateMenuItem(item))
+        table.selectRowIndexes(IndexSet(integersIn: 0..<2), byExtendingSelection: false)
+        XCTAssertFalse(controller.validateMenuItem(item))
+        table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        XCTAssertTrue(controller.validateMenuItem(item))
+        let before = try Data(contentsOf: archive)
+        controller.renameSelected(nil)
+        let cancelledSheet = try XCTUnwrap(controller.window?.attachedSheet)
+        let field = try XCTUnwrap(descendants(cancelledSheet.contentView!).compactMap { $0 as? NSTextField }.first { $0.isEditable })
+        XCTAssertEqual(field.stringValue, "file.txt")
+        XCTAssertFalse(controller.validateMenuItem(item))
+        cancelledSheet.cancelOperation(nil)
+        try await idle()
+        XCTAssertEqual(try Data(contentsOf: archive), before)
+        XCTAssertEqual(sounds, 0)
+        controller.renameSelected(nil)
+        let sheet = try XCTUnwrap(controller.window?.attachedSheet)
+        let name = try XCTUnwrap(descendants(sheet.contentView!).compactMap { $0 as? NSTextField }.first { $0.isEditable })
+        name.stringValue = "資料 🐘.txt"
+        try XCTUnwrap(descendants(sheet.contentView!).compactMap { $0 as? NSButton }.first { $0.title == "Rename" }).performClick(nil)
+        try await idle()
+        XCTAssertEqual(sounds, 1)
+        XCTAssertEqual(table.numberOfRows, 2)
+        XCTAssertEqual(table.selectedRowIndexes.count, 1)
+        XCTAssertTrue(controller.validateMenuItem(item))
+        XCTAssertEqual(Set(try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation()).entries.map(\.path)), ["資料 🐘.txt", "other.txt"])
     }
 
 }

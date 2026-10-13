@@ -6,7 +6,7 @@ private final class ZIPAdditionProgress {
     init(_ callback: @escaping @Sendable (ArchiveProgress) -> Void) { self.callback = callback }
 }
 
-/// Adds distinct items or deletes selected entries without rewriting existing compressed data or entry metadata.
+/// Adds, deletes or renames items without recompressing retained entry data.
 /// ZIP64, encrypted, multipart, and ambiguous metadata/layouts remain read-only.
 public struct ArchiveZIPUpdater: Sendable {
     public init() {}
@@ -39,6 +39,45 @@ public struct ArchiveZIPUpdater: Sendable {
             } ? 0 : 1
         }
     }
+    /// Renames one row within its existing parent, including every directory descendant.
+    @discardableResult
+    public func rename(path: String, to name: String, in snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
+                       progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
+        guard !name.isEmpty, name != ".", name != "..", !name.contains("/"), !name.contains("\\"), !name.contains(":"),
+              !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
+              let row = snapshot.index.row(at: path),
+              snapshot.entries.enumerated().allSatisfy({ $0.element.id == Int64($0.offset) }) else {
+            throw ArchiveFailure.message("Choose one archive item and enter a valid name without separators or control characters.")
+        }
+        var seen = Set<String>()
+        let index = snapshot.index
+        for entry in snapshot.entries {
+            let parts = entry.path.split(separator: "/", omittingEmptySubsequences: true)
+            let normalized = parts.joined(separator: "/")
+            guard entry.path == normalized || (entry.kind == .directory && entry.path == normalized + "/"),
+                  seen.insert(normalized).inserted,
+                  parts.dropLast().indices.allSatisfy({ index.row(at: parts.prefix($0 + 1).joined(separator: "/"))?.isDirectory == true }) else {
+                throw ArchiveFailure.message("Ambiguous archive paths cannot safely be renamed.")
+            }
+        }
+        let parent = path.split(separator: "/").dropLast().joined(separator: "/")
+        func key(_ value: String) -> String {
+            value.precomposedStringWithCanonicalMapping.folding(options: [.caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+        }
+        guard !snapshot.index.children(of: parent).contains(where: { $0.path != path && key($0.name) == key(name) }) else {
+            throw ArchiveFailure.message("An item named ‘\(name)’ already exists in this archive folder.")
+        }
+        let destination = parent.isEmpty ? name : parent + "/" + name
+        let names: [String?] = snapshot.entries.map { entry in
+            let normalized = entry.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            guard normalized == path || (row.isDirectory && normalized.hasPrefix(path + "/")) else { return nil }
+            return destination + String(entry.path.dropFirst(path.count))
+        }
+        guard names.contains(where: { $0 != nil }), names.compactMap({ $0 }).allSatisfy({ $0.utf8.count <= 65535 }) else {
+            throw ArchiveFailure.message("The renamed path is too long or the selection is invalid.")
+        }
+        return try update(sources: [], snapshot: snapshot, folder: "", plan: nil, renameNames: names, cancellation: cancellation, progress: progress)
+    }
     @discardableResult
     public func delete(paths: Set<String>, from snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
                        progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
@@ -49,7 +88,7 @@ public struct ArchiveZIPUpdater: Sendable {
                     progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
         try update(sources: sources, snapshot: snapshot, folder: folder, plan: nil, cancellation: cancellation, progress: progress)
     }
-    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, cancellation: ArchiveCancellation,
+    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         guard snapshot.unlocked == nil, snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
@@ -86,7 +125,7 @@ public struct ArchiveZIPUpdater: Sendable {
         let stage = archive.deletingLastPathComponent().appendingPathComponent(".arkiv-add-" + UUID().uuidString, isDirectory: true)
         try manager.createDirectory(at: stage, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? manager.removeItem(at: stage) }
-        let additions = try plan == nil ? ArchiveCreator().create(ArchiveCreationRequest(sources: sources, destination: stage, name: "additions"),
+        let additions = try plan == nil && renameNames == nil ? ArchiveCreator().create(ArchiveCreationRequest(sources: sources, destination: stage, name: "additions"),
                                                     archiveFolder: folder, cancellation: cancellation, progress: progress) : nil
         let receiver = ZIPAdditionProgress(progress)
         let retained = Unmanaged.passRetained(receiver)
@@ -96,7 +135,17 @@ public struct ArchiveZIPUpdater: Sendable {
             Unmanaged<ZIPAdditionProgress>.fromOpaque(context).takeUnretainedValue().callback(ArchiveProgress(files: files, bytes: bytes))
         }
         let result: Int32
-        if let plan {
+        if let renameNames {
+            let old = snapshot.entries.map { strdup($0.path) }
+            let renamed = renameNames.map { $0.flatMap { strdup($0) } }
+            defer { old.forEach { free($0) }; renamed.forEach { free($0) } }
+            guard old.allSatisfy({ $0 != nil }), zip(renameNames, renamed).allSatisfy({ $0.0 == nil || $0.1 != nil }) else {
+                throw ArchiveFailure.message("Not enough memory to prepare the ZIP rename. Original archive unchanged.")
+            }
+            let oldPointers = old.map { $0.map { UnsafePointer<CChar>($0) } }
+            let newPointers = renamed.map { $0.map { UnsafePointer<CChar>($0) } }
+            result = arkiv_zip_prepare_rename(transaction, oldPointers, newPointers, renameNames.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+        } else if let plan {
             result = arkiv_zip_prepare_delete(transaction, plan, plan.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
         } else {
             result = arkiv_zip_prepare(transaction, additions!.path, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)

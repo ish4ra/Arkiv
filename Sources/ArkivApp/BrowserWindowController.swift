@@ -103,6 +103,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
             let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
             item.target = self
         }
+        let rename = menu.addItem(withTitle: "Rename…", action: #selector(renameSelected(_:)), keyEquivalent: "")
+        rename.target = self
         let delete = menu.addItem(withTitle: "Delete…", action: #selector(deleteSelected(_:)), keyEquivalent: "")
         delete.target = self
         table.menu = menu
@@ -203,7 +205,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
         window?.toolbar?.validateVisibleItems()
     }
-    func load(_ url: URL, password: String? = nil, browsingFolder: String = "") {
+    func load(_ url: URL, password: String? = nil, browsingFolder: String = "", selectingPath: String? = nil) {
         guard !isBusy else { return }
         if !dragIsActive { dragSession = nil }
         pendingURL = url
@@ -221,6 +223,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                     self.window?.title = url.lastPathComponent
                     self.window?.representedURL = url
                     self.reload()
+                    if let selectingPath, let row = self.rows.firstIndex(where: { $0.path == selectingPath }) {
+                        self.table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                        self.table.scrollRowToVisible(row)
+                    }
                     self.window?.makeFirstResponder(self.table)
                 case .failure(let error):
                     if ArchivePasswordPrompt.isPasswordFailure(error) {
@@ -349,6 +355,55 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                             if let supplied { self?.test(url, password: supplied) }
                         }
                     } else { present(error) }
+                }
+            }
+        }
+    }
+    @objc func renameSelected(_ sender: Any?) {
+        guard canAddToZIP, let window, window.attachedSheet == nil,
+              selectedPaths().count == 1, let path = selectedPaths().first,
+              let row = index?.row(at: path) else { return }
+        let alert = NSAlert()
+        alert.messageText = "Rename ‘\(row.name)’"
+        alert.informativeText = "Enter a new name. The item stays in its current archive folder."
+        let field = NSTextField(string: row.name)
+        field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
+        field.setAccessibilityIdentifier("archiveRenameName")
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            self?.renameItem(path, to: field.stringValue)
+        }
+        field.selectText(nil)
+    }
+    func renameItem(_ path: String, to name: String) {
+        guard canAddToZIP, let snapshot else { return }
+        let folder = path.split(separator: "/").dropLast().joined(separator: "/")
+        let destination = folder.isEmpty ? name : folder + "/" + name
+        let token = begin("Renaming in ZIP…")
+        worker.async { [self] in
+            let throttle = ProgressThrottle()
+            let result = Result {
+                try ArchiveZIPUpdater().rename(path: path, to: name, in: snapshot, cancellation: token) { progress in
+                    guard throttle.shouldUpdate() else { return }
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.isBusy else { return }
+                        self.status.stringValue = "\(progress.files) entries verified"
+                    }
+                }
+            }
+            DispatchQueue.main.async { [self] in
+                finish()
+                modificationFeedback(result)
+                switch result {
+                case .success(let url):
+                    self.snapshot = nil; self.index = nil; self.zipAdditionAvailable = false
+                    search.stringValue = ""
+                    load(url, browsingFolder: folder, selectingPath: destination)
+                case .failure(let error): present(error)
                 }
             }
         }
@@ -545,7 +600,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         guard let snapshot, let window else { return }
         let alert = NSAlert()
         alert.messageText = snapshot.url.lastPathComponent
-        alert.informativeText = "\(snapshot.entries.count) entries\nBackend: \(LibArchiveEngine.version)\n\nExtraction limit: 100,000 entries / 20 GiB. ZIP and 7z creation are available from File → Create Archive. 7z supports AES-256. Add Files/Add Folder and Delete are available for supported writable ZIPs. Other modification is unavailable."
+        alert.informativeText = "\(snapshot.entries.count) entries\nBackend: \(LibArchiveEngine.version)\n\nExtraction limit: 100,000 entries / 20 GiB. ZIP and 7z creation are available from File → Create Archive. 7z supports AES-256. Add Files/Add Folder, Delete, and Rename are available for supported writable ZIPs. Other modification is unavailable."
         alert.beginSheetModal(for: window)
     }
     @objc func copyPath(_ sender: Any?) {
@@ -600,6 +655,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(showPackageContents(_:)): return !isBusy && selectedPackage != nil
+        case #selector(renameSelected(_:)): return canAddToZIP && window?.attachedSheet == nil && selectedPaths().count == 1
         case #selector(deleteSelected(_:)): return canAddToZIP && window?.attachedSheet == nil && !selectedPaths().isEmpty
         case #selector(addFiles(_:)), #selector(addFolder(_:)): return canAddToZIP && window?.attachedSheet == nil
         case #selector(copyPath(_:)), #selector(extractSelected(_:)): return !isBusy && !selectedPaths().isEmpty
