@@ -19,6 +19,7 @@ arkiv_cancel *arkiv_cancel_new(void) {
 }
 void arkiv_cancel_set(arkiv_cancel *p) { if (p) atomic_store(&p->value, 1); }
 void arkiv_cancel_free(arkiv_cancel *p) { free(p); }
+int arkiv_cancel_is_set(arkiv_cancel *p) { return p && atomic_load(&p->value); }
 static int cancelled(arkiv_cancel *p) { return p && atomic_load(&p->value); }
 const char *arkiv_backend_version(void) { return archive_version_string(); }
 static int fail(char *error, size_t capacity, const char *message) {

@@ -18,7 +18,8 @@
 | Drag out | Native lazy file promises; selected files/folders to Finder; [details](drag-out.md) |
 | Drag in | Native Finder file URLs into writable ZIPs; current folder or folder-row destination |
 | ZIP/TAR associations | Viewer/alternate registration implemented; real-Mac validation pending |
-| Open internal file / Quick Look / nested archives | Deferred to next Priority A increment |
+| Open regular internal file | Selective extraction into an owned temporary copy; default macOS application; [details](open-files.md) |
+| Quick Look / nested archive navigation | Deferred |
 | Icon / document icons | Original procedural app icon generated and packaged in macOS CI, visual validation pending; document family deferred |
 | Recents / Settings / advanced columns / metadata preservation | Deferred |
 

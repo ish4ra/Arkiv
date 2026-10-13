@@ -44,11 +44,24 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     private var back: [String] = []
     private var forward: [String] = []
     private var cancellation: ArchiveCancellation?
+    private var openSession = ArchiveOpenSession()
+    private var openSessionArchiveURL: URL?
+    private var openRequest: UUID?
+    private var sessionEnded = false
+    private let openFileLauncher: (URL) -> Bool
+    // Injection keeps AppKit tests deterministic and never launches another app.
+    private let prepareOpenFile: (ArchiveOpenSession, ArchiveSnapshot, String, ArchiveCancellation, @escaping @Sendable (ArchiveProgress) -> Void) throws -> ArchiveOpenedFile
     private let engine = LibArchiveEngine()
     private let worker = DispatchQueue(label: "xyz.isharalakshan.arkiv.archive", qos: .userInitiated)
 
-    init(modificationFeedback: @escaping (Result<URL, Error>) -> Void = { ExtractionFeedback.completed($0) }) {
+    init(modificationFeedback: @escaping (Result<URL, Error>) -> Void = { ExtractionFeedback.completed($0) },
+         openFileLauncher: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) },
+         prepareOpenFile: @escaping (ArchiveOpenSession, ArchiveSnapshot, String, ArchiveCancellation, @escaping @Sendable (ArchiveProgress) -> Void) throws -> ArchiveOpenedFile = {
+             try $0.prepare($1, path: $2, cancellation: $3, progress: $4)
+         }) {
         self.modificationFeedback = modificationFeedback
+        self.openFileLauncher = openFileLauncher
+        self.prepareOpenFile = prepareOpenFile
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 920, height: 580),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init(window: window)
@@ -92,6 +105,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
         table.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
         let menu = NSMenu()
+        menu.addItem(withTitle: "Open", action: #selector(openSelectedFile(_:)), keyEquivalent: "").target = self
         let contents = menu.addItem(withTitle: "Show Package Contents", action: #selector(showPackageContents(_:)), keyEquivalent: "")
         contents.target = self
         let extract = menu.addItem(withTitle: "Extract Selected…", action: #selector(extractSelected(_:)), keyEquivalent: "")
@@ -207,7 +221,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         window?.toolbar?.validateVisibleItems()
     }
     func load(_ url: URL, password: String? = nil, browsingFolder: String = "", selectingPath: String? = nil) {
+        guard !sessionEnded else { return }
+        if openRequest != nil {
+            cancellation?.cancel(); openRequest = nil; finish()
+        }
         guard !isBusy else { return }
+        if openSessionArchiveURL != url.standardizedFileURL {
+            openSession.close(); openSession = ArchiveOpenSession()
+            openSessionArchiveURL = url.standardizedFileURL
+        }
         if !dragIsActive { dragSession = nil }
         pendingURL = url
         let token = begin("Reading archive…")
@@ -215,6 +237,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
             let result = Result { try self.engine.inspect(url, cancellation: token, password: password) }
             let canAdd = (try? result.get()).map { ArchiveZIPUpdater().canAdd(to: $0) } ?? false
             DispatchQueue.main.async { [self] in
+                guard !self.sessionEnded else { return }
                 self.pendingURL = nil
                 self.finish()
                 switch result {
@@ -622,9 +645,65 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         activate(row: table.clickedRow)
     }
     func activate(row: Int) {
-        guard rows.indices.contains(row), let path = BrowserPresentation.navigationPath(rows[row]) else { return }
-        navigate(path)
+        guard !isBusy, !sessionEnded, rows.indices.contains(row) else { return }
+        if let path = BrowserPresentation.navigationPath(rows[row]) { navigate(path) }
+        else if !rows[row].isDirectory { openFile(path: rows[row].path) }
     }
+    private var selectedRegularFile: ArchiveEntry? {
+        let paths = selectedPaths()
+        guard paths.count == 1, let path = paths.first, let snapshot else { return nil }
+        return ArchiveOpenSession.regularEntry(in: snapshot, path: path)
+    }
+    @objc func openSelectedFile(_ sender: Any?) {
+        guard let entry = selectedRegularFile else { return }
+        openFile(path: entry.path)
+    }
+    private func openFile(path: String) {
+        guard !isBusy, !sessionEnded, window?.attachedSheet == nil, let snapshot,
+              ArchiveOpenSession.regularEntry(in: snapshot, path: path) != nil else { return }
+        let token = begin("Opening file…")
+        let request = UUID(); openRequest = request
+        let session = openSession
+        let prepare = prepareOpenFile
+        worker.async { [weak self] in
+            let throttle = ProgressThrottle()
+            let result = Result {
+                try prepare(session, snapshot, path, token) { progress in
+                    guard throttle.shouldUpdate() else { return }
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.openRequest == request, !self.sessionEnded else { return }
+                        self.status.stringValue = "Opening file • \(ByteCountFormatter.string(fromByteCount: Int64(progress.bytes), countStyle: .file)) extracted"
+                    }
+                }
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.openRequest == request, !self.sessionEnded else {
+                    if case .success(let file) = result { session.discard(file) }
+                    return
+                }
+                self.openRequest = nil
+                self.finish()
+                switch result {
+                case .success(let file):
+                    do {
+                        try session.validateForLaunch(file, cancellation: token)
+                        guard self.openFileLauncher(file.url) else {
+                            throw ArchiveFailure.message("macOS could not open this file with its default application.")
+                        }
+                        self.status.stringValue = "Opened \(file.url.lastPathComponent) • Changes to this copy are not saved to the archive"
+                    } catch { session.discard(file); self.present(error) }
+                case .failure(let error): self.present(error)
+                }
+            }
+        }
+    }
+    /// Called both for window closure and application termination. In-flight Open
+    /// work cannot launch after this boundary; cleanup waits for the writer.
+    func endArchiveSession() {
+        sessionEnded = true; openRequest = nil
+        cancellation?.cancel(); openSession.close()
+    }
+    deinit { openSession.close() }
     private var selectedPackage: BrowserRow? {
         guard table.selectedRowIndexes.count == 1, rows.indices.contains(table.selectedRow),
               BrowserPresentation.packageKind(rows[table.selectedRow]) != nil else { return nil }
@@ -702,6 +781,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(openSelectedFile(_:)): return !sessionEnded && !isBusy && window?.attachedSheet == nil && selectedRegularFile != nil
         case #selector(showPackageContents(_:)): return !isBusy && selectedPackage != nil
         case #selector(replaceSelected(_:)): return canReplaceFile
         case #selector(renameSelected(_:)): return canAddToZIP && window?.attachedSheet == nil && selectedPaths().count == 1
@@ -721,10 +801,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         return validateMenuItem(menu)
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        if openRequest != nil { endArchiveSession(); return true }
         if isBusy { cancel(nil); return false }
         return true
     }
-    func windowWillClose(_ notification: Notification) { onClose?() }
+    func windowWillClose(_ notification: Notification) { endArchiveSession(); onClose?() }
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [NSToolbarItem.Identifier("open"), .flexibleSpace, NSToolbarItem.Identifier("extract"), NSToolbarItem.Identifier("all"), NSToolbarItem.Identifier("test"), NSToolbarItem.Identifier("info")]

@@ -6,6 +6,7 @@ public final class ArchiveCancellation: @unchecked Sendable {
     public init() { pointer = arkiv_cancel_new()! }
     deinit { arkiv_cancel_free(pointer) }
     public func cancel() { arkiv_cancel_set(pointer) }
+    public var isCancelled: Bool { arkiv_cancel_is_set(pointer) != 0 }
 }
 public struct ArchiveProgress: Sendable {
     public let files: UInt64

@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         !arguments.contains("--finder-action") && !handledRequest
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
+        DispatchQueue.global(qos: .utility).async { ArchiveOpenSession.cleanStaleTemporaryData() }
         buildMenus()
         if Self.shouldShowInitialBrowser(arguments: launchArguments, handledRequest: handledLaunchRequest) {
             if windows.isEmpty { newWindow(nil) }
@@ -49,6 +50,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let presentFinderSetup = self.presentFinderSetup { presentFinderSetup() }
             else { self.finderSetup.presentIfNeeded() }
         }
+    }
+    func applicationWillTerminate(_ notification: Notification) {
+        windows.forEach { $0.endArchiveSession() }
     }
     func applicationDidBecomeActive(_ notification: Notification) {
         finderSetup.refresh()
@@ -159,6 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         application.addItem(withTitle: "Hide Arkiv", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         application.addItem(withTitle: "Quit Arkiv", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let file = NSMenu(title: "File")
+        file.addItem(withTitle: "Open", action: #selector(BrowserWindowController.openSelectedFile(_:)), keyEquivalent: "")
         let new = file.addItem(withTitle: "New Window", action: #selector(newWindow(_:)), keyEquivalent: "n"); new.target = self
         let create = file.addItem(withTitle: "Create Archive…", action: #selector(createArchive(_:)), keyEquivalent: "N"); create.target = self
         let open = file.addItem(withTitle: "Open Archive…", action: #selector(openArchive(_:)), keyEquivalent: "o"); open.target = self

@@ -71,4 +71,15 @@ int arkiv_zip_replacement_method(arkiv_zip_transaction *, size_t, size_t, const 
 int arkiv_zip_prepare_replace(arkiv_zip_transaction *, const char *, size_t, size_t, const char *, const char *, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 int arkiv_zip_prepare_rename(arkiv_zip_transaction *, const char *const *, const char *const *, size_t, const char *, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 
+/* Private Open workspaces; locks protect live sessions from crash recovery. */
+typedef struct arkiv_open_workspace arkiv_open_workspace;
+arkiv_open_workspace *arkiv_open_workspace_new(const char *, const char *);
+const char *arkiv_open_workspace_path(arkiv_open_workspace *);
+int arkiv_open_workspace_attempt(arkiv_open_workspace *, const char *);
+void arkiv_open_workspace_discard(arkiv_open_workspace *, const char *);
+int arkiv_open_workspace_regular(arkiv_open_workspace *, const char *);
+void arkiv_open_workspace_free(arkiv_open_workspace *);
+void arkiv_open_sweep(const char *);
+int arkiv_cancel_is_set(arkiv_cancel *);
+
 #endif

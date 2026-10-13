@@ -43,7 +43,7 @@ for name in ['archive_read_support_format_rar5', 'archive_entry_is_encrypted',
              'UnicodeScalar', 'NSSearchFieldDelegate', 'NSToolbarItemValidation']:
     if name in text: labels.append('Referenced API: ' + name)
 # Only names declared in our committed tests can appear in annotations.
-for test_file in ['tests/test_engine.py', 'tests/test_creation.py', 'tests/test_sevenzip.py', 'tests/test_integrity.py', 'tests/test_zip_addition.py', 'tests/test_zip_deletion.py', 'tests/test_zip_rename.py', 'tests/test_zip_replacement.py']:
+for test_file in ['tests/test_engine.py', 'tests/test_creation.py', 'tests/test_sevenzip.py', 'tests/test_integrity.py', 'tests/test_zip_addition.py', 'tests/test_zip_deletion.py', 'tests/test_zip_rename.py', 'tests/test_zip_replacement.py', 'tests/test_open_workspace.py']:
     for node in ast.walk(ast.parse(Path(test_file).read_text())):
         if isinstance(node, ast.FunctionDef) and node.name.startswith('test_'):
             if re.search(r'(?:FAIL|ERROR): ' + re.escape(node.name) + r'\b', text):
