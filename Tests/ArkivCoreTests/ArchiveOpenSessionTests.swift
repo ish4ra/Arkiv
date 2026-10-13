@@ -12,7 +12,13 @@ final class ArchiveOpenSessionTests: XCTestCase {
         #if os(Linux)
         setlocale(LC_CTYPE, "C.UTF-8")
         #endif
-        let root = fm.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent(UUID().uuidString)
+        var parent = fm.temporaryDirectory.resolvingSymlinksInPath()
+        #if os(macOS)
+        if parent.path.hasPrefix("/var/") || parent.path.hasPrefix("/tmp/") {
+            parent = URL(fileURLWithPath: "/private" + parent.path)
+        }
+        #endif
+        let root = parent.appendingPathComponent(UUID().uuidString)
         try fm.createDirectory(at: root, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         return root

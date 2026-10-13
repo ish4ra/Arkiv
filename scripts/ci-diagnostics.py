@@ -65,6 +65,13 @@ for source in Path('Tests').rglob('*.swift'):
     for test in re.findall(r'func (test[A-Za-z_0-9]+)', source.read_text()):
         if re.search(re.escape(test) + r'.*(?:failed|error)', text):
             labels.append('Failing Swift test: ' + test)
+for marker, label in [
+    ("Cannot create a safe temporary workspace for Open.", "Open workspace root/session creation failed"),
+    ("Cannot create a temporary file workspace.", "Open attempt directory creation failed"),
+    ("Select exactly one regular file to open.", "Open regular-entry validation failed"),
+    ("The selected file could not be safely opened.", "Open materialized-file validation failed"),
+]:
+    if marker in text: labels.append(label)
 labels = list(dict.fromkeys(labels))
 if not labels: labels.append('Command failed; detailed diagnostics require authenticated Actions log access.')
 for label in labels:

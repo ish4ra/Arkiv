@@ -25,11 +25,14 @@ public final class ArchiveOpenSession: @unchecked Sendable {
     private let temporaryParent: URL
 
     public init() { temporaryParent = Self.systemTemporaryParent }
-    init(temporaryParent: URL) { self.temporaryParent = temporaryParent }
+    init(temporaryParent: URL) { self.temporaryParent = Self.canonicalTemporaryParent(temporaryParent) }
     deinit { if let workspace { arkiv_open_workspace_free(workspace) } }
 
     private static var systemTemporaryParent: URL {
-        var url = FileManager.default.temporaryDirectory.standardizedFileURL
+        return canonicalTemporaryParent(FileManager.default.temporaryDirectory)
+    }
+    private static func canonicalTemporaryParent(_ parent: URL) -> URL {
+        var url = parent.standardizedFileURL
         #if os(macOS)
         // Only the standard system aliases, never arbitrary caller-provided links.
         if url.path == "/tmp" || url.path.hasPrefix("/tmp/") || url.path == "/var" || url.path.hasPrefix("/var/") {
@@ -39,7 +42,7 @@ public final class ArchiveOpenSession: @unchecked Sendable {
         return url
     }
     public static func cleanStaleTemporaryData() { arkiv_open_sweep(systemTemporaryParent.path) }
-    static func cleanStaleTemporaryData(in parent: URL) { arkiv_open_sweep(parent.path) }
+    static func cleanStaleTemporaryData(in parent: URL) { arkiv_open_sweep(canonicalTemporaryParent(parent).path) }
 
     /// Ambiguous duplicate names and folder/file collisions cannot be opened.
     public static func regularEntry(in snapshot: ArchiveSnapshot, path: String) -> ArchiveEntry? {
