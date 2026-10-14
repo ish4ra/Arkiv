@@ -13,3 +13,10 @@ Creation is exposed through ArchiveCreator with transactional verification/publi
 Finder selected-file Services are an AppKit adapter to `FinderRequest` and `FinderExtractor` in ArkivCore. The existing engine performs inspection/extraction unchanged; a C helper publishes verified staged output using fd-relative atomic no-replace moves. The app owns destination selection, progress, cancellation, and recovery UI. The sandboxed Finder Sync extension also hands allowlisted actions to the app through the existing custom URL scheme; no password or output path is transported.
 
 Native drag-out uses file-promise delegates backed by a retained ArkivCore snapshot and selective extraction session. The receiver supplies each exact destination; publication is exclusive. See [promise lifecycle](drag-out.md).
+
+Nested archive windows adopt a successfully inspected snapshot whose source is an
+`ArchiveOpenSession` per-entry lease. Closing the parent discards unleased Open/
+Quick Look attempts but leaves leased entries and the workspace lock alive.
+Child snapshots retain their lease across background operations and drag promises;
+the last owner removes the attempt. No nested edits are propagated to the outer
+archive. See [nested archives](nested-archives.md).

@@ -66,6 +66,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.windows.removeAll { $0 === controller }
         }
         controller.onOpen = { [weak self, weak controller] in self?.openArchive(controller) }
+        controller.onOpenNestedArchive = { [weak self] snapshot, source in
+            guard let self else { return }
+            let child = self.makeWindow()
+            child.adoptNestedArchive(snapshot, source: source)
+            child.showWindow(nil)
+            child.window?.makeKeyAndOrderFront(nil)
+            self.beginInteractiveSession()
+        }
         return controller
     }
     @objc func openArchive(_ sender: Any?) {
@@ -165,6 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let file = NSMenu(title: "File")
         file.addItem(withTitle: "Quick Look", action: #selector(BrowserWindowController.quickLookSelectedFile(_:)), keyEquivalent: "")
         file.addItem(withTitle: "Open", action: #selector(BrowserWindowController.openSelectedFile(_:)), keyEquivalent: "")
+        file.addItem(withTitle: "Open as Archive", action: #selector(BrowserWindowController.openSelectedArchive(_:)), keyEquivalent: "")
         let new = file.addItem(withTitle: "New Window", action: #selector(newWindow(_:)), keyEquivalent: "n"); new.target = self
         let create = file.addItem(withTitle: "Create Archive…", action: #selector(createArchive(_:)), keyEquivalent: "N"); create.target = self
         let open = file.addItem(withTitle: "Open Archive…", action: #selector(openArchive(_:)), keyEquivalent: "o"); open.target = self
