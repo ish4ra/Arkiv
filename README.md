@@ -13,7 +13,7 @@ Arkiv opens an archive as a browsable container rather than unpacking everything
 
 - **Native archive browser.** A Finder-like table with sortable, resizable columns, multi-selection, folder navigation (Back, Forward, Up), archive-wide search and multiple windows.
 - **Selective extraction.** Extract the current selection or the whole archive, with progress and cancellation. Existing files are never overwritten.
-- **Open and Quick Look.** Double-click a file to open a private temporary copy in its default app, or press Space to preview it, without extracting the rest of the archive.
+- **Open, Quick Look and nested archives.** Open a file from a private temporary copy in its default app, press Space to preview it, or open an archive stored inside another archive in a new window, without extracting the rest of the outer archive.
 - **Create ZIP and 7z.** ZIP is the default. 7z adds LZMA2 compression and optional AES-256 encryption, including encrypted filenames.
 - **Edit ZIP archives.** Add files and folders, delete, rename, or replace a single file. Every edit is verified before it replaces the original.
 - **Finder integration.** An **Arkiv** submenu in Finder's context menu to extract, test and compress, with Services as a fallback.
@@ -48,9 +48,10 @@ Open an archive with **File → Open Archive…** (⌘O), by double-clicking a Z
 - **Extract Selected…** (⌘E) and **Extract All…** (⇧⌘E) write to a new folder in the destination you choose.
 - **Open** launches a single file in its default app from a private temporary copy. Changes to that copy are **not** written back to the archive, and the copy is removed when the archive window closes, so save elsewhere anything you want to keep.
 - **Quick Look** (Space) previews one regular file using the same temporary copy.
+- **Nested archives:** double-clicking an entry whose contents are a supported archive, or choosing **Open as Archive**, opens it in a new Arkiv window. Only that entry is extracted, to the same private temporary workspace. Encrypted inner archives use the normal password prompt. Changes made inside a nested ZIP affect only its temporary copy and are never written back to the outer archive. Arkiv does not open nested archives automatically or browse them in the current window.
 - **Search** (⌘F) filters by name across the whole archive. **Back** (⌘[), **Forward** (⌘]) and **Parent Folder** (⌘↑) handle navigation.
 
-Encrypted 7z archives ask for a password when opened, with retry on a wrong password. Passwords are never saved. Extraction preserves symbolic links and safe executable permission bits, including inside app and framework bundles. See [extraction compatibility](docs/extraction-compatibility.md) and [open files and Quick Look](docs/open-files.md).
+Encrypted 7z archives ask for a password when opened, with retry on a wrong password. Passwords are never saved. Extraction preserves symbolic links and safe executable permission bits, including inside app and framework bundles. See [extraction compatibility](docs/extraction-compatibility.md), [open files and Quick Look](docs/open-files.md) and [nested archives](docs/nested-archives.md).
 
 ### Create archives
 
@@ -149,7 +150,7 @@ The app builds for arm64 by default. Set `ARKIV_ARCH=universal` for both build s
 Planned work that is **not** in current builds:
 
 - **Formats:** TAR creation, compressed TAR (`.tar.gz`, `.tar.bz2`, `.tar.xz`), broader RAR5 and RAR4 verification, multipart archives
-- **Archive work:** encrypted ZIP after interoperability testing, folder and multi-file updates, editing more formats, nested archive navigation, archive comments
+- **Archive work:** encrypted ZIP after interoperability testing, folder and multi-file updates, editing more formats, archive comments
 - **Tools:** checksums, split/combine, benchmark, a command-line companion
 - **App:** Settings, Open Recent, more columns and an archive inspector, a Quick Look extension for archives in Finder
 - **Distribution:** Developer ID signing and notarization, the final app icon and archive document icons
@@ -161,7 +162,7 @@ The full plan is in [`ARKIV_SPEC.md`](ARKIV_SPEC.md) and its current status in t
 | Topic | Documents |
 | --- | --- |
 | Status | [Feature matrix](docs/feature-matrix.md) · [Format evidence](docs/archive-formats.md) |
-| Using Arkiv | [Creation](docs/creation.md) · [ZIP additions](docs/zip-additions.md) · [ZIP edits](docs/zip-edits.md) · [Open & Quick Look](docs/open-files.md) · [Drag-in](docs/drag-in.md) · [Drag-out](docs/drag-out.md) · [Test Archive](docs/integrity.md) |
+| Using Arkiv | [Creation](docs/creation.md) · [ZIP additions](docs/zip-additions.md) · [ZIP edits](docs/zip-edits.md) · [Open & Quick Look](docs/open-files.md) · [Nested archives](docs/nested-archives.md) · [Drag-in](docs/drag-in.md) · [Drag-out](docs/drag-out.md) · [Test Archive](docs/integrity.md) |
 | Finder | [Finder Sync extension](docs/finder-sync.md) · [Services fallback](docs/finder-integration.md) |
 | Safety | [Security](docs/security.md) · [Extraction compatibility](docs/extraction-compatibility.md) · [7z backend](docs/sevenzip.md) |
 | Development | [Architecture](docs/architecture.md) · [Release & builds](docs/release.md) · [Updates](docs/updates.md) · [Browser UI notes](docs/ui-refinement.md) |

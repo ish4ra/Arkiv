@@ -7,6 +7,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, NSToolbarDelegate, NSMenuItemValidation, NSToolbarItemValidation {
     var onClose: (() -> Void)?
     var onOpen: (() -> Void)?
+    var onOpenNestedArchive: ((ArchiveSnapshot, ArchiveOpenedFileLease) -> Void)?
+    private var archiveSource: ArchiveOpenedFileLease?
     let windowID = UUID()
     private var pendingURL: URL?
     var archiveURL: URL? { snapshot?.url ?? pendingURL }
@@ -48,13 +50,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     private var openSession = ArchiveOpenSession()
     private var openSessionArchiveURL: URL?
     private var openRequest: UUID?
-    private enum FilePurpose { case open, preview }
+    private enum FilePurpose { case open, preview, automatic, archive }
     private var filePurpose: FilePurpose?
     private let quickLook: ArchiveQuickLookPresenting
     private var sessionEnded = false
     private let openFileLauncher: (URL) -> Bool
     // Injection keeps AppKit tests deterministic and never launches another app.
     private let prepareOpenFile: (ArchiveOpenSession, ArchiveSnapshot, String, ArchiveCancellation, @escaping @Sendable (ArchiveProgress) -> Void) throws -> ArchiveOpenedFile
+    private let requestArchivePassword: (URL, Bool, NSWindow?, @escaping (String?) -> Void) -> Void
     private let engine = LibArchiveEngine()
     private let worker = DispatchQueue(label: "xyz.isharalakshan.arkiv.archive", qos: .userInitiated)
 
@@ -63,11 +66,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
          openFileLauncher: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) },
          prepareOpenFile: @escaping (ArchiveOpenSession, ArchiveSnapshot, String, ArchiveCancellation, @escaping @Sendable (ArchiveProgress) -> Void) throws -> ArchiveOpenedFile = {
              try $0.prepare($1, path: $2, cancellation: $3, progress: $4)
+         },
+         requestArchivePassword: @escaping (URL, Bool, NSWindow?, @escaping (String?) -> Void) -> Void = {
+             ArchivePasswordPrompt.ask(archive: $0, retry: $1, parent: $2, completion: $3)
          }) {
         self.quickLook = quickLook
         self.modificationFeedback = modificationFeedback
         self.openFileLauncher = openFileLauncher
         self.prepareOpenFile = prepareOpenFile
+        self.requestArchivePassword = requestArchivePassword
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 920, height: 580),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init(window: window)
@@ -113,6 +120,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         table.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
         let menu = NSMenu()
         menu.addItem(withTitle: "Open", action: #selector(openSelectedFile(_:)), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Open as Archive", action: #selector(openSelectedArchive(_:)), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Quick Look", action: #selector(quickLookSelectedFile(_:)), keyEquivalent: "").target = self
         let contents = menu.addItem(withTitle: "Show Package Contents", action: #selector(showPackageContents(_:)), keyEquivalent: "")
         contents.target = self
@@ -241,9 +249,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
         if !dragIsActive { dragSession = nil }
         pendingURL = url
+        if archiveSource?.url.standardizedFileURL != url.standardizedFileURL { archiveSource = nil }
+        let source = archiveSource
         let token = begin("Reading archive…")
         worker.async { [self] in
-            let result = Result { try self.engine.inspect(url, cancellation: token, password: password) }
+            let result = Result { try source?.inspect(cancellation: token, password: password)
+                ?? self.engine.inspect(url, cancellation: token, password: password) }
             let canAdd = (try? result.get()).map { ArchiveZIPUpdater().canAdd(to: $0) } ?? false
             DispatchQueue.main.async { [self] in
                 guard !self.sessionEnded else { return }
@@ -270,6 +281,19 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                 }
             }
         }
+    }
+    /// Called only after nested preflight succeeds. The child owns its source and
+    /// snapshots carry the same ownership into workers and file promises.
+    func adoptNestedArchive(_ value: ArchiveSnapshot, source: ArchiveOpenedFileLease) {
+        guard !sessionEnded, snapshot == nil, !isBusy else { return }
+        archiveSource = source
+        openSessionArchiveURL = value.url.standardizedFileURL
+        snapshot = value; index = value.index
+        zipAdditionAvailable = ArchiveZIPUpdater().canAdd(to: value)
+        window?.title = value.url.lastPathComponent
+        window?.representedURL = value.url
+        reload()
+        window?.makeFirstResponder(table)
     }
     private func begin(_ message: String) -> ArchiveCancellation {
         let token = ArchiveCancellation(); cancellation = token
@@ -656,7 +680,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     func activate(row: Int) {
         guard !isBusy, !sessionEnded, rows.indices.contains(row) else { return }
         if let path = BrowserPresentation.navigationPath(rows[row]) { navigate(path) }
-        else if !rows[row].isDirectory { openFile(path: rows[row].path) }
+        else if !rows[row].isDirectory, table.selectedRowIndexes.count <= 1 {
+            openFile(path: rows[row].path, purpose: .automatic)
+        }
     }
     private var selectedRegularFile: ArchiveEntry? {
         let paths = selectedPaths()
@@ -666,6 +692,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     @objc func openSelectedFile(_ sender: Any?) {
         guard let entry = selectedRegularFile else { return }
         openFile(path: entry.path)
+    }
+    @objc func openSelectedArchive(_ sender: Any?) {
+        guard let entry = selectedRegularFile else { return }
+        openFile(path: entry.path, purpose: .archive)
     }
     override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { quickLook.acceptsControl() }
     override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) { quickLook.beginControl(panel) }
@@ -687,37 +717,51 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         quickLookSelectedFile(nil)
         return true
     }
+    private func finishOpenRequest() {
+        openRequest = nil; filePurpose = nil; finish()
+    }
     private func openFile(path: String, purpose: FilePurpose = .open) {
         guard !isBusy, !sessionEnded, window?.attachedSheet == nil, let snapshot,
               ArchiveOpenSession.regularEntry(in: snapshot, path: path) != nil else { return }
-        let token = begin(purpose == .open ? "Opening file…" : "Preparing preview…")
+        let token = begin(purpose == .preview ? "Preparing preview…" : "Opening file…")
         filePurpose = purpose
         let request = UUID(); openRequest = request
         let session = openSession
         let prepare = prepareOpenFile
         worker.async { [weak self] in
             let throttle = ProgressThrottle()
-            let result = Result {
-                try prepare(session, snapshot, path, token) { progress in
+            let result = Result { () throws -> (ArchiveOpenedFile, Bool) in
+                let file = try prepare(session, snapshot, path, token) { progress in
                     guard throttle.shouldUpdate() else { return }
                     DispatchQueue.main.async { [weak self] in
                         guard let self, self.openRequest == request, !self.sessionEnded else { return }
-                        self.status.stringValue = "\(purpose == .open ? "Opening file" : "Preparing preview") • \(ByteCountFormatter.string(fromByteCount: Int64(progress.bytes), countStyle: .file)) extracted"
+                        self.status.stringValue = "\(purpose == .preview ? "Preparing preview" : "Opening file") • \(ByteCountFormatter.string(fromByteCount: Int64(progress.bytes), countStyle: .file)) extracted"
                     }
                 }
+                do {
+                    let archive = (purpose == .automatic || purpose == .archive)
+                        ? try LibArchiveEngine().isArchiveCandidate(file.url, cancellation: token) : false
+                    return (file, archive)
+                } catch { session.discard(file); throw error }
             }
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.openRequest == request, !self.sessionEnded else {
-                    if case .success(let file) = result { session.discard(file) }
+                    if case .success(let value) = result { session.discard(value.0) }
                     return
                 }
-                self.openRequest = nil
-                self.filePurpose = nil
-                self.finish()
                 switch result {
-                case .success(let file):
+                case .success(let (file, archive)):
                     do {
                         try session.validateForLaunch(file, cancellation: token)
+                        if archive {
+                            let source = try session.retainForArchive(file, cancellation: token)
+                            self.inspectNested(source, file: file, session: session, request: request, token: token)
+                            return
+                        }
+                        self.finishOpenRequest()
+                        if purpose == .archive {
+                            throw ArchiveFailure.message("This file is not a supported archive. Use Open to open it with its default application.")
+                        }
                         if purpose == .preview {
                             guard self.quickLook.present(file.url, owner: self) else {
                                 throw ArchiveFailure.message("macOS could not preview this file.")
@@ -729,9 +773,41 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                             throw ArchiveFailure.message("macOS could not open this file with its default application.")
                         }
                         self.status.stringValue = "Opened \(file.url.lastPathComponent) • Changes to this copy are not saved to the archive"
-                    } catch { session.discard(file); self.present(error) }
-                case .failure(let error): self.present(error)
+                    } catch { session.discard(file); self.finishOpenRequest(); self.present(error) }
+                case .failure(let error): self.finishOpenRequest(); self.present(error)
                 }
+            }
+        }
+    }
+    private func inspectNested(_ source: ArchiveOpenedFileLease, file: ArchiveOpenedFile,
+                               session: ArchiveOpenSession, request: UUID, token: ArchiveCancellation,
+                               password: String? = nil) {
+        status.stringValue = "Reading nested archive…"
+        worker.async { [weak self] in
+            let result = Result { try source.inspect(cancellation: token, password: password) }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.openRequest == request, !self.sessionEnded else { return }
+                do {
+                    try session.validateForLaunch(file, cancellation: token)
+                    switch result {
+                    case .success(let value):
+                        guard let open = self.onOpenNestedArchive else {
+                            throw ArchiveFailure.message("Cannot open another archive window.")
+                        }
+                        self.finishOpenRequest()
+                        open(value, source)
+                        self.status.stringValue = "Opened \(source.url.lastPathComponent) in a new window • Changes are not saved to the outer archive"
+                    case .failure(let error):
+                        if ArchivePasswordPrompt.isPasswordFailure(error) {
+                            self.requestArchivePassword(source.url, password != nil, self.window) { [weak self] supplied in
+                                guard let self, self.openRequest == request, !self.sessionEnded else { return }
+                                if let supplied, !token.isCancelled {
+                                    self.inspectNested(source, file: file, session: session, request: request, token: token, password: supplied)
+                                } else { self.finishOpenRequest() }
+                            }
+                        } else { throw error }
+                    }
+                } catch { self.finishOpenRequest(); self.present(error) }
             }
         }
     }
@@ -739,8 +815,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     /// work cannot launch after this boundary; cleanup waits for the writer.
     func endArchiveSession() {
         quickLook.close()
+        let nestedOpening = filePurpose == .automatic || filePurpose == .archive
         sessionEnded = true; openRequest = nil; filePurpose = nil
+        if nestedOpening, let sheet = window?.attachedSheet { window?.endSheet(sheet, returnCode: .abort) }
         cancellation?.cancel(); openSession.close()
+        snapshot = nil; index = nil; archiveSource = nil; dragSession = nil
     }
     deinit { quickLook.close(); openSession.close() }
     private var selectedPackage: BrowserRow? {
@@ -821,7 +900,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(quickLookSelectedFile(_:)): return quickLook.isPresented || (!sessionEnded && !isBusy && window?.attachedSheet == nil && selectedRegularFile != nil)
-        case #selector(openSelectedFile(_:)): return !sessionEnded && !isBusy && window?.attachedSheet == nil && selectedRegularFile != nil
+        case #selector(openSelectedFile(_:)), #selector(openSelectedArchive(_:)): return !sessionEnded && !isBusy && window?.attachedSheet == nil && selectedRegularFile != nil
         case #selector(showPackageContents(_:)): return !isBusy && selectedPackage != nil
         case #selector(replaceSelected(_:)): return canReplaceFile
         case #selector(renameSelected(_:)): return canAddToZIP && window?.attachedSheet == nil && selectedPaths().count == 1

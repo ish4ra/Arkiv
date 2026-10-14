@@ -1,7 +1,9 @@
 # Open or preview a file inside an archive
 
-Double-click one regular file, or select it and choose **File → Open** or
-**Open** from the table context menu. Arkiv selectively extracts that entry into
+Double-click a regular non-archive file, or select any regular file and choose
+**File → Open** or **Open** from the table context menu. Supported nested archives
+open in a new Arkiv window on double-click; explicit Open always uses the default
+macOS application. Arkiv selectively extracts the selected entry into
 an owned private temporary workspace and asks macOS to open the copy in its
 default application. Its filename and extension stay intact. Arkiv does not
 reveal it in Finder or play the extraction completion sound.
@@ -21,7 +23,7 @@ The temporary copy is kept after the external application launches. It belongs
 to the archive browser session and is removed when that session ends or Arkiv
 quits. Save a separate copy in the external application before closing the
 archive window if you want to keep it. Editing this copy does **not** write
-changes back into the archive. Special nested-archive navigation is not implemented.
+changes back into the archive. [Nested archives](nested-archives.md) open in a separate Arkiv window; changes are not written back into the outer archive.
 
 The private workspace uses owner-only directory permissions. Active sessions
 hold a filesystem lock. At startup and when creating a session, Arkiv removes

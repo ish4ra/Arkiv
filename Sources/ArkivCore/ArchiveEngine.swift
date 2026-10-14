@@ -28,6 +28,7 @@ public struct ArchiveSnapshot: Sendable {
     public let entries: [ArchiveEntry]
     let stamp: SourceStamp
     let unlocked: UnlockedArchive?
+    var sourceLease: ArchiveOpenedFileLease? = nil
     var backingURL: URL { unlocked?.url ?? url }
     public var index: ArchiveIndex { ArchiveIndex(entries: entries) }
 }
@@ -96,6 +97,16 @@ public struct LibArchiveEngine: ArchiveEngine {
         if result == 5 { throw ArchiveFailure.wrongPassword }
         if result == 2 { throw ArchiveFailure.cancelled }
         if result != 0 { throw ArchiveFailure.message(String(cString: error)) }
+    }
+    /// Content recognition only. Recognized but malformed containers still need
+    /// inspection, and must not silently fall back to a default archive app.
+    public func isArchiveCandidate(_ url: URL, cancellation: ArchiveCancellation) throws -> Bool {
+        if cancellation.isCancelled { throw ArchiveFailure.cancelled }
+        _ = try SourceStamp(url)
+        let result = arkiv_archive_candidate(url.path)
+        if cancellation.isCancelled { throw ArchiveFailure.cancelled }
+        guard result >= 0 else { throw ArchiveFailure.message("Cannot read the temporary file.") }
+        return result != 0
     }
     public func inspect(_ url: URL, cancellation: ArchiveCancellation) throws -> ArchiveSnapshot {
         try inspect(url, cancellation: cancellation, password: nil)

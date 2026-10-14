@@ -10,11 +10,29 @@ public struct ArchiveOpenedFile: Sendable {
     fileprivate let stamp: SourceStamp
 }
 
+/// Owns one extracted source independently of its parent window. Snapshots produced
+/// by inspect retain this owner, including while drag promises or workers use them.
+public final class ArchiveOpenedFileLease: @unchecked Sendable {
+    public let url: URL
+    private let file: ArchiveOpenedFile
+    private let session: ArchiveOpenSession
+    fileprivate init(file: ArchiveOpenedFile, session: ArchiveOpenSession) {
+        self.file = file; self.url = file.url; self.session = session
+    }
+    public func inspect(cancellation: ArchiveCancellation, password: String? = nil) throws -> ArchiveSnapshot {
+        var snapshot = try LibArchiveEngine().inspect(url, cancellation: cancellation, password: password)
+        snapshot.sourceLease = self
+        return snapshot
+    }
+    deinit { session.releaseArchive(file) }
+}
+
 /// Keeps opened copies alive until the archive window/session ends. No passwords
 /// are retained: extraction uses the caller's existing (possibly unlocked) snapshot.
 /// prepare/discard are serialized; close cancels immediately and cleans after any
-/// in-flight extraction has stopped. A locked private directory protects live
-/// sessions from another process's stale-data sweep.
+/// in-flight extraction has stopped. Child source leases retain only their own
+/// attempts past parent closure. A locked private directory protects live sessions
+/// and child sources from another process's stale-data sweep.
 public final class ArchiveOpenSession: @unchecked Sendable {
     private let operation = NSLock()
     private let state = NSLock()
@@ -22,6 +40,7 @@ public final class ArchiveOpenSession: @unchecked Sendable {
     private var active: ArchiveCancellation?
     private var workspace: OpaquePointer?
     private var attempts = Set<String>()
+    private var leased = Set<String>()
     private let temporaryParent: URL
 
     public init() { temporaryParent = Self.systemTemporaryParent }
@@ -93,6 +112,9 @@ public final class ArchiveOpenSession: @unchecked Sendable {
     /// Recheck immediately before handing the URL to the default application.
     public func validateForLaunch(_ file: ArchiveOpenedFile, cancellation: ArchiveCancellation) throws {
         operation.lock(); defer { operation.unlock() }
+        try validate(file, cancellation: cancellation)
+    }
+    private func validate(_ file: ArchiveOpenedFile, cancellation: ArchiveCancellation) throws {
         try check(cancellation)
         guard let workspace, attempts.contains(file.attempt),
               arkiv_open_workspace_regular(workspace, file.relativePath) != 0 else {
@@ -102,9 +124,26 @@ public final class ArchiveOpenSession: @unchecked Sendable {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
         }
     }
+    /// Transfers one attempt to a child; duplicate transfers fail closed.
+    public func retainForArchive(_ file: ArchiveOpenedFile, cancellation: ArchiveCancellation) throws -> ArchiveOpenedFileLease {
+        operation.lock(); defer { operation.unlock() }
+        try validate(file, cancellation: cancellation)
+        guard leased.insert(file.attempt).inserted else {
+            throw ArchiveFailure.message("This temporary source already belongs to an archive window.")
+        }
+        return ArchiveOpenedFileLease(file: file, session: self)
+    }
+    fileprivate func releaseArchive(_ file: ArchiveOpenedFile) {
+        operation.lock(); defer { operation.unlock() }
+        if leased.remove(file.attempt) != nil, attempts.remove(file.attempt) != nil, let workspace {
+            arkiv_open_workspace_discard(workspace, file.attempt)
+        }
+        state.lock(); let ended = closed; state.unlock()
+        if ended { cleanup() }
+    }
     public func discard(_ file: ArchiveOpenedFile) {
         operation.lock(); defer { operation.unlock() }
-        if attempts.remove(file.attempt) != nil, let workspace { arkiv_open_workspace_discard(workspace, file.attempt) }
+        if !leased.contains(file.attempt), attempts.remove(file.attempt) != nil, let workspace { arkiv_open_workspace_discard(workspace, file.attempt) }
     }
     public func close() {
         state.lock(); closed = true; active?.cancel(); state.unlock()
@@ -117,7 +156,14 @@ public final class ArchiveOpenSession: @unchecked Sendable {
         }
     }
     private func cleanup() {
-        if let workspace { arkiv_open_workspace_free(workspace) }
-        workspace = nil; attempts.removeAll()
+        guard let workspace else { return }
+        for attempt in attempts.subtracting(leased) {
+            arkiv_open_workspace_discard(workspace, attempt)
+            attempts.remove(attempt)
+        }
+        if leased.isEmpty {
+            arkiv_open_workspace_free(workspace)
+            self.workspace = nil
+        }
     }
 }

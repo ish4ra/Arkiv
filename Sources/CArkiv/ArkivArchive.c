@@ -30,6 +30,17 @@ static int fail(char *error, size_t capacity, const char *message) {
 /* Deliberately register only in-process filters and the initial candidate formats.
    Never enable libarchive's external-program filter fallback. */
 static struct archive *reader(const char *path) {
+    /* libarchive accepts a RAR signature alone as an empty archive. Every RAR
+       needs an archive header after its 7/8-byte signature; reject truncation. */
+    struct stat st;
+    if (stat(path, &st) == 0 && st.st_size >= 7 && st.st_size <= 8) {
+        unsigned char signature[8];
+        int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+        if (fd < 0) return NULL;
+        ssize_t n = read(fd, signature, sizeof(signature)); close(fd);
+        if (n >= 7 && !memcmp(signature, "Rar!\x1a\x07", 6) &&
+            (signature[6] == 0 || signature[6] == 1)) return NULL;
+    }
     struct archive *a = archive_read_new();
     if (!a) return NULL;
     archive_read_support_filter_none(a);
@@ -715,6 +726,26 @@ int arkiv_create_zip(const char *const *sources, size_t count, const char *paren
 int arkiv_is_seven(const char *path) {
  int fd=create_open(path); if(fd<0)return 0;unsigned char b[6];ssize_t n=read(fd,b,6);close(fd);
  return n==6&&!memcmp(b,"7z\xbc\xaf\x27\x1c",6);
+}
+int arkiv_archive_candidate(const char *path) {
+ int fd=create_open(path); if(fd<0)return -1;
+ unsigned char b[512]; ssize_t n=read(fd,b,sizeof(b)); close(fd);
+ if(n<0)return -1;
+ /* Preserve recognizable damaged containers as candidates: never send these to
+    the default app on automatic activation after a failed archive inspection. */
+ if((n>=4 && (!memcmp(b,"PK\003\004",4) || !memcmp(b,"PK\005\006",4) || !memcmp(b,"PK\007\010",4))) ||
+    (n>=6 && !memcmp(b,"7z\xbc\xaf\x27\x1c",6)) ||
+    (n>=7 && !memcmp(b,"Rar!\x1a\x07",6) && (b[6]==0 || b[6]==1)) ||
+    (n>=262 && !memcmp(b+257,"ustar",5))) return 1;
+ /* Reuse the registered backend bidders for old/empty TAR and SFX ZIP.
+    No extension checks, new formats, payload extraction, or external filters. */
+ struct archive *a=reader(path);
+ if(!a)return 0;
+ struct archive_entry *entry=NULL;
+ (void)archive_read_next_header(a,&entry);
+ int recognized=archive_format(a)!=0;
+ archive_read_free(a);
+ return recognized;
 }
 int arkiv_unlock_seven(const char *path, const char *output, const char *password, arkiv_cancel *token) {
  if(cancelled(token))return 2;

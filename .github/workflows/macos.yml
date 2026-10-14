@@ -50,8 +50,8 @@ jobs:
         run: scripts/ci-check.sh zip-replacement swift test --filter ZIPReplacementTests -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
       - name: Native Delete confirmation regression
         run: scripts/ci-check.sh delete-confirmation swift test --filter BrowserWindowTests.testDeleteConfirmationCancellationRefreshAndSound -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
-      - name: Native Quick Look and Open-file regressions
-        run: scripts/ci-check.sh quick-look swift test --filter 'Archive(QuickLook|Open)Tests' -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
+      - name: Native Open, Quick Look and nested archive regressions
+        run: scripts/ci-check.sh quick-look swift test --filter '(Archive(QuickLook|Open|OpenSession)Tests|NestedArchiveTests)' -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
       - name: Swift tests (native runner architecture)
         run: scripts/ci-check.sh swift swift test --parallel -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
       - name: Validate branding dimensions, transparency, and checksums

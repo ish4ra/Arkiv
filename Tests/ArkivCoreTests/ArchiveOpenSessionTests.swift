@@ -205,6 +205,146 @@ final class ArchiveOpenSessionTests: XCTestCase {
         XCTAssertThrowsError(try rejected.prepare(fake, path: tooDeep, cancellation: ArchiveCancellation()))
         XCTAssertEqual(try fm.contentsOfDirectory(atPath: workspaceRoot(in: root).path), [])
     }
+    func testRealNestedFormatsMaterializeOnlySelectedEntryAndSurviveOuterClosure() throws {
+        for outerFormat: ArchiveFormat in [.zip, .sevenZip] {
+            for innerName in ["zip", "created-plain.7z", "links-and-special.tar", "rar5-stored.rar"] {
+                let root = try root()
+                let innerURL: URL
+                if innerName == "zip" { innerURL = try snapshot(in: root).url }
+                else { innerURL = fixture(innerName) }
+                let copy = root.appendingPathComponent("資料 🐘.bin")
+                try fm.copyItem(at: innerURL, to: copy)
+                let other = root.appendingPathComponent("unselected.txt")
+                try Data("do not materialize".utf8).write(to: other)
+                let outerURL = try ArchiveCreator().create(.init(sources: [copy, other], destination: root,
+                    name: "outer", format: outerFormat, password: outerFormat == .sevenZip ? "outer secret" : nil),
+                    cancellation: ArchiveCancellation(), progress: { _ in })
+                var outer: ArchiveSnapshot? = try engine.inspect(outerURL, cancellation: ArchiveCancellation(),
+                    password: outerFormat == .sevenZip ? "outer secret" : nil)
+                let spool = outer?.unlocked?.directory
+                let parent = ArchiveOpenSession(temporaryParent: root)
+                let file = try parent.prepare(outer!, path: copy.lastPathComponent, cancellation: ArchiveCancellation())
+                XCTAssertEqual(files(below: try workspaceRoot(in: root)), [file.url])
+                var source: ArchiveOpenedFileLease? = try parent.retainForArchive(file, cancellation: ArchiveCancellation())
+                var child: ArchiveSnapshot? = try source!.inspect(cancellation: ArchiveCancellation())
+                XCTAssertFalse(child!.entries.isEmpty)
+                parent.close(); outer = nil
+                if let spool { XCTAssertFalse(fm.fileExists(atPath: spool.path), "No retained outer decrypted spool") }
+                try fm.removeItem(at: outerURL)
+                ArchiveOpenSession.cleanStaleTemporaryData(in: root)
+                XCTAssertNoThrow(try source!.inspect(cancellation: ArchiveCancellation()))
+                child = nil; source = nil
+                XCTAssertFalse(fm.fileExists(atPath: file.url.path))
+            }
+        }
+    }
+    func testNestedEncryptedSourceUsesNormalPasswordErrorsAndCleansFailedAttempts() throws {
+        let root = try root()
+        let outerURL = try ArchiveCreator().create(.init(sources: [fixture("created-aes-headers.7z")], destination: root, name: "encrypted-child"),
+            cancellation: ArchiveCancellation(), progress: { _ in })
+        let outer = try engine.inspect(outerURL, cancellation: ArchiveCancellation())
+        let parent = ArchiveOpenSession(temporaryParent: root)
+        let file = try parent.prepare(outer, path: "created-aes-headers.7z", cancellation: ArchiveCancellation())
+        var source: ArchiveOpenedFileLease? = try parent.retainForArchive(file, cancellation: ArchiveCancellation())
+        XCTAssertThrowsError(try source!.inspect(cancellation: ArchiveCancellation())) {
+            guard case ArchiveFailure.passwordRequired = $0 else { return XCTFail("Expected password request") }
+        }
+        XCTAssertThrowsError(try source!.inspect(cancellation: ArchiveCancellation(), password: "wrong")) {
+            guard case ArchiveFailure.wrongPassword = $0 else { return XCTFail("Expected password rejection") }
+        }
+        source = nil
+        XCTAssertFalse(fm.fileExists(atPath: file.url.path))
+        parent.close()
+    }
+    func testNestedArchiveDetectionUsesContentsAndPreservesMalformedCandidates() throws {
+        let root = try root()
+        for name in ["rar5-stored.rar", "links-and-special.tar"] {
+            let copy = root.appendingPathComponent(UUID().uuidString)
+            try fm.copyItem(at: fixture(name), to: copy)
+            XCTAssertTrue(try engine.isArchiveCandidate(copy, cancellation: ArchiveCancellation()))
+            XCTAssertFalse(try engine.inspect(copy, cancellation: ArchiveCancellation()).entries.isEmpty)
+        }
+        for format: ArchiveFormat in [.zip, .sevenZip] {
+            let folder = root.appendingPathComponent(UUID().uuidString)
+            try fm.createDirectory(at: folder, withIntermediateDirectories: false)
+            let snapshot = try snapshot(in: folder, format: format)
+            let copy = folder.appendingPathComponent("renamed.bin")
+            try fm.copyItem(at: snapshot.url, to: copy)
+            XCTAssertTrue(try engine.isArchiveCandidate(copy, cancellation: ArchiveCancellation()))
+        }
+        let plain = root.appendingPathComponent("misleading.zip")
+        try Data("ordinary text".utf8).write(to: plain)
+        XCTAssertFalse(try engine.isArchiveCandidate(plain, cancellation: ArchiveCancellation()))
+        for bytes: [UInt8] in [[0x50, 0x4b, 3, 4], [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c], [0x52, 0x61, 0x72, 0x21, 0x1a, 7, 1, 0]] {
+            try Data(bytes).write(to: plain)
+            XCTAssertTrue(try engine.isArchiveCandidate(plain, cancellation: ArchiveCancellation()))
+            XCTAssertThrowsError(try engine.inspect(plain, cancellation: ArchiveCancellation()), "Signature: \(bytes)")
+        }
+        let cancelled = ArchiveCancellation(); cancelled.cancel()
+        XCTAssertThrowsError(try engine.isArchiveCandidate(plain, cancellation: cancelled))
+    }
+    func testNestedSnapshotAndDragOwnSourceAfterParentAndWindowReferencesEnd() throws {
+        let root = try root()
+        let inner = try snapshot(in: root)
+        let outerURL = try ArchiveCreator().create(.init(sources: [inner.url], destination: root, name: "outer"),
+            cancellation: ArchiveCancellation(), progress: { _ in })
+        let outer = try engine.inspect(outerURL, cancellation: ArchiveCancellation())
+        let parent = ArchiveOpenSession(temporaryParent: root)
+        let file = try parent.prepare(outer, path: inner.url.lastPathComponent, cancellation: ArchiveCancellation())
+        var lease: ArchiveOpenedFileLease? = try parent.retainForArchive(file, cancellation: ArchiveCancellation())
+        var child: ArchiveSnapshot? = try lease!.inspect(cancellation: ArchiveCancellation())
+        var drag: ArchiveDragSession? = try ArchiveDragSession(snapshot: child!, paths: ["入れ物/資料/é 🐘.txt"])
+        lease = nil
+        parent.close()
+        ArchiveOpenSession.cleanStaleTemporaryData(in: root)
+        XCTAssertTrue(fm.fileExists(atPath: file.url.path))
+        child = nil // Child window closes, but promised source remains readable.
+        XCTAssertTrue(fm.fileExists(atPath: file.url.path))
+        let output = root.appendingPathComponent("drag")
+        try fm.createDirectory(at: output, withIntermediateDirectories: false)
+        let item = try XCTUnwrap(drag?.items.first)
+        _ = try drag!.write(item: item, to: output.appendingPathComponent(item.name))
+        drag = nil
+        XCTAssertFalse(fm.fileExists(atPath: file.url.path))
+    }
+    func testChildLeaseSurvivesParentCloseAndSweepThenReleasesOnlyOwnedCopy() throws {
+        let root = try root(), snapshot = try snapshot(in: root)
+        let session = ArchiveOpenSession(temporaryParent: root)
+        let token = ArchiveCancellation()
+        let first = try session.prepare(snapshot, path: "入れ物/資料/é 🐘.txt", cancellation: token)
+        let second = try session.prepare(snapshot, path: "入れ物/資料/é 🐘.txt", cancellation: token)
+        let ordinary = try session.prepare(snapshot, path: "入れ物/資料/other.txt", cancellation: token)
+        var child: ArchiveOpenedFileLease? = try session.retainForArchive(first, cancellation: token)
+        var sibling: ArchiveOpenedFileLease? = try session.retainForArchive(second, cancellation: token)
+        XCTAssertEqual(child?.url, first.url)
+        XCTAssertEqual(sibling?.url, second.url)
+        XCTAssertThrowsError(try session.retainForArchive(first, cancellation: token))
+        session.discard(first) // A late parent completion cannot discard a child's copy.
+        session.close()
+        ArchiveOpenSession.cleanStaleTemporaryData(in: root)
+        XCTAssertTrue(fm.fileExists(atPath: first.url.path))
+        XCTAssertTrue(fm.fileExists(atPath: second.url.path))
+        XCTAssertFalse(fm.fileExists(atPath: ordinary.url.path))
+        XCTAssertThrowsError(try session.retainForArchive(ordinary, cancellation: token))
+        child = nil
+        XCTAssertFalse(fm.fileExists(atPath: first.url.path))
+        XCTAssertTrue(fm.fileExists(atPath: second.url.path))
+        sibling = nil
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: workspaceRoot(in: root).path), [])
+    }
+    func testCancelledAndStaleSourceCannotTransferOwnership() throws {
+        let root = try root(), snapshot = try snapshot(in: root)
+        let session = ArchiveOpenSession(temporaryParent: root)
+        defer { session.close() }
+        let token = ArchiveCancellation()
+        let file = try session.prepare(snapshot, path: "入れ物/資料/é 🐘.txt", cancellation: token)
+        token.cancel()
+        XCTAssertThrowsError(try session.retainForArchive(file, cancellation: token))
+        try Data("changed".utf8).write(to: snapshot.url)
+        XCTAssertThrowsError(try session.retainForArchive(file, cancellation: ArchiveCancellation()))
+        session.discard(file)
+        XCTAssertFalse(fm.fileExists(atPath: file.url.path))
+    }
     func testNonRegularAmbiguousOrUnsafeEntryCannotBeOpened() throws {
         let root = try root(), original = try snapshot(in: root)
         for entries in [
