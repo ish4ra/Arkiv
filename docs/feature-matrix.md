@@ -14,7 +14,7 @@
 | Solid archives / multipart / comments | Deferred compatibility work |
 | Integrity test command | ZIP/7z full-data/CRC checks; TAR structure/readability with explicit checksum warning; native progress/cancellation/password retry |
 | Checksums / split-combine / benchmark / CLI | Deferred |
-| Finder extraction | AppKit Services for one ZIP/uncompressed TAR: open, here, archive folder, destination chooser; real-Finder registration/invocation checks pending |
+| Finder integration | Sandboxed Finder Sync **Arkiv** submenu (user enablement required; home folder only): Open, Extract Here, Extract to folder, Extract To and Test Archive for one ZIP/7z/uncompressed TAR, plus Add to Archive and ZIP/7z/password compression for normal items; [details](finder-sync.md). AppKit Services fallback for one ZIP/uncompressed TAR; [details](finder-integration.md). Extension registration and the direct menu were confirmed on a real M1 Mac; broader interactive acceptance pending |
 | Drag out | Native lazy file promises; selected files/folders to Finder; [details](drag-out.md) |
 | Drag in | Native Finder file URLs into writable ZIPs; current folder or folder-row destination |
 | ZIP/TAR associations | Viewer/alternate registration implemented; real-Mac validation pending |

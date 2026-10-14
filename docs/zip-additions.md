@@ -10,7 +10,9 @@ Encrypted ZIP, ZIP64, unusual layouts or opaque extra fields are read-only for
 addition. Known timestamp/ownership fields and NTFS extras are preserved. A file
 extension alone never grants modification support. 7z, RAR and TAR remain
 read-only for modification. Delete, Rename and Replace File use the same transaction architecture; see
-[ZIP edits](zip-edits.md). Replacing existing entries is not implemented.
+[ZIP edits](zip-edits.md). Additions never replace existing entries; the
+separate **Replace File…** action replaces one selected file's contents.
+Folder replacement and multi-file updates remain deferred.
 
 A root name that already exists (including an implicit directory), or duplicate
 names among selected sources, produces a native error. Comparison is Unicode
