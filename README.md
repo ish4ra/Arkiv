@@ -1,22 +1,135 @@
 # Arkiv
 
-A native macOS archive manager in early development. `ARKIV_SPEC.md` is the authoritative implementation specification.
+A native macOS archive manager, built for the depth of tools like 7-Zip and WinRAR and designed properly for the Mac.
 
-The first foundation contains an AppKit archive table, folder navigation, search, multi-selection, selected/all extraction into a new directory, progress/cancellation, and a reusable Swift engine backed by system libarchive and a bundled in-process 7-Zip library. It does not require users to install an external compressor.
+Arkiv opens an archive as a browsable container rather than unpacking everything at once. Browse folders, search, preview and open individual files, extract exactly what you need, create ZIP and encrypted 7z archives, and edit supported ZIPs, all from a native AppKit app with Finder integration. No Electron, no web views, and no Homebrew or command-line tools to install.
 
-**Validation:** [macOS CI](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml) runs engine/security fixtures, Swift/AppKit tests, branding checks, arm64 and Universal app verification, and mounted DMG verification. Interactive Finder discovery, UI/accessibility, and Gatekeeper behavior still require a real Mac; this is not a production release.
+[![macOS CI](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml/badge.svg?branch=main)](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml)
 
-Fixture-verified formats include ZIP Store/Deflate, TAR, 7z/LZMA2 and stored RAR5. Creation supports ZIP and 7z, including 7z AES-256 content and optional filename encryption. This is not blanket codec/multipart support. ZIP additions and native [Finder drag-in](docs/drag-in.md) to existing archive folders are available for supported writable archives; [ZIP Delete, Rename and Replace File](docs/zip-edits.md) are available; folder/multi-file updates, other-format modification and advanced tools remain deferred. Native [drag-out to Finder](docs/drag-out.md) uses lazy file promises. [Open a regular file or preview it with Quick Look](docs/open-files.md) using a private temporary copy.
+> [!NOTE]
+> **Arkiv is in active early development.** Development builds are available for testing on macOS 13 or later (Apple Silicon and Intel). They are ad-hoc signed and **not notarized**, and there is no stable public release yet. Several core workflows still await real-Mac validation. See [what is implemented](docs/feature-matrix.md).
 
-Extraction preserves symbolic links and safe executable permissions for macOS app/framework bundles. Hard links are supported within extracted content; unsupported special files produce per-entry warnings. See [extraction compatibility](docs/extraction-compatibility.md).
+## Highlights
 
-## Download for Mac testing
+- **Native archive browser.** A Finder-like table with sortable, resizable columns, multi-selection, folder navigation (Back, Forward, Up), archive-wide search and multiple windows.
+- **Selective extraction.** Extract the current selection or the whole archive, with progress and cancellation. Existing files are never overwritten.
+- **Open and Quick Look.** Double-click a file to open a private temporary copy in its default app, or press Space to preview it, without extracting the rest of the archive.
+- **Create ZIP and 7z.** ZIP is the default. 7z adds LZMA2 compression and optional AES-256 encryption, including encrypted filenames.
+- **Edit ZIP archives.** Add files and folders, delete, rename, or replace a single file. Every edit is verified before it replaces the original.
+- **Finder integration.** An **Arkiv** submenu in Finder's context menu to extract, test and compress, with Services as a fallback.
+- **Drag in and out.** Drag entries to Finder, and drag Finder items into writable ZIPs.
+- **Test Archive.** Read and verify archive data without extracting anything.
 
-Open the [macOS foundation Actions page](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml?query=branch%3Amain), sign in, and choose a successful `main` run with DMG artifacts. Download **`Arkiv-arm64-development-dmg`** for Apple Silicon or **`Arkiv-universal-development-dmg`** for Intel/Apple Silicon. Unzip GitHub's artifact wrapper, open the enclosed **`Arkiv-…-development.dmg`**, and drag **Arkiv.app** to the **Applications** shortcut. Eject the **Arkiv** volume and launch the installed app from Applications.
+## Format support
 
-These are **development builds**: the app is **ad-hoc signed**, the DMG is **unsigned**, and **neither is notarized**. Gatekeeper may block first launch with an Apple-could-not-verify/unidentified-developer warning. If you trust this build, attempt launch, then use **System Settings → Privacy & Security → Open Anyway** for Arkiv. See [exact artifact names, checksums, installation and Gatekeeper details](docs/release.md). Signed development updates are also published as prereleases through Sparkle.
+Arkiv only lists a format as supported once it passes automated fixture tests. Recognising a file extension does not mean every compression method or variant inside it works.
 
-## Develop on macOS
+| Format | Browse & extract | Create | Edit existing | Encryption | Test Archive |
+| --- | --- | --- | --- | --- | --- |
+| **ZIP** | Store, Deflate | Store, Deflate (default format) | Add, Delete, Rename, Replace File¹ | Not supported | Data and CRC |
+| **7z** | LZMA, LZMA2 | LZMA2 | — | AES-256, optional encrypted filenames | Data and CRC |
+| **TAR** (uncompressed) | Yes | — | — | — | Structure only² |
+| **RAR5** | Limited³ | Never | — | — | — |
+
+¹ Ordinary single-disk ZIP32 archives. Encrypted, ZIP64 and multipart ZIPs are read-only.
+² TAR has no content checksum, so a passing test is reported as a warning.
+³ Verified against a single stored (uncompressed) RAR5 fixture. Broader RAR5 and RAR4 decoding is not yet verified, and RAR creation is out of scope.
+
+**Not yet verified, so not advertised:** RAR4, RAR5 beyond the stored fixture, compressed TAR (`.tar.gz`, `.tar.bz2`, `.tar.xz`), ZIPX, disk images and the other formats in the [specification](ARKIV_SPEC.md). No support is claimed until fixture tests pass.
+
+**Known unsupported:** encrypted ZIP (rejected rather than guessed at), multipart archives, and RAR creation. See [format evidence](docs/archive-formats.md) for details.
+
+## Using Arkiv
+
+### Browse, open and extract
+
+Open an archive with **File → Open Archive…** (⌘O), by double-clicking a ZIP or TAR once Arkiv is set as its handler, or through Finder. Folders open on double-click. App and framework bundles appear as packages; use **Show Package Contents** to look inside.
+
+- **Extract Selected…** (⌘E) and **Extract All…** (⇧⌘E) write to a new folder in the destination you choose.
+- **Open** launches a single file in its default app from a private temporary copy. Changes to that copy are **not** written back to the archive, and the copy is removed when the archive window closes, so save elsewhere anything you want to keep.
+- **Quick Look** (Space) previews one regular file using the same temporary copy.
+- **Search** (⌘F) filters by name across the whole archive. **Back** (⌘[), **Forward** (⌘]) and **Parent Folder** (⌘↑) handle navigation.
+
+Encrypted 7z archives ask for a password when opened, with retry on a wrong password. Passwords are never saved. Extraction preserves symbolic links and safe executable permission bits, including inside app and framework bundles. See [extraction compatibility](docs/extraction-compatibility.md) and [open files and Quick Look](docs/open-files.md).
+
+### Create archives
+
+Use **File → Create Archive…** (⇧⌘N) or Finder's **Add to Archive…** to choose a name, destination, format and compression method. ZIP offers Store or Deflate. 7z offers LZMA2 with optional AES-256 encryption and optional encrypted filenames. **Compress with Password…** uses 7z, because ZIP encryption has not yet passed interoperability testing. Arkiv never falls back silently to legacy ZipCrypto.
+
+New archives are reopened and verified before they appear, and existing files are never replaced: name clashes become `Name (2).zip` and so on. See [creation](docs/creation.md) and [7z and AES-256](docs/sevenzip.md).
+
+### Edit ZIP archives
+
+For eligible ZIPs, Arkiv can:
+
+- **Add Files…** and **Add Folder…** to the archive root, or drag Finder items onto the current folder or a folder row
+- **Delete…** (⌘⌫) files and folders, after confirmation
+- **Rename…** one file or folder within its current folder
+- **Replace File…**: swap one file's contents for a file on disk, keeping its name and path in the archive
+
+Each edit builds a complete replacement archive, verifies it, and then swaps it in atomically. If anything fails or you cancel before that point, the original is left untouched. Updating folders or several files at once, creating new folders, and editing 7z, TAR or RAR are not yet available. See [ZIP additions](docs/zip-additions.md), [ZIP edits](docs/zip-edits.md) and [drag-in](docs/drag-in.md).
+
+### Drag and drop
+
+Drag files or folders from Arkiv into Finder. Nothing is extracted until you drop, and Finder's chosen destination is never overwritten. Drag-in works only for writable ZIPs. Read-only archives do not accept drops. See [drag-out](docs/drag-out.md).
+
+### Test Archive
+
+**File → Test Archive** (⌘T) reads and checks the open archive without writing any files. **Test Archive File…** (⇧⌘T) checks an archive that may be too damaged to open. Results distinguish OK, Warning, Corrupt, CRC Error, Wrong Password and Unsupported Method where the format allows. See [integrity checks](docs/integrity.md).
+
+## Finder integration
+
+Arkiv includes a Finder extension that adds an **Arkiv** submenu to Finder's context menu:
+
+| Selection | Actions |
+| --- | --- |
+| One ZIP, 7z or uncompressed TAR | Open in Arkiv · Extract Here · Extract to "Name/" · Extract To… · Test Archive |
+| Files and folders (up to 128, in the same folder) | Add to Archive… · Compress to "Name.zip" · Compress to "Name.7z" · Compress with Password… |
+
+**Enabling it:** macOS requires you to turn the extension on yourself. Arkiv shows a setup window on first launch, also available from **Arkiv → Finder Integration…**, with a button and manual instructions:
+
+- **macOS 15 and later:** System Settings → General → Login Items & Extensions → Extensions → Finder → enable **Arkiv Finder**
+- **macOS 13–14:** System Settings → Privacy & Security → Extensions → Finder Extensions → enable **Arkiv Finder**
+
+**Scope:** the submenu appears only for items inside your home folder. For archives elsewhere, such as external drives, use the fallback **Services** menu: right-click → Services → *Open in Arkiv*, *Extract Here with Arkiv*, *Extract to Folder with Arkiv* or *Extract To… with Arkiv*. These Services cover one ZIP or uncompressed TAR at a time. Enable them under System Settings → Keyboard → Keyboard Shortcuts → Services if needed.
+
+Extract Here and Extract to Folder run immediately, play a short completion sound and never overwrite or merge existing items. See [Finder Sync](docs/finder-sync.md) and [Services](docs/finder-integration.md), including real-Mac test steps.
+
+## Install a development build
+
+There is no stable release yet. Two kinds of development build exist:
+
+| Source | What it is | Use it for |
+| --- | --- | --- |
+| [GitHub Actions artifacts](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml?query=branch%3Amain) | arm64 and Universal DMGs (and ZIPs) from each CI run, with SHA-256 checksums | First installation |
+| [Development prereleases](https://github.com/ish4ra/Arkiv/releases) (`dev-<build>`) | Signed Universal ZIPs published for Sparkle | Signed, user-confirmed in-app updates |
+
+**First installation:**
+
+1. Sign in to GitHub, open a successful `main` run of the **macOS foundation** workflow, and download **`Arkiv-arm64-development-dmg`** (Apple Silicon) or **`Arkiv-universal-development-dmg`** (Apple Silicon or Intel).
+2. Unzip GitHub's artifact wrapper. Optionally verify the image with `shasum -a 256 -c Arkiv-*-development.dmg.sha256`.
+3. Open the DMG, drag **Arkiv.app** to **Applications**, eject the volume and launch Arkiv from Applications.
+
+**Gatekeeper:** these builds are ad-hoc signed, not Developer ID signed, and not notarized. macOS may block the first launch with a warning that it could not verify the app. If you trust the build, try to open it once, then go to **System Settings → Privacy & Security** and choose **Open Anyway**. Do not disable Gatekeeper globally. See [release details](docs/release.md#signing-notarization-and-gatekeeper).
+
+**Updates:** after installing once, use **Arkiv → Check for Updates…**. Sparkle installs updates only after verifying their EdDSA signature, and always asks before installing. This proves an update came from this project's signing key; it is not Apple notarization. See [development updates](docs/updates.md).
+
+## Safety and privacy
+
+Correctness and data safety come before features and polish.
+
+- **The input archive is never modified** by browsing, testing or extraction. Edits to ZIPs are transactional and verified.
+- **Extraction stays inside the destination you choose.** Path traversal, absolute paths, link tricks and unsafe special files are rejected, and output is staged privately before it is published. Hostile-archive cases are covered by automated regression tests.
+- **No silent overwrites.** Extraction, creation and Finder actions never replace or merge existing files.
+- **Resource limits.** Extraction is capped at 100,000 entries and 20 GiB of output.
+- **Passwords are never persisted.** They are not saved, logged or passed through URLs. Opening an encrypted 7z does decode it to a private temporary plaintext spool on disk, kept while the archive is open and deleted on normal cleanup. A crash can leave it behind, and deletion is not secure erasure.
+- **No accounts, telemetry or background network services.** The only network activity is Sparkle's update checks and downloads.
+
+These protections have known limits. For example, the Finder extension's handoff URL does not authenticate its sender, and macOS metadata such as extended attributes and timestamps is not restored. See [security and known limits](docs/security.md).
+
+## Build from source
+
+Requires macOS 13 or later, Xcode command-line tools with Swift 5.9+, and Python 3 for the fixture tests.
 
 ```sh
 python3 scripts/build-sevenzip.py
@@ -27,61 +140,40 @@ scripts/build-dmg.sh
 open build/Arkiv-arm64-development.dmg
 ```
 
-Xcode command-line tools with Swift 5.9+; macOS 13+. App bundle defaults to arm64. Python 3 is needed only for developer fixture tests. No runtime Homebrew dependencies. See [release/build details](docs/release.md).
+The app builds for arm64 by default. Set `ARKIV_ARCH=universal` for both build scripts to produce a Universal app. On Linux you can build and test the archive engine (`ArkivCore`), but not the AppKit app. See [release and build details](docs/release.md).
 
-The repository is already isolated in Codex cloud tasks; reuse its checkout and do not create a worktree unless requested. Linux can test ArkivCore/CArkiv with Swift plus the system libarchive library, but cannot validate AppKit or produce Arkiv.app.
+**Architecture in brief:** a Swift Package Manager project with an AppKit app (`ArkivApp`) on top of a UI-independent engine (`ArkivCore`), so a future command-line tool can reuse it. ZIP, TAR and RAR go through the system libarchive. 7z uses a pinned, bundled build of the official 7-Zip source, with the RAR code excluded. Arkiv never shells out to external tools. See [architecture](docs/architecture.md).
 
-- [Architecture](docs/architecture.md)
-- [Format evidence and backend research](docs/archive-formats.md)
-- [Feature matrix](docs/feature-matrix.md)
-- [Security and known limits](docs/security.md)
-- [Finder integration](docs/finder-integration.md)
-- [Original icon direction](docs/branding.md)
-- [Third-party notices](docs/third-party-licenses.md)
+## Roadmap
 
-Next: confirm/fix macOS CI and real-Mac browser behavior, then implement TAR creation with round-trip tests. ZIP/7z creation and 7z AES-256 are implemented; ZIP Add Files/Add Folder, Delete, Rename and single-file replacement are implemented; folder/multi-file updates and other-format modification remain deferred.
+Planned work that is **not** in current builds:
 
-## Finder extraction
+- **Formats:** TAR creation, compressed TAR (`.tar.gz`, `.tar.bz2`, `.tar.xz`), broader RAR5 and RAR4 verification, multipart archives
+- **Archive work:** encrypted ZIP after interoperability testing, folder and multi-file updates, editing more formats, nested archive navigation, archive comments
+- **Tools:** checksums, split/combine, benchmark, a command-line companion
+- **App:** Settings, Open Recent, more columns and an archive inspector, a Quick Look extension for archives in Finder
+- **Distribution:** Developer ID signing and notarization, the final app icon and archive document icons
 
-Right-click one ZIP or uncompressed TAR archive → **Services** for **Open in Arkiv**, **Extract Here with Arkiv**, **Extract to Folder with Arkiv**, or **Extract To… with Arkiv**. Enable these under **System Settings → Keyboard → Keyboard Shortcuts → Services** if needed. Extraction never overwrites or merges existing items. Services support single-archive extraction; creation is available through the direct Finder menu or File → Create Archive…. See [Finder setup, limitations, and test steps](docs/finder-integration.md).
+The full plan is in [`ARKIV_SPEC.md`](ARKIV_SPEC.md) and its current status in the [feature matrix](docs/feature-matrix.md).
 
-### Development self-updates
+## Documentation
 
-Arkiv integrates Sparkle 2 with **Arkiv → Check for Updates…** and optional
-background checks. One manual installation of a build containing your configured
-public key is required. Subsequent development updates use a signed Universal ZIP
-and signed GitHub prerelease feed. See [updater setup and testing](docs/updates.md)
-for the one-time EdDSA key/Actions secret setup. Builds remain ad-hoc signed and
-not notarized; keyless builds clearly report that updates are not configured.
+| Topic | Documents |
+| --- | --- |
+| Status | [Feature matrix](docs/feature-matrix.md) · [Format evidence](docs/archive-formats.md) |
+| Using Arkiv | [Creation](docs/creation.md) · [ZIP additions](docs/zip-additions.md) · [ZIP edits](docs/zip-edits.md) · [Open & Quick Look](docs/open-files.md) · [Drag-in](docs/drag-in.md) · [Drag-out](docs/drag-out.md) · [Test Archive](docs/integrity.md) |
+| Finder | [Finder Sync extension](docs/finder-sync.md) · [Services fallback](docs/finder-integration.md) |
+| Safety | [Security](docs/security.md) · [Extraction compatibility](docs/extraction-compatibility.md) · [7z backend](docs/sevenzip.md) |
+| Development | [Architecture](docs/architecture.md) · [Release & builds](docs/release.md) · [Updates](docs/updates.md) · [Browser UI notes](docs/ui-refinement.md) |
 
-### Direct Finder menu
+## Licensing
 
-Use the first-run Finder setup, or **Arkiv → Finder Integration…**, for a direct **Arkiv** submenu when
-right-clicking one ZIP, 7z or uncompressed TAR in your home folder. Actions include
-Open, Extract Here, Extract to an archive-named folder, Extract To, and Test Archive. Extraction
-requests execute directly after validation; Extract To retains its destination chooser.
-The custom-URL trust tradeoff is documented in [Finder integration](docs/finder-sync.md).
-Services remain the fallback outside this scope.
-See [Finder Sync setup and real-Mac tests](docs/finder-sync.md).
+**Arkiv has not selected a project-wide license yet**, and the repository has no root `LICENSE` file.
 
-Finder setup shows the manual macOS Settings path and refreshes enabled status
-when you return. **Not Now** is remembered; setup remains available from the menu.
+Third-party components keep their own licenses:
 
-### Archive creation
+- **7-Zip:** Arkiv bundles a library built from a pinned subset of the official 7-Zip 26.04 source, under LGPL-2.1-or-later (some files public domain), with no RAR code. Arkiv's bridge to this library is also LGPL-2.1-or-later. Source and rebuild instructions are in [`Vendor/7zip`](Vendor/7zip/README.md) and [7z backend](docs/sevenzip.md).
+- **libarchive:** Arkiv uses the macOS system copy. Its BSD-licensed headers are included for building.
+- **Sparkle 2.10.0:** bundled for updates. Its license file is included in the app.
 
-ZIP is the default creation format. Select files/folders in Finder for **Add to Archive…**,
-**Compress to “Name.zip”**, or **Compress with Password…**. Direct **Compress to “Name.7z”**
-and 7z in the format selector remain secondary options. Password compression uses 7z AES-256.
-The File menu also offers **Create Archive…**. Store/Deflate, mixed selections,
-nested/empty folders, Unicode, progress and cancellation are supported with
-transactional no-overwrite publication. 7z offers LZMA2, AES-256 and optional encrypted filenames; ZIP AES remains unavailable. Passwords are not saved.
-See [creation behavior and real-Mac tests](docs/creation.md) and [7z backend, temporary plaintext handling and licensing](docs/sevenzip.md).
-
-### Test Archive
-
-Use **Test Archive** in Finder’s Arkiv submenu or the app’s Test action to read and
-verify archive data without publishing extracted files. ZIP and 7z verify decoded
-data and available CRCs; TAR checks headers and payload readability but reports a
-warning because TAR has no payload checksum. Encrypted 7z requests a password and
-supports retry. Testing is cancellable and does not play the extraction sound.
-See [integrity checks, limits, and real-Mac tests](docs/integrity.md).
+See [third-party notices](docs/third-party-licenses.md).
