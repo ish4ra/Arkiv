@@ -1,4 +1,5 @@
 import AppKit
+import Quartz
 import ArkivCore
 import ArkivPresentation
 
@@ -47,6 +48,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     private var openSession = ArchiveOpenSession()
     private var openSessionArchiveURL: URL?
     private var openRequest: UUID?
+    private enum FilePurpose { case open, preview }
+    private var filePurpose: FilePurpose?
+    private let quickLook: ArchiveQuickLookPresenting
     private var sessionEnded = false
     private let openFileLauncher: (URL) -> Bool
     // Injection keeps AppKit tests deterministic and never launches another app.
@@ -55,10 +59,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     private let worker = DispatchQueue(label: "xyz.isharalakshan.arkiv.archive", qos: .userInitiated)
 
     init(modificationFeedback: @escaping (Result<URL, Error>) -> Void = { ExtractionFeedback.completed($0) },
+         quickLook: ArchiveQuickLookPresenting = ArchiveQuickLook(),
          openFileLauncher: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) },
          prepareOpenFile: @escaping (ArchiveOpenSession, ArchiveSnapshot, String, ArchiveCancellation, @escaping @Sendable (ArchiveProgress) -> Void) throws -> ArchiveOpenedFile = {
              try $0.prepare($1, path: $2, cancellation: $3, progress: $4)
          }) {
+        self.quickLook = quickLook
         self.modificationFeedback = modificationFeedback
         self.openFileLauncher = openFileLauncher
         self.prepareOpenFile = prepareOpenFile
@@ -81,6 +87,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
     private func makeContent() -> NSView {
+        table.previewKeyHandler = { [weak self] event in self?.handlePreviewKey(event) ?? false }
         table.usesAlternatingRowBackgroundColors = false
         table.style = .plain
         table.backgroundColor = .textBackgroundColor
@@ -106,6 +113,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         table.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
         let menu = NSMenu()
         menu.addItem(withTitle: "Open", action: #selector(openSelectedFile(_:)), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Quick Look", action: #selector(quickLookSelectedFile(_:)), keyEquivalent: "").target = self
         let contents = menu.addItem(withTitle: "Show Package Contents", action: #selector(showPackageContents(_:)), keyEquivalent: "")
         contents.target = self
         let extract = menu.addItem(withTitle: "Extract Selected…", action: #selector(extractSelected(_:)), keyEquivalent: "")
@@ -222,8 +230,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     }
     func load(_ url: URL, password: String? = nil, browsingFolder: String = "", selectingPath: String? = nil) {
         guard !sessionEnded else { return }
+        quickLook.close()
         if openRequest != nil {
-            cancellation?.cancel(); openRequest = nil; finish()
+            cancellation?.cancel(); openRequest = nil; filePurpose = nil; finish()
         }
         guard !isBusy else { return }
         if openSessionArchiveURL != url.standardizedFileURL {
@@ -658,10 +667,31 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         guard let entry = selectedRegularFile else { return }
         openFile(path: entry.path)
     }
-    private func openFile(path: String) {
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { quickLook.acceptsControl() }
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) { quickLook.beginControl(panel) }
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) { quickLook.endControl(panel) }
+    @objc func quickLookSelectedFile(_ sender: Any?) {
+        if quickLook.isPresented { quickLook.close(); return }
+        guard let entry = selectedRegularFile else { return }
+        openFile(path: entry.path, purpose: .preview)
+    }
+    func handlePreviewKey(_ event: NSEvent) -> Bool {
+        guard ArchiveTableView.isPreviewDismissKey(event) else { return false }
+        if event.isARepeat { return quickLook.isPresented || filePurpose == .preview }
+        if quickLook.isPresented { quickLook.close(); return true }
+        if filePurpose == .preview, openRequest != nil {
+            cancellation?.cancel(); openRequest = nil; filePurpose = nil; finish(); return true
+        }
+        guard event.keyCode == 49, !event.isARepeat, !isBusy, !sessionEnded,
+              window?.attachedSheet == nil, selectedRegularFile != nil else { return false }
+        quickLookSelectedFile(nil)
+        return true
+    }
+    private func openFile(path: String, purpose: FilePurpose = .open) {
         guard !isBusy, !sessionEnded, window?.attachedSheet == nil, let snapshot,
               ArchiveOpenSession.regularEntry(in: snapshot, path: path) != nil else { return }
-        let token = begin("Opening file…")
+        let token = begin(purpose == .open ? "Opening file…" : "Preparing preview…")
+        filePurpose = purpose
         let request = UUID(); openRequest = request
         let session = openSession
         let prepare = prepareOpenFile
@@ -672,7 +702,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                     guard throttle.shouldUpdate() else { return }
                     DispatchQueue.main.async { [weak self] in
                         guard let self, self.openRequest == request, !self.sessionEnded else { return }
-                        self.status.stringValue = "Opening file • \(ByteCountFormatter.string(fromByteCount: Int64(progress.bytes), countStyle: .file)) extracted"
+                        self.status.stringValue = "\(purpose == .open ? "Opening file" : "Preparing preview") • \(ByteCountFormatter.string(fromByteCount: Int64(progress.bytes), countStyle: .file)) extracted"
                     }
                 }
             }
@@ -682,11 +712,19 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                     return
                 }
                 self.openRequest = nil
+                self.filePurpose = nil
                 self.finish()
                 switch result {
                 case .success(let file):
                     do {
                         try session.validateForLaunch(file, cancellation: token)
+                        if purpose == .preview {
+                            guard self.quickLook.present(file.url, owner: self) else {
+                                throw ArchiveFailure.message("macOS could not preview this file.")
+                            }
+                            self.status.stringValue = "Previewing \(file.url.lastPathComponent)"
+                            return
+                        }
                         guard self.openFileLauncher(file.url) else {
                             throw ArchiveFailure.message("macOS could not open this file with its default application.")
                         }
@@ -700,10 +738,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     /// Called both for window closure and application termination. In-flight Open
     /// work cannot launch after this boundary; cleanup waits for the writer.
     func endArchiveSession() {
-        sessionEnded = true; openRequest = nil
+        quickLook.close()
+        sessionEnded = true; openRequest = nil; filePurpose = nil
         cancellation?.cancel(); openSession.close()
     }
-    deinit { openSession.close() }
+    deinit { quickLook.close(); openSession.close() }
     private var selectedPackage: BrowserRow? {
         guard table.selectedRowIndexes.count == 1, rows.indices.contains(table.selectedRow),
               BrowserPresentation.packageKind(rows[table.selectedRow]) != nil else { return nil }
@@ -781,6 +820,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     }
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(quickLookSelectedFile(_:)): return quickLook.isPresented || (!sessionEnded && !isBusy && window?.attachedSheet == nil && selectedRegularFile != nil)
         case #selector(openSelectedFile(_:)): return !sessionEnded && !isBusy && window?.attachedSheet == nil && selectedRegularFile != nil
         case #selector(showPackageContents(_:)): return !isBusy && selectedPackage != nil
         case #selector(replaceSelected(_:)): return canReplaceFile

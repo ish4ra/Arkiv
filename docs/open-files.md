@@ -1,4 +1,4 @@
-# Open a file inside an archive
+# Open or preview a file inside an archive
 
 Double-click one regular file, or select it and choose **File → Open** or
 **Open** from the table context menu. Arkiv selectively extracts that entry into
@@ -21,8 +21,7 @@ The temporary copy is kept after the external application launches. It belongs
 to the archive browser session and is removed when that session ends or Arkiv
 quits. Save a separate copy in the external application before closing the
 archive window if you want to keep it. Editing this copy does **not** write
-changes back into the archive. Quick Look and special nested-archive navigation
-are not part of this feature.
+changes back into the archive. Special nested-archive navigation is not implemented.
 
 The private workspace uses owner-only directory permissions. Active sessions
 hold a filesystem lock. At startup and when creating a session, Arkiv removes
@@ -45,3 +44,35 @@ effort; deletion is not secure erasure.
 6. Keep an opened copy in its external app while opening another file from the
    same archive. Save anything you need before closing the Arkiv archive window.
 7. Confirm extraction, drag-in/out and ZIP edits still work normally.
+
+## Quick Look
+
+Select exactly one regular file and press **Space**, or choose **Quick Look**
+from the File or context menu. Arkiv prepares only that file through the same
+owned temporary session used by Open and displays the native macOS Quick Look
+panel. Press Space again or Escape to close the preview. Folders, packages,
+links, special entries and multiple selections are not previewed.
+
+The original filename and extension remain intact. ZIP, TAR, 7z and currently
+supported RAR entries use the existing selective extractor; encrypted 7z reuses
+the unlocked session. No external application is launched, Finder is not
+revealed, and the extraction sound is not played. Preparation can be cancelled
+with the existing progress controls. Failure, cancellation or a changed archive
+prevents preview and cleans partial output.
+
+The preview copy remains available throughout the preview. Closing the archive
+session or quitting Arkiv closes its preview before cleaning the workspace.
+The existing owned-session and abandoned-workspace cleanup rules apply.
+
+### Real-Mac preview checks
+
+1. Select a text file or image in a ZIP and press Space. Check its filename and
+   contents; press Space again, then repeat and close with Escape.
+2. Try File → Quick Look and contextual Quick Look on a nested Unicode filename.
+3. Check a folder still navigates on double-click and a package still requires
+   Show Package Contents. Space must not extract either or a multiple selection.
+4. Repeat using TAR, 7z, supported RAR and an unlocked encrypted 7z.
+5. Cancel a large preview preparation and confirm no preview appears.
+6. With a preview open, close its archive window or switch archives; the preview
+   should close cleanly. Try two archive windows to check preview ownership.
+7. Double-click a regular file to confirm default-application Open still works.

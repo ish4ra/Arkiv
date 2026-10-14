@@ -163,6 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         application.addItem(withTitle: "Hide Arkiv", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         application.addItem(withTitle: "Quit Arkiv", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let file = NSMenu(title: "File")
+        file.addItem(withTitle: "Quick Look", action: #selector(BrowserWindowController.quickLookSelectedFile(_:)), keyEquivalent: "")
         file.addItem(withTitle: "Open", action: #selector(BrowserWindowController.openSelectedFile(_:)), keyEquivalent: "")
         let new = file.addItem(withTitle: "New Window", action: #selector(newWindow(_:)), keyEquivalent: "n"); new.target = self
         let create = file.addItem(withTitle: "Create Archive…", action: #selector(createArchive(_:)), keyEquivalent: "N"); create.target = self

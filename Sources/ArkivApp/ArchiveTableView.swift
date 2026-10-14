@@ -5,6 +5,15 @@ import ArkivPresentation
 
 /// Keep the context menu attached to the row under the pointer without losing a multi-selection.
 final class ArchiveTableView: NSTableView {
+    var previewKeyHandler: ((NSEvent) -> Bool)?
+    static func isPreviewDismissKey(_ event: NSEvent) -> Bool {
+        event.type == .keyDown && (event.keyCode == 49 || event.keyCode == 53)
+            && event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty
+    }
+    override func keyDown(with event: NSEvent) {
+        if previewKeyHandler?(event) == true { return }
+        super.keyDown(with: event)
+    }
     override func menu(for event: NSEvent) -> NSMenu? {
         let clicked = row(at: convert(event.locationInWindow, from: nil))
         if clicked >= 0, !selectedRowIndexes.contains(clicked) {
