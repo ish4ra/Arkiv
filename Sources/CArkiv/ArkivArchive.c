@@ -892,7 +892,7 @@ integrity_done:
 #endif
 struct zip_envelope { uint32_t offset, size; uint16_t count, comment; unsigned char end[65557]; };
 struct arkiv_zip_transaction {
-    int source, parent, stage; char *name, *parent_path; struct stat stamp, replacement_stamp; int ready; struct zip_envelope zip;
+    int source, parent, stage; char *name, *parent_path; struct stat stamp, replacement_stamp; int ready, seven; struct zip_envelope zip;
 };
 static void zip_put16(unsigned char *p, uint16_t v) { p[0]=v; p[1]=v>>8; }
 static void zip_put32(unsigned char *p, uint32_t v) { zip_put16(p,v);zip_put16(p+2,v>>16); }
@@ -943,19 +943,21 @@ static int zip_envelope(int fd, struct zip_envelope *z) {
     if(cursor!=(uint64_t)z->offset+z->size||localEnd!=z->offset)return 0;
     memcpy(z->end,e,22+z->comment);return 1;
 }
-arkiv_zip_transaction *arkiv_zip_begin(const char *path,char *error,size_t cap) {
+static arkiv_zip_transaction *rewrite_begin(const char *path,int seven,char *error,size_t cap) {
     arkiv_zip_transaction *t=calloc(1,sizeof(*t));if(!t)return NULL;
-    t->source=t->parent=t->stage=-1;
+    t->source=t->parent=t->stage=-1;t->seven=seven;
     char *parent=strdup(path);char *slash=parent?strrchr(parent,'/'):NULL;
     if(!slash||!slash[1])goto bad;
     t->name=strdup(slash+1);if(slash==parent)slash[1]=0;else *slash=0;
     t->parent=create_open(parent);t->parent_path=parent;parent=NULL;
     if(t->parent<0||!t->name)goto bad;
     t->source=openat(t->parent,t->name,O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);
-    if(t->source<0||fstat(t->source,&t->stamp)||!zip_envelope(t->source,&t->zip)||faccessat(t->parent,t->name,W_OK,0)||faccessat(t->parent,".",W_OK|X_OK,0))goto bad;
+    if(t->source<0||fstat(t->source,&t->stamp)||(seven?arkiv_seven_probe_append(t->source)!=0:!zip_envelope(t->source,&t->zip))||faccessat(t->parent,t->name,W_OK,0)||faccessat(t->parent,".",W_OK|X_OK,0))goto bad;
     return t;
-bad: free(parent);arkiv_zip_end(t);fail(error,cap,"This archive is read-only. Editing requires a writable, ordinary ZIP32 archive with supported metadata.");return NULL;
+bad: free(parent);arkiv_zip_end(t);fail(error,cap,seven?"This archive is read-only. Add requires a writable, plain, non-solid single 7z archive with supported metadata.":"This archive is read-only. Editing requires a writable, ordinary ZIP32 archive with supported metadata.");return NULL;
 }
+arkiv_zip_transaction *arkiv_zip_begin(const char *path,char *error,size_t cap) { return rewrite_begin(path,0,error,cap); }
+arkiv_zip_transaction *arkiv_seven_begin(const char *path,char *error,size_t cap) { return rewrite_begin(path,1,error,cap); }
 void arkiv_zip_end(arkiv_zip_transaction *t) { if(!t)return;if(t->source>=0)close(t->source);if(t->parent>=0)close(t->parent);if(t->stage>=0)close(t->stage);free(t->name);free(t->parent_path);free(t); }
 static int zip_copy(int in,int out,uint64_t start,uint64_t length,arkiv_cancel *token) {
     unsigned char buffer[65536];while(length) { if(cancelled(token))return 2;size_t n=length<sizeof(buffer)?length:sizeof(buffer);
@@ -965,7 +967,7 @@ static int zip_copy(int in,int out,uint64_t start,uint64_t length,arkiv_cancel *
 }
 /* Resolve the listing ordinal against the pinned central directory, without decoding aliases. */
 int arkiv_zip_replacement_method(arkiv_zip_transaction *t, size_t ordinal, size_t count, const char *name) {
-    if(!t||!name||count!=t->zip.count||ordinal>=count)return -1;
+    if(!t||t->seven||!name||count!=t->zip.count||ordinal>=count)return -1;
     uint64_t cursor=t->zip.offset;
     for(size_t i=0;i<count;i++) {
         unsigned char h[46],raw[65535];
@@ -989,7 +991,7 @@ int arkiv_zip_replacement_method(arkiv_zip_transaction *t, size_t ordinal, size_
 static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsigned char *keep,const char *const *oldnames,const char *const *names,size_t count,size_t replacement,const char *expected,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
     int in=-1,out=-1,result=1;struct zip_envelope z;struct stat st;uint32_t *offsets=NULL;unsigned char content[46], contentLocal[30];uint64_t contentStart=0;
     int replacing=replacement!=SIZE_MAX, emptyDeflate=0;
-    if(t->stage>=0||t->ready)goto done;
+    if(!t||t->seven||t->stage>=0||t->ready)goto done;
     if(addition) {
         in=create_open(addition);
         if(in<0||!zip_envelope(in,&z)||(!replacing&&(t->zip.count+z.count>=65535||
@@ -1156,6 +1158,34 @@ int arkiv_zip_prepare_rename(arkiv_zip_transaction *t,const char *const *oldname
 
 int arkiv_zip_prepare_replace(arkiv_zip_transaction *t,const char *content,size_t ordinal,size_t count,const char *name,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
     return zip_prepare(t,content,NULL,NULL,NULL,count,ordinal,name,stage,token,callback,context,error,cap);
+}
+
+/* The stage and publication are shared with ZIP, but the replacement is 7z.
+   Only the new inputs are staged as ZIP; original 7z streams stay compressed. */
+int arkiv_seven_prepare(arkiv_zip_transaction *t,const char *addition,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
+    int in=-1,out=-1,result=1;struct stat st;
+    if(!t||!t->seven||t->stage>=0||t->ready)goto done;
+    if(cancelled(token)){result=2;goto done;}
+    in=create_open(addition);if(in<0)goto done;
+    t->stage=create_open(stage);if(t->stage<0)goto done;
+    if(fstat(t->stage,&st)||!S_ISDIR(st.st_mode)||st.st_uid!=geteuid()||(st.st_mode&077)!=0||st.st_dev!=t->stamp.st_dev)goto done;
+    out=openat(t->stage,"replacement.zip",O_CREAT|O_EXCL|O_RDWR|O_NOFOLLOW|O_CLOEXEC,0600);if(out<0)goto done;
+    result=arkiv_seven_append(t->source,in,out,seven_cancel,token,callback,context);
+    if(result)goto done;
+    result=arkiv_seven_test(out,NULL,100000,20ULL*1024*1024*1024,seven_cancel,token,callback,context);
+    if(result)goto done;
+#ifdef __APPLE__
+    if(fcopyfile(t->source,out,NULL,COPYFILE_METADATA)){result=1;goto done;}
+#else
+    if(fchmod(out,t->stamp.st_mode&07777)){result=1;goto done;}
+#endif
+    if(fsync(out)||fstat(out,&t->replacement_stamp)){result=1;goto done;}
+    t->ready=1;
+done:
+    if(in>=0)close(in);
+    if(out>=0)close(out);
+    if(result!=0&&result!=2)result=fail(error,cap,"Cannot safely build and verify the updated 7z. Original archive unchanged.");
+    return result;
 }
 
 int arkiv_zip_commit(arkiv_zip_transaction *t,arkiv_cancel *token,char *error,size_t cap) {

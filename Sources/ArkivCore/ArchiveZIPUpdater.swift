@@ -107,14 +107,20 @@ public struct ArchiveZIPUpdater: Sendable {
                     progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
         try update(sources: sources, snapshot: snapshot, folder: folder, plan: nil, cancellation: cancellation, progress: progress)
     }
-    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, cancellation: ArchiveCancellation,
+    @discardableResult
+    func addSeven(sources: [URL], to snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
+                  progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
+        try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
+        return try update(sources: sources, snapshot: snapshot, folder: "", plan: nil, seven: true, cancellation: cancellation, progress: progress)
+    }
+    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, seven: Bool = false, cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
-        guard snapshot.unlocked == nil, snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), try SourceStamp(snapshot.url) == snapshot.stamp else {
+        guard (seven || snapshot.unlocked == nil), snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
         }
         let archive = canonical(snapshot.url)
         var error = [CChar](repeating: 0, count: 256)
-        guard let transaction = arkiv_zip_begin(archive.path, &error, error.count) else {
+        guard let transaction = seven ? arkiv_seven_begin(archive.path, &error, error.count) : arkiv_zip_begin(archive.path, &error, error.count) else {
             throw ArchiveFailure.message(String(cString: error))
         }
         defer { arkiv_zip_end(transaction) }
@@ -152,6 +158,12 @@ public struct ArchiveZIPUpdater: Sendable {
         }
         let additions = try plan == nil && renameNames == nil ? ArchiveCreator().create(ArchiveCreationRequest(sources: sources, destination: stage, name: "additions", compression: compression),
                                                     archiveFolder: folder, cancellation: cancellation, progress: progress) : nil
+        if seven, let additions {
+            // Check every staged descendant, including implicit directories and
+            // Unicode/case aliases, before handing the new manifest to 7-Zip.
+            let incoming = try LibArchiveEngine().inspect(additions, cancellation: cancellation)
+            try ArchiveAdditionUpdater.validateSevenPaths(incoming)
+        }
         let receiver = ZIPAdditionProgress(progress)
         let retained = Unmanaged.passRetained(receiver)
         defer { retained.release() }
@@ -174,6 +186,8 @@ public struct ArchiveZIPUpdater: Sendable {
             result = arkiv_zip_prepare_rename(transaction, oldPointers, newPointers, renameNames.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
         } else if let plan {
             result = arkiv_zip_prepare_delete(transaction, plan, plan.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+        } else if seven {
+            result = arkiv_seven_prepare(transaction, additions!.path, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
         } else {
             result = arkiv_zip_prepare(transaction, additions!.path, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
         }

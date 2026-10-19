@@ -40,6 +40,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     private var navigationButtons: [NSButton] = []
     private var snapshot: ArchiveSnapshot?
     private var zipAdditionAvailable = false
+    private var additionCapability: ArchiveAdditionCapability = .readOnly("Open an archive to add items.")
     private let modificationFeedback: (Result<URL, Error>) -> Void
     private var index: ArchiveIndex?
     private var rows: [BrowserRow] = []
@@ -255,14 +256,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         worker.async { [self] in
             let result = Result { try source?.inspect(cancellation: token, password: password)
                 ?? self.engine.inspect(url, cancellation: token, password: password) }
-            let canAdd = (try? result.get()).map { ArchiveZIPUpdater().canAdd(to: $0) } ?? false
+            let capability = (try? result.get()).map { ArchiveAdditionUpdater().capability(for: $0) } ?? .readOnly("Open an archive to add items.")
             DispatchQueue.main.async { [self] in
                 guard !self.sessionEnded else { return }
                 self.pendingURL = nil
                 self.finish()
                 switch result {
                 case .success(let value):
-                    self.snapshot = value; self.index = value.index; self.zipAdditionAvailable = canAdd
+                    self.snapshot = value; self.index = value.index; self.zipAdditionAvailable = capability == .zip; self.additionCapability = capability
                     self.currentPath = value.index.row(at: browsingFolder)?.isDirectory == true ? browsingFolder : ""; self.back = []; self.forward = []
                     self.window?.title = url.lastPathComponent
                     self.window?.representedURL = url
@@ -289,7 +290,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         archiveSource = source
         openSessionArchiveURL = value.url.standardizedFileURL
         snapshot = value; index = value.index
-        zipAdditionAvailable = ArchiveZIPUpdater().canAdd(to: value)
+        additionCapability = ArchiveAdditionUpdater().capability(for: value)
+        zipAdditionAvailable = additionCapability == .zip
         window?.title = value.url.lastPathComponent
         window?.representedURL = value.url
         reload()
@@ -578,8 +580,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         return FileManager.default.isWritableFile(atPath: snapshot.url.path)
             && FileManager.default.isWritableFile(atPath: snapshot.url.deletingLastPathComponent().path)
     }
+    private var canAddItems: Bool {
+        guard !isBusy, additionCapability.isAvailable, let snapshot else { return false }
+        return FileManager.default.isWritableFile(atPath: snapshot.url.path)
+            && FileManager.default.isWritableFile(atPath: snapshot.url.deletingLastPathComponent().path)
+    }
     private func chooseAdditions(folder: Bool) {
-        guard canAddToZIP, let window, window.attachedSheet == nil else { return }
+        guard canAddItems, let window, window.attachedSheet == nil else { return }
         let panel = NSOpenPanel()
         panel.canChooseFiles = !folder; panel.canChooseDirectories = folder
         panel.allowsMultipleSelection = !folder
@@ -592,12 +599,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     }
     /// Shared by both native pickers; all transaction work stays in ArkivCore.
     func addItems(_ urls: [URL], folder: String = "") {
-        guard canAddToZIP, !urls.isEmpty, let snapshot else { return }
-        let token = begin("Adding to ZIP…")
+        guard canAddItems, !urls.isEmpty, let snapshot else { return }
+        let token = begin("Adding to archive…")
         worker.async { [self] in
             let throttle = ProgressThrottle()
             let result = Result {
-                try ArchiveZIPUpdater().add(sources: urls, to: snapshot, folder: folder, cancellation: token) { progress in
+                try ArchiveAdditionUpdater().add(sources: urls, to: snapshot, folder: folder, cancellation: token) { progress in
                     guard throttle.shouldUpdate() else { return }
                     DispatchQueue.main.async { [weak self] in
                         guard let self, self.isBusy else { return }
@@ -905,7 +912,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         case #selector(replaceSelected(_:)): return canReplaceFile
         case #selector(renameSelected(_:)): return canAddToZIP && window?.attachedSheet == nil && selectedPaths().count == 1
         case #selector(deleteSelected(_:)): return canAddToZIP && window?.attachedSheet == nil && !selectedPaths().isEmpty
-        case #selector(addFiles(_:)), #selector(addFolder(_:)): return canAddToZIP && window?.attachedSheet == nil
+        case #selector(addFiles(_:)), #selector(addFolder(_:)):
+            menuItem.toolTip = additionCapability.reason
+            return canAddItems && window?.attachedSheet == nil
         case #selector(copyPath(_:)), #selector(extractSelected(_:)): return !isBusy && !selectedPaths().isEmpty
         case #selector(testArchive(_:)), #selector(extractAll(_:)), #selector(showInfo(_:)): return !isBusy && snapshot != nil
         case #selector(goUp(_:)): return !isBusy && !currentPath.isEmpty

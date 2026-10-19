@@ -1293,6 +1293,9 @@ HRESULT CInArchive::ReadHeader(
 
   if (type == NID::kArchiveProperties)
   {
+    // Arkiv: these opaque properties are discarded by the upstream reader.
+    // Keep browsing available, but prevent an update from silently losing them.
+    db.UnsupportedFeatureWarning = true;
     ReadArchiveProperties(db.ArcInfo);
     type = ReadID();
   }

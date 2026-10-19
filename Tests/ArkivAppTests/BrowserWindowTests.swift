@@ -147,10 +147,27 @@ final class BrowserWindowTests: XCTestCase {
             try await Task.sleep(nanoseconds: 25_000_000)
         }
         XCTAssertFalse(controller.isBusy)
-        XCTAssertFalse(controller.validateMenuItem(addFiles), "A .zip extension must not grant write support to 7z")
-        XCTAssertFalse(controller.validateMenuItem(addFolder))
+        XCTAssertTrue(controller.validateMenuItem(addFiles), "Plain 7z Add is detected by content, regardless of extension")
+        XCTAssertTrue(controller.validateMenuItem(addFolder))
         table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         XCTAssertFalse(controller.validateMenuItem(NSMenuItem(title: "Rename…", action: #selector(BrowserWindowController.renameSelected(_:)), keyEquivalent: "")))
+        XCTAssertFalse(controller.validateMenuItem(NSMenuItem(title: "Delete…", action: #selector(BrowserWindowController.deleteSelected(_:)), keyEquivalent: "")))
+        XCTAssertFalse(controller.validateMenuItem(NSMenuItem(title: "Replace…", action: #selector(BrowserWindowController.replaceSelected(_:)), keyEquivalent: "")))
+        let folder = root.appendingPathComponent("資料")
+        try FileManager.default.createDirectory(at: folder.appendingPathComponent("empty"), withIntermediateDirectories: true)
+        try Data("nested".utf8).write(to: folder.appendingPathComponent("new.txt"))
+        controller.addItems([added, folder])
+        for _ in 0..<400 {
+            if !controller.isBusy { break }
+            try await Task.sleep(nanoseconds: 25_000_000)
+        }
+        XCTAssertFalse(controller.isBusy)
+        XCTAssertEqual(sounds, 2)
+        XCTAssertEqual(table.numberOfRows, 3)
+        let fresh = try LibArchiveEngine().inspect(disguised, cancellation: ArchiveCancellation())
+        XCTAssertNotNil(fresh.index.row(at: "資料/empty"))
+        XCTAssertNotNil(fresh.index.row(at: "追加 🐘.txt"))
+        XCTAssertEqual(try LibArchiveEngine().test(disguised, cancellation: ArchiveCancellation()).state, .ok)
     }
 
     @MainActor

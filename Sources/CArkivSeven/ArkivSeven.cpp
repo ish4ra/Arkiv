@@ -52,13 +52,13 @@ class Update: public IArchiveUpdateCallback, public ICryptoGetTextPassword2, pub
 public:
  Z7_COM_UNKNOWN_IMP_2(IArchiveUpdateCallback,ICryptoGetTextPassword2)
 public:
- State*s;int fd;std::vector<Item> items;
+ State*s;int fd;std::vector<Item> items; UInt32 retained=0;
  Update(State*st,int f):s(st),fd(f){}
  Z7_COM7F_IMF(SetTotal(UInt64)) {return s->tick();}
  Z7_COM7F_IMF(SetCompleted(const UInt64*n)) {if(s->progress&&n)s->progress(s->progressContext,0,*n);return s->tick();}
- Z7_COM7F_IMF(GetUpdateItemInfo(UInt32,Int32*d,Int32*p,UInt32*i)){*d=1;*p=1;*i=UInt32(-1);return s->tick();}
- Z7_COM7F_IMF(GetProperty(UInt32 i,PROPID id,PROPVARIANT*v)){if(i>=items.size())return E_FAIL;CPropVariant p;auto &a=items[i];switch(id){case kpidPath:p=a.name;break;case kpidIsDir:p=a.dir;break;case kpidSize:p=UInt64(a.size);break;case kpidAttrib:p=UInt32(a.dir?0x10:0x20);break;}p.Detach(v);return s->tick();}
- Z7_COM7F_IMF(GetStream(UInt32 i,ISequentialInStream**out)){*out=nullptr;if(i>=items.size())return E_FAIL;auto&a=items[i];if(!a.dir){CMyComPtr<IInStream> in=new In(fd,s,a.offset,a.size);*out=in.Detach();}return s->tick();}
+ Z7_COM7F_IMF(GetUpdateItemInfo(UInt32 n,Int32*d,Int32*p,UInt32*i)){*d=n>=retained;*p=n>=retained;*i=n<retained?n:UInt32(-1);return s->tick();}
+ Z7_COM7F_IMF(GetProperty(UInt32 i,PROPID id,PROPVARIANT*v)){if(i<retained)return E_FAIL;i-=retained;if(i>=items.size())return E_FAIL;CPropVariant p;auto &a=items[i];switch(id){case kpidPath:p=a.name;break;case kpidIsDir:p=a.dir;break;case kpidSize:p=UInt64(a.size);break;case kpidAttrib:p=UInt32(a.dir?0x10:0x20);break;}p.Detach(v);return s->tick();}
+ Z7_COM7F_IMF(GetStream(UInt32 i,ISequentialInStream**out)){*out=nullptr;if(i<retained)return E_FAIL;i-=retained;if(i>=items.size())return E_FAIL;auto&a=items[i];if(!a.dir){CMyComPtr<IInStream> in=new In(fd,s,a.offset,a.size);*out=in.Detach();}return s->tick();}
  Z7_COM7F_IMF(SetOperationResult(Int32 r)){return r?E_FAIL:s->tick();}
  Z7_COM7F_IMF(CryptoGetTextPassword2(Int32*defined,BSTR*p)){*defined=s->password!=nullptr;*p=nullptr;return *defined?s->secret(p):S_OK;}
 };
@@ -122,25 +122,72 @@ static int decode(int input,int output,State&s) {
  return (!z||archive_write_close(z)==ARCHIVE_OK)?0:1;
 }
 extern "C" int arkiv_seven_decode(int input,int output,const char*password,arkiv_seven_cancel cancel,void*context){State s{password,cancel,context};try{return decode(input,output,s);}catch(...){return s.stopped()?2:1;}}
-extern "C" int arkiv_seven_encode(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext){State s{password,cancel,context};s.progress=progress;s.progressContext=progressContext;try{
+// Only ordinary, unencrypted, non-solid 7z archives can be appended. The same
+// opened handler is used for UpdateItems, retaining every original packed stream.
+static bool zero(const CPropVariant &p) {
+ return p.vt==VT_EMPTY||(p.vt==VT_BOOL&&!p.boolVal)||(p.vt==VT_UI4&&!p.ulVal)||(p.vt==VT_UI8&&!p.uhVal.QuadPart);
+}
+static int appendable(int input,State &s,IInArchive *handler,UInt32 &count,uint64_t &total) {
+ struct stat st;if(fstat(input,&st)||!S_ISREG(st.st_mode)||st.st_size<32)return 1;
+ unsigned char magic[6];if(pread(input,magic,6,0)!=6||memcmp(magic,"7z\xbc\xaf\x27\x1c",6))return 1;
+ CMyComPtr<IInStream> in=new In(input,&s);CMyComPtr<IArchiveOpenCallback> cb=new Open(&s);
+ HRESULT h=handler->Open(in,nullptr,cb);if(h!=S_OK||s.asked)return s.result(h)==2?2:1;
+ CPropVariant p;
+ for(PROPID id:{kpidSolid,kpidOffset,kpidErrorFlags,kpidWarningFlags,kpidReadOnly}) {
+  p.Clear();if(handler->GetArchiveProperty(id,&p)!=S_OK||!zero(p))return 1;
+ }
+ p.Clear();if(handler->GetArchiveProperty(kpidPhySize,&p)!=S_OK||p.vt!=VT_UI8||p.uhVal.QuadPart!=uint64_t(st.st_size))return 1;
+ if(handler->GetNumberOfItems(&count)!=S_OK||count>100000)return 1;
+ total=0;
+ for(UInt32 i=0;i<count;i++) {
+  if(s.stopped())return 2;
+  for(PROPID id:{kpidEncrypted,kpidIsAnti}) {p.Clear();if(handler->GetProperty(i,id,&p)!=S_OK||!zero(p))return 1;}
+  for(PROPID id:{kpidSymLink,kpidHardLink}) {p.Clear();if(handler->GetProperty(i,id,&p)!=S_OK||p.vt!=VT_EMPTY)return 1;}
+  p.Clear();if(handler->GetProperty(i,kpidPath,&p)!=S_OK||p.vt!=VT_BSTR)return 1;
+  AString name;ConvertUnicodeToUTF8(UString(p.bstrVal),name);if(!safe(name.Ptr()))return 1;
+  p.Clear();if(handler->GetProperty(i,kpidIsDir,&p)!=S_OK||p.vt!=VT_BOOL)return 1;bool dir=p.boolVal!=0;
+  p.Clear();if(handler->GetProperty(i,kpidAttrib,&p)!=S_OK)return 1;
+  if(p.vt==VT_UI4) {unsigned type=(p.ulVal>>16)&S_IFMT;if((p.ulVal&0x400)||(type&&type!=(dir?S_IFDIR:S_IFREG)))return 1;}else if(p.vt!=VT_EMPTY)return 1;
+  p.Clear();if(handler->GetProperty(i,kpidSize,&p)!=S_OK)return 1;
+  uint64_t size=p.vt==VT_UI8?p.uhVal.QuadPart:0;if((p.vt!=VT_EMPTY&&p.vt!=VT_UI8)||size>Budget-total||(dir&&size))return 1;total+=size;
+  p.Clear();if(handler->GetProperty(i,kpidMethod,&p)!=S_OK)return 1;
+  if(p.vt==VT_BSTR) {AString method;ConvertUnicodeToUTF8(UString(p.bstrVal),method);std::string m=method.Ptr();
+   if(!m.empty()&&m!="Copy"&&!(m.compare(0,6,"LZMA2:")==0&&m.find_first_not_of("0123456789kKmMbB",6)==std::string::npos))return 1;
+  }else if(p.vt!=VT_EMPTY)return 1;
+ }
+ return 0;
+}
+extern "C" int arkiv_seven_probe_append(int input) {
+ State s{nullptr,nullptr,nullptr};try{CMyComPtr<IInArchive> handler=new NArchive::N7z::CHandler;UInt32 count=0;uint64_t total=0;return appendable(input,s,handler,count,total);}catch(...){return 1;}
+}
+static int encode(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,int original){State s{password,cancel,context};s.progress=progress;s.progressContext=progressContext;try{
  if(s.stopped())return 2;
+ auto raw=new NArchive::N7z::CHandler;CMyComPtr<IOutArchive> handler=raw;
+ UInt32 retained=0;uint64_t originalBytes=0;
+ if(original>=0) {int r=appendable(original,s,static_cast<IInArchive*>(raw),retained,originalBytes);if(r)return r;}
  FILE*tmp=tmpfile();if(!tmp)return 1;struct Temp{FILE*f;~Temp(){fclose(f);}}t{tmp};
- auto cb=new Update(&s,fileno(tmp));CMyComPtr<IArchiveUpdateCallback> cbRef=cb;archive*r=archive_read_new();struct Reader{archive*a;~Reader(){archive_read_free(a);}}rg{r};
+ auto cb=new Update(&s,fileno(tmp));cb->retained=retained;CMyComPtr<IArchiveUpdateCallback> cbRef=cb;archive*r=archive_read_new();struct Reader{archive*a;~Reader(){archive_read_free(a);}}rg{r};
  if(!r||archive_read_support_format_zip(r)!=ARCHIVE_OK||archive_read_open_fd(r,input,65536)!=ARCHIVE_OK)return 1;
  archive_entry*e;int result;uint64_t total=0;char buffer[65536];
  while((result=archive_read_next_header(r,&e))==ARCHIVE_OK){
-  if(s.stopped())return 2;if(cb->items.size()>=100000)return 1;Item a;const char*p=archive_entry_pathname_utf8(e);if(!p||!safe(p)||!ConvertUTF8ToUnicode(AString(p),a.name))return 1;a.utf8=p;a.dir=archive_entry_filetype(e)==AE_IFDIR;
+  if(s.stopped())return 2;if(cb->items.size()+retained>=100000)return 1;Item a;const char*p=archive_entry_pathname_utf8(e);if(!p||!safe(p)||!ConvertUTF8ToUnicode(AString(p),a.name))return 1;a.utf8=p;a.dir=archive_entry_filetype(e)==AE_IFDIR;
   if(archive_entry_symlink(e)||archive_entry_hardlink(e)||(!a.dir&&archive_entry_filetype(e)!=AE_IFREG))return 1;
-  int64_t size=archive_entry_size(e);if(size<0||uint64_t(size)>Budget-total)return 1;a.size=size;a.offset=total;total+=a.size;uint64_t read=0;ssize_t n;
+  int64_t size=archive_entry_size(e);if(size<0||uint64_t(size)>Budget-originalBytes-total)return 1;a.size=size;a.offset=total;total+=a.size;uint64_t read=0;ssize_t n;
   while((n=archive_read_data(r,buffer,sizeof(buffer)))>0){if(s.stopped())return 2;if(uint64_t(n)>a.size-read||fwrite(buffer,1,n,tmp)!=size_t(n))return 1;read+=n;}if(n<0||read!=a.size)return 1;cb->items.push_back(a);
  }
  if(result!=ARCHIVE_EOF||fflush(tmp))return 1;
- auto raw=new NArchive::N7z::CHandler; CMyComPtr<IOutArchive>handler=raw;
  const wchar_t*names[]={L"0",L"x",L"s",L"mt",L"he"};CPropVariant values[5];values[0]=L"LZMA2";values[1]=UInt32(5);values[2]=false;values[3]=UInt32(2);values[4]=bool(password&&headers);
- HRESULT h=static_cast<ISetProperties*>(raw)->SetProperties(names,values,5);if(h!=S_OK)return 1;CMyComPtr<IOutStream>out=new Out(output,&s);h=handler->UpdateItems(out,cb->items.size(),cb);return s.result(h);
+ HRESULT h=static_cast<ISetProperties*>(raw)->SetProperties(names,values,5);if(h!=S_OK)return 1;CMyComPtr<IOutStream>out=new Out(output,&s);h=handler->UpdateItems(out,retained+cb->items.size(),cb);return s.result(h);
  }catch(...){return s.stopped()?2:1;}}
 
 extern "C" const char *arkiv_seven_library_path(){Dl_info info;return dladdr((void*)&arkiv_seven_library_path,&info)&&info.dli_fname?info.dli_fname:"";}
 
 /* Reuse official decoding and CRC checks with a bounded discard stream. No plaintext spool. */
 extern "C" int arkiv_seven_test(int input,const char*password,uint64_t maxEntries,uint64_t maxBytes,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext){State s{password,cancel,context};s.testing=true;s.maxEntries=std::min<uint64_t>(100000,maxEntries);s.maxBytes=std::min(Budget,maxBytes);s.progress=progress;s.progressContext=progressContext;try{return decode(input,-1,s);}catch(...){return s.stopped()?2:6;}}
+
+extern "C" int arkiv_seven_encode(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext) {
+ return encode(input,output,password,headers,cancel,context,progress,progressContext,-1);
+}
+extern "C" int arkiv_seven_append(int original,int additions,int output,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext) {
+ return encode(additions,output,nullptr,0,cancel,context,progress,progressContext,original);
+}
