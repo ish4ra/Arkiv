@@ -151,7 +151,7 @@ final class BrowserWindowTests: XCTestCase {
         XCTAssertTrue(controller.validateMenuItem(addFolder))
         table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         XCTAssertFalse(controller.validateMenuItem(NSMenuItem(title: "Rename…", action: #selector(BrowserWindowController.renameSelected(_:)), keyEquivalent: "")))
-        XCTAssertFalse(controller.validateMenuItem(NSMenuItem(title: "Delete…", action: #selector(BrowserWindowController.deleteSelected(_:)), keyEquivalent: "")))
+        XCTAssertTrue(controller.validateMenuItem(NSMenuItem(title: "Delete…", action: #selector(BrowserWindowController.deleteSelected(_:)), keyEquivalent: "")))
         XCTAssertFalse(controller.validateMenuItem(NSMenuItem(title: "Replace…", action: #selector(BrowserWindowController.replaceSelected(_:)), keyEquivalent: "")))
         let folder = root.appendingPathComponent("資料")
         try FileManager.default.createDirectory(at: folder.appendingPathComponent("empty"), withIntermediateDirectories: true)

@@ -113,6 +113,12 @@ public struct ArchiveZIPUpdater: Sendable {
         try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
         return try update(sources: sources, snapshot: snapshot, folder: "", plan: nil, seven: true, cancellation: cancellation, progress: progress)
     }
+    @discardableResult
+    func deleteSeven(paths: Set<String>, from snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
+                     progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
+        try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
+        return try update(sources: [], snapshot: snapshot, folder: "", plan: deletionPlan(snapshot, paths: paths), seven: true, cancellation: cancellation, progress: progress)
+    }
     private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, seven: Bool = false, cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         guard (seven || snapshot.unlocked == nil), snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), try SourceStamp(snapshot.url) == snapshot.stamp else {
@@ -185,7 +191,15 @@ public struct ArchiveZIPUpdater: Sendable {
             let newPointers = renamed.map { $0.map { UnsafePointer<CChar>($0) } }
             result = arkiv_zip_prepare_rename(transaction, oldPointers, newPointers, renameNames.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
         } else if let plan {
-            result = arkiv_zip_prepare_delete(transaction, plan, plan.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+            if seven {
+                let names = snapshot.entries.map { strdup($0.path) }
+                defer { names.forEach { free($0) } }
+                guard names.allSatisfy({ $0 != nil }) else { throw ArchiveFailure.message("Not enough memory to prepare the edit.") }
+                let pointers = names.map { $0.map { UnsafePointer<CChar>($0) } }
+                result = arkiv_seven_prepare_delete(transaction, pointers, plan, plan.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+            } else {
+                result = arkiv_zip_prepare_delete(transaction, plan, plan.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+            }
         } else if seven {
             result = arkiv_seven_prepare(transaction, additions!.path, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
         } else {

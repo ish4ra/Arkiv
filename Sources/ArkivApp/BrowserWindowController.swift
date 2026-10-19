@@ -515,7 +515,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
     }
     @objc func deleteSelected(_ sender: Any?) {
-        guard canAddToZIP, let window, window.attachedSheet == nil else { return }
+        guard canAddItems, let window, window.attachedSheet == nil else { return }
         let paths = selectedPaths()
         guard !paths.isEmpty else { return }
         let alert = NSAlert()
@@ -535,7 +535,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     }
     /// Called only after the native destructive confirmation.
     func deleteItems(_ paths: Set<String>) {
-        guard canAddToZIP, !paths.isEmpty, let snapshot else { return }
+        guard canAddItems, !paths.isEmpty, let snapshot else { return }
         var folder = currentPath
         let index = snapshot.index
         let deleted = Set(snapshot.entries.filter { entry in
@@ -548,11 +548,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
             folder = folder.split(separator: "/").dropLast().joined(separator: "/")
         }
         let parent = folder
-        let token = begin("Deleting from ZIP…")
+        let token = begin("Deleting from archive…")
         worker.async { [self] in
             let throttle = ProgressThrottle()
             let result = Result {
-                try ArchiveZIPUpdater().delete(paths: paths, from: snapshot, cancellation: token) { progress in
+                try ArchiveModificationUpdater().delete(paths: paths, from: snapshot, cancellation: token) { progress in
                     guard throttle.shouldUpdate() else { return }
                     DispatchQueue.main.async { [weak self] in
                         guard let self, self.isBusy else { return }
@@ -911,7 +911,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         case #selector(showPackageContents(_:)): return !isBusy && selectedPackage != nil
         case #selector(replaceSelected(_:)): return canReplaceFile
         case #selector(renameSelected(_:)): return canAddToZIP && window?.attachedSheet == nil && selectedPaths().count == 1
-        case #selector(deleteSelected(_:)): return canAddToZIP && window?.attachedSheet == nil && !selectedPaths().isEmpty
+        case #selector(deleteSelected(_:)): return canAddItems && window?.attachedSheet == nil && !selectedPaths().isEmpty
         case #selector(addFiles(_:)), #selector(addFolder(_:)):
             menuItem.toolTip = additionCapability.reason
             return canAddItems && window?.attachedSheet == nil

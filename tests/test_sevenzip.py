@@ -242,6 +242,39 @@ class SevenZipAppendTests(unittest.TestCase):
             self.assertNotEqual(self.probe(data), 0)
             self.assertNotEqual(self.append(data)[0], 0)
 
+    def delete(self, data, names, keep):
+        lib.arkiv_seven_delete.argtypes = [C.c_int, C.POINTER(C.c_char_p), C.POINTER(C.c_ubyte), C.c_uint64, C.c_int, C.c_void_p, C.c_void_p, C.c_void_p, C.c_void_p]
+        paths = (C.c_char_p * len(names))(*(name.encode('utf-8') for name in names))
+        mask = (C.c_ubyte * len(keep))(*keep)
+        with tempfile.TemporaryFile() as source, tempfile.TemporaryFile() as output:
+            source.write(data); source.flush()
+            result = lib.arkiv_seven_delete(source.fileno(), paths, mask, len(keep), output.fileno(), None, None, None, None)
+            output.seek(0)
+            return result, output.read()
+
+    def test_delete_retains_packed_bytes_and_maps_names_not_ordinals(self):
+        data = stored_many([('keep', 0x20, b'kept bytes' * 100), ('remove', 0x20, b'removed')])
+        result, after = self.delete(data, ['remove', 'keep'], [0, 1])
+        self.assertEqual(result, 0)
+        self.assertEqual(after[32:32 + 1000], b'kept bytes' * 100)
+        result, tar = self.decode(after)
+        self.assertEqual(result, 0)
+        with tarfile.open(fileobj=io.BytesIO(tar)) as archive:
+            self.assertEqual(archive.getnames(), ['keep'])
+            self.assertEqual(archive.extractfile('keep').read(), b'kept bytes' * 100)
+        self.assertNotEqual(self.delete(data, ['keep', 'unknown'], [1, 0])[0], 0)
+        self.assertNotEqual(self.delete(data, ['keep', 'keep'], [1, 0])[0], 0)
+
+    def test_delete_to_empty_and_keep_lzma2_without_recompression(self):
+        before, packed = copy_or_lzma2(method='LZMA2')
+        result, after = self.delete(before, ['old.txt'], [1])
+        self.assertEqual(result, 0)
+        self.assertEqual(after[32:32 + len(packed)], packed)
+        result, empty = self.delete(before, ['old.txt'], [0])
+        self.assertEqual(result, 0)
+        self.assertEqual(self.probe(empty), 0)
+        self.assertEqual(self.decode(empty)[0], 0)
+
     def test_append_cancellation(self):
         cancel = C.CFUNCTYPE(C.c_int, C.c_void_p)(lambda _: 1)
         self.assertEqual(self.append(copy_or_lzma2()[0], cancel)[0], 2)
