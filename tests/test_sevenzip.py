@@ -164,5 +164,176 @@ class SevenZipTests(unittest.TestCase):
             self.assertEqual(self.decode((folder / name).read_bytes(), password)[0], 0)
 
 
+# inserted before __main__ in test_sevenzip.py
+
+def copy_or_lzma2(data=b'old payload' * 1000, method='Copy', solid=False, opaque=False):
+    """Independent CRC-bearing archive with known packed-stream boundaries."""
+    import lzma
+    packed = data if method == 'Copy' else lzma.compress(data, format=lzma.FORMAT_RAW,
+                    filters=[{'id': lzma.FILTER_LZMA2, 'dict_size': 1 << 20}])
+    coder = b'\x01\x00' if method == 'Copy' else b'\x21\x21\x01\x10'
+    names = ('old.txt\0second.txt\0' if solid else 'old.txt\0').encode('utf-16le')
+    substreams = b'\x08\x0d\x02\x09' + number(len(data) // 2) + b'\x00' if solid else b'\x08\x00'
+    header = (b'\x01' + (b'\x02\x01\x03abc\x00' if opaque else b'')
+              + b'\x04\x06\x00\x01\x09' + number(len(packed)) + b'\x00'
+              + b'\x07\x0b\x01\x00\x01' + coder + b'\x0c' + number(len(data))
+              + b'\x0a\x01' + struct.pack('<I', zlib.crc32(data)) + b'\x00'
+              + substreams + b'\x00\x05' + number(2 if solid else 1)
+              + b'\x11' + number(len(names) + 1) + b'\x00' + names
+              + b'\x15' + number(2 + (8 if solid else 4)) + b'\x01\x00'
+              + struct.pack('<I', (stat.S_IFREG | 0o755) << 16 | 0x8020) * (2 if solid else 1)
+              + b'\x00\x00')
+    start = struct.pack('<QQI', len(packed), len(header), zlib.crc32(header))
+    return b"7z\xbc\xaf\x27\x1c\x00\x04" + struct.pack('<I', zlib.crc32(start)) + start + packed + header, packed
+
+
+class SevenZipAppendTests(unittest.TestCase):
+    decode = SevenZipTests.decode
+    encode = SevenZipTests.encode
+    # These methods use independent Copy/LZMA2 fixtures, not encode/decode agreement.
+    def probe(self, data):
+        lib.arkiv_seven_probe_append.argtypes = [C.c_int]
+        with tempfile.TemporaryFile() as source:
+            source.write(data); source.flush()
+            return lib.arkiv_seven_probe_append(source.fileno())
+
+    def append(self, data, cancel=None):
+        lib.arkiv_seven_append.argtypes = [C.c_int, C.c_int, C.c_int, C.c_void_p, C.c_void_p, C.c_void_p, C.c_void_p]
+        with tempfile.TemporaryFile() as source, tempfile.TemporaryFile() as additions, tempfile.TemporaryFile() as output:
+            source.write(data); source.flush()
+            with zipfile.ZipFile(additions, 'w') as z:
+                z.writestr('資料/new.txt', b'new bytes')
+                z.writestr('empty/', b'')
+                z.writestr('zero', b'')
+            additions.seek(0)
+            result = lib.arkiv_seven_append(source.fileno(), additions.fileno(), output.fileno(), cancel, None, None, None)
+            output.seek(0)
+            return result, output.read()
+
+    def test_independent_copy_lzma2_streams_and_attributes_preserved(self):
+        for method in ['Copy', 'LZMA2']:
+            with self.subTest(method=method):
+                before, packed = copy_or_lzma2(method=method)
+                self.assertEqual(self.decode(before)[0], 0)
+                self.assertEqual(self.probe(before), 0)
+                result, after = self.append(before)
+                self.assertEqual(result, 0)
+                self.assertEqual(after[32:32 + len(packed)], packed, 'all old packed bytes must be copied verbatim')
+                result, tar = self.decode(after)
+                self.assertEqual(result, 0)
+                with tarfile.open(fileobj=io.BytesIO(tar)) as archive:
+                    self.assertEqual(archive.extractfile('old.txt').read(), b'old payload' * 1000)
+                    self.assertEqual(archive.getmember('old.txt').mode & 0o777, 0o755)
+                    self.assertEqual(archive.extractfile('資料/new.txt').read(), b'new bytes')
+                    self.assertEqual(archive.extractfile('zero').read(), b'')
+                    self.assertTrue(archive.getmember('empty').isdir())
+                self.assertEqual(self.probe(after), 0)
+
+    def test_read_only_solid_encrypted_opaque_trailing_and_special(self):
+        solid, _ = copy_or_lzma2(solid=True)
+        opaque, _ = copy_or_lzma2(opaque=True)
+        self.assertEqual(self.decode(solid)[0], 0)
+        self.assertEqual(self.decode(opaque)[0], 0)
+        plain, _ = copy_or_lzma2()
+        for data in [solid, opaque, self.encode(b'secret', False), self.encode(b'secret', True),
+                     plain + b'trailing data', b'prefix' + plain, plain[:len(plain)//2],
+                     stored('link', (stat.S_IFLNK | 0o777) << 16 | 0x8020, b'target'),
+                     stored('reparse', 0x400)]:
+            self.assertNotEqual(self.probe(data), 0)
+            self.assertNotEqual(self.append(data)[0], 0)
+
+    def test_append_cancellation(self):
+        cancel = C.CFUNCTYPE(C.c_int, C.c_void_p)(lambda _: 1)
+        self.assertEqual(self.append(copy_or_lzma2()[0], cancel)[0], 2)
+
+
+@unittest.skipUnless(os.environ.get('ARKIV_TEST_LIBRARY'), 'C transaction library required')
+class SevenZipTransactionTests(unittest.TestCase):
+    def setUp(self):
+        self.api = C.CDLL(os.environ['ARKIV_TEST_LIBRARY'])
+        for name in ['arkiv_seven_begin', 'arkiv_zip_begin']:
+            getattr(self.api, name).argtypes = [C.c_char_p, C.c_char_p, C.c_size_t]
+            getattr(self.api, name).restype = C.c_void_p
+        self.api.arkiv_zip_end.argtypes = [C.c_void_p]
+        self.api.arkiv_seven_prepare.argtypes = [C.c_void_p, C.c_char_p, C.c_char_p, C.c_void_p, C.c_void_p, C.c_void_p, C.c_char_p, C.c_size_t]
+        self.api.arkiv_zip_prepare.argtypes = self.api.arkiv_seven_prepare.argtypes
+        self.api.arkiv_zip_commit.argtypes = [C.c_void_p, C.c_void_p, C.c_char_p, C.c_size_t]
+        self.api.arkiv_cancel_new.restype = C.c_void_p
+        self.api.arkiv_cancel_set.argtypes = [C.c_void_p]
+        self.api.arkiv_cancel_free.argtypes = [C.c_void_p]
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.tmp.name).resolve()
+        self.original = self.root / 'original.7z'
+        self.before, self.packed = copy_or_lzma2(method='LZMA2')
+        self.original.write_bytes(self.before)
+        self.original.chmod(0o640)
+        self.stage = self.root / 'stage'; self.stage.mkdir(mode=0o700)
+        self.additions = self.root / 'additions.zip'
+        with zipfile.ZipFile(self.additions, 'w') as z: z.writestr('new', b'new content')
+        self.error = C.create_string_buffer(256)
+        self.transaction = self.api.arkiv_seven_begin(os.fsencode(self.original), self.error, 256)
+        self.assertTrue(self.transaction, self.error.value)
+
+    def tearDown(self):
+        self.api.arkiv_zip_end(self.transaction)
+        self.tmp.cleanup()
+
+    def prepare(self, token=None, callback=None):
+        return self.api.arkiv_seven_prepare(self.transaction, os.fsencode(self.additions), os.fsencode(self.stage), token, callback, None, self.error, 256)
+
+    def commit(self, token=None):
+        return self.api.arkiv_zip_commit(self.transaction, token, self.error, 256)
+
+    def test_verify_then_atomic_publication_preserves_original_mode(self):
+        self.assertEqual(self.prepare(), 0, self.error.value)
+        self.assertEqual(self.original.read_bytes(), self.before)
+        self.assertEqual(self.commit(), 0, self.error.value)
+        self.assertEqual(self.original.stat().st_mode & 0o777, 0o640)
+        self.assertEqual(self.original.read_bytes()[32:32+len(self.packed)], self.packed)
+        self.assertFalse((self.stage / 'replacement.zip').exists())
+
+    def test_cancel_during_prepare_keeps_original(self):
+        token = self.api.arkiv_cancel_new()
+        callback = C.CFUNCTYPE(None, C.c_void_p, C.c_uint64, C.c_uint64)(lambda *_: self.api.arkiv_cancel_set(token))
+        try:
+            self.assertEqual(self.prepare(token, callback), 2)
+            self.assertNotEqual(self.commit(), 0)
+            self.assertEqual(self.original.read_bytes(), self.before)
+        finally: self.api.arkiv_cancel_free(token)
+
+    def test_cancel_before_commit_keeps_original(self):
+        self.assertEqual(self.prepare(), 0)
+        token = self.api.arkiv_cancel_new()
+        try:
+            self.api.arkiv_cancel_set(token)
+            self.assertEqual(self.commit(token), 2)
+            self.assertEqual(self.original.read_bytes(), self.before)
+        finally: self.api.arkiv_cancel_free(token)
+
+    def test_changed_source_refuses_publication(self):
+        self.assertEqual(self.prepare(), 0)
+        self.original.write_bytes(b'externally changed')
+        self.assertEqual(self.commit(), 1)
+        self.assertEqual(self.original.read_bytes(), b'externally changed')
+
+    def test_changed_replacement_refuses_publication(self):
+        self.assertEqual(self.prepare(), 0)
+        (self.stage / 'replacement.zip').write_bytes(b'changed replacement')
+        self.assertEqual(self.commit(), 1)
+        self.assertEqual(self.original.read_bytes(), self.before)
+
+    def test_corrupt_original_fails_full_verification(self):
+        broken = bytearray(self.before); broken[40] ^= 0x80
+        self.assertNotEqual(SevenZipTests().decode(bytes(broken))[0], 0, "fixture must corrupt decoded content")
+        self.original.write_bytes(broken)
+        self.assertEqual(self.prepare(), 1)
+        self.assertEqual(self.commit(), 1)
+        self.assertEqual(self.original.read_bytes(), broken)
+
+    def test_zip_prepare_rejects_seven_transaction(self):
+        self.assertEqual(self.api.arkiv_zip_prepare(self.transaction, os.fsencode(self.additions), os.fsencode(self.stage), None, None, None, self.error, 256), 1)
+        self.assertEqual(self.original.read_bytes(), self.before)
+
+
 if __name__ == '__main__':
     unittest.main()

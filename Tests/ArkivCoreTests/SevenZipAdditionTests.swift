@@ -115,4 +115,41 @@ final class SevenZipAdditionTests: XCTestCase {
             XCTAssertEqual(try LibArchiveEngine().inspect(zip, cancellation: ArchiveCancellation()).entries.count, 2)
         }
     }
+    func testAmbiguousExistingAndIncomingNamespacesAreRejected() throws {
+        try fixture { root, archive, snapshot in
+            for paths in [["A/one", "a/two"], ["é/one", "e\u{301}/two"], ["file", "file/child"], ["same", "same"]] {
+                let entries = paths.enumerated().map { ArchiveEntry(id: Int64($0.offset), path: $0.element, size: 0, kind: .file) }
+                let ambiguous = ArchiveSnapshot(url: snapshot.url, entries: entries, stamp: snapshot.stamp, unlocked: snapshot.unlocked)
+                XCTAssertFalse(ArchiveAdditionUpdater().capability(for: ambiguous).isAvailable)
+            }
+            let folder = root.appendingPathComponent("incoming")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+            try Data("first".utf8).write(to: folder.appendingPathComponent("A"))
+            try Data("second".utf8).write(to: folder.appendingPathComponent("a"))
+            // A case-insensitive filesystem cannot construct this hostile input.
+            if try FileManager.default.contentsOfDirectory(atPath: folder.path).count == 2 {
+                let original = try Data(contentsOf: archive)
+                XCTAssertThrowsError(try ArchiveAdditionUpdater().add(sources: [folder], to: snapshot, cancellation: ArchiveCancellation()))
+                XCTAssertEqual(try Data(contentsOf: archive), original)
+            }
+        }
+    }
+    #if os(macOS)
+    func testAddThroughTrustedSystemAliases() throws {
+        for alias in ["/var/tmp", "/tmp"] {
+            let root = URL(fileURLWithPath: alias).appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+            defer { try? FileManager.default.removeItem(at: root) }
+            let old = root.appendingPathComponent("old")
+            let new = root.appendingPathComponent("new")
+            try Data("old".utf8).write(to: old); try Data("new".utf8).write(to: new)
+            let archive = try ArchiveCreator().create(.init(sources: [old], destination: root, name: "Archive", format: .sevenZip), cancellation: ArchiveCancellation(), progress: { _ in })
+            let snapshot = try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation())
+            XCTAssertEqual(ArchiveAdditionUpdater().capability(for: snapshot), .sevenZip)
+            try ArchiveAdditionUpdater().add(sources: [new], to: snapshot, cancellation: ArchiveCancellation())
+            XCTAssertEqual(try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation()).entries.count, 2)
+        }
+    }
+    #endif
+
 }
