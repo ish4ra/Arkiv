@@ -150,7 +150,7 @@ final class BrowserWindowTests: XCTestCase {
         XCTAssertTrue(controller.validateMenuItem(addFiles), "Plain 7z Add is detected by content, regardless of extension")
         XCTAssertTrue(controller.validateMenuItem(addFolder))
         table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
-        XCTAssertFalse(controller.validateMenuItem(NSMenuItem(title: "Rename…", action: #selector(BrowserWindowController.renameSelected(_:)), keyEquivalent: "")))
+        XCTAssertTrue(controller.validateMenuItem(NSMenuItem(title: "Rename…", action: #selector(BrowserWindowController.renameSelected(_:)), keyEquivalent: "")))
         XCTAssertTrue(controller.validateMenuItem(NSMenuItem(title: "Delete…", action: #selector(BrowserWindowController.deleteSelected(_:)), keyEquivalent: "")))
         XCTAssertFalse(controller.validateMenuItem(NSMenuItem(title: "Replace…", action: #selector(BrowserWindowController.replaceSelected(_:)), keyEquivalent: "")))
         let folder = root.appendingPathComponent("資料")
@@ -172,13 +172,21 @@ final class BrowserWindowTests: XCTestCase {
 
     @MainActor
     func testDeleteConfirmationCancellationRefreshAndSound() async throws {
+        try await verifyDeleteConfirmation(format: .zip)
+    }
+    @MainActor
+    func testSevenZipDeleteConfirmationCancellationRefreshAndSound() async throws {
+        try await verifyDeleteConfirmation(format: .sevenZip)
+    }
+    @MainActor
+    private func verifyDeleteConfirmation(format: ArchiveFormat) async throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: root) }
         let source = root.appendingPathComponent("file.txt")
         try Data("payload".utf8).write(to: source)
-        let archive = try ArchiveCreator().create(.init(sources: [source], destination: root, name: "Delete"), cancellation: ArchiveCancellation(), progress: { _ in })
+        let archive = try ArchiveCreator().create(.init(sources: [source], destination: root, name: "Delete", format: format), cancellation: ArchiveCancellation(), progress: { _ in })
         var sounds = 0
         let controller = BrowserWindowController(modificationFeedback: { result in
             ExtractionFeedback.completed(result, play: { sounds += 1 })
@@ -359,13 +367,21 @@ final class BrowserWindowTests: XCTestCase {
 
     @MainActor
     func testRenameSheetCancellationSelectionRefreshAndAvailability() async throws {
+        try await verifyRenameSheet(format: .zip)
+    }
+    @MainActor
+    func testSevenZipRenameSheetCancellationSelectionRefreshAndAvailability() async throws {
+        try await verifyRenameSheet(format: .sevenZip)
+    }
+    @MainActor
+    private func verifyRenameSheet(format: ArchiveFormat) async throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: root) }
         let sources = ["file.txt", "other.txt"].map { root.appendingPathComponent($0) }
         for source in sources { try Data("payload".utf8).write(to: source) }
-        let archive = try ArchiveCreator().create(.init(sources: sources, destination: root, name: "Rename"), cancellation: ArchiveCancellation(), progress: { _ in })
+        let archive = try ArchiveCreator().create(.init(sources: sources, destination: root, name: "Rename", format: format), cancellation: ArchiveCancellation(), progress: { _ in })
         var sounds = 0
         let controller = BrowserWindowController(modificationFeedback: { result in
             ExtractionFeedback.completed(result, play: { sounds += 1 })

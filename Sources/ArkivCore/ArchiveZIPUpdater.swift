@@ -43,6 +43,10 @@ public struct ArchiveZIPUpdater: Sendable {
     @discardableResult
     public func rename(path: String, to name: String, in snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
                        progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
+        try renameItem(path: path, to: name, in: snapshot, seven: false, cancellation: cancellation, progress: progress)
+    }
+    private func renameItem(path: String, to name: String, in snapshot: ArchiveSnapshot, seven: Bool,
+                            cancellation: ArchiveCancellation, progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         guard !name.isEmpty, name != ".", name != "..", !name.contains("/"), !name.contains("\\"), !name.contains(":"),
               !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
               let row = snapshot.index.row(at: path),
@@ -76,7 +80,14 @@ public struct ArchiveZIPUpdater: Sendable {
         guard names.contains(where: { $0 != nil }), names.compactMap({ $0 }).allSatisfy({ $0.utf8.count <= 65535 }) else {
             throw ArchiveFailure.message("The renamed path is too long or the selection is invalid.")
         }
-        return try update(sources: [], snapshot: snapshot, folder: "", plan: nil, renameNames: names, cancellation: cancellation, progress: progress)
+        if seven {
+            let entries = zip(snapshot.entries, names).map { entry, name in
+                ArchiveEntry(id: entry.id, path: name ?? entry.path, size: entry.size, kind: entry.kind)
+            }
+            let proposed = ArchiveSnapshot(url: snapshot.url, entries: entries, stamp: snapshot.stamp, unlocked: snapshot.unlocked)
+            try ArchiveAdditionUpdater.validateSevenPaths(proposed)
+        }
+        return try update(sources: [], snapshot: snapshot, folder: "", plan: nil, renameNames: names, seven: seven, cancellation: cancellation, progress: progress)
     }
     /// Replaces exactly one regular file while retaining its archive name and metadata.
     @discardableResult
@@ -118,6 +129,12 @@ public struct ArchiveZIPUpdater: Sendable {
                      progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
         return try update(sources: [], snapshot: snapshot, folder: "", plan: deletionPlan(snapshot, paths: paths), seven: true, cancellation: cancellation, progress: progress)
+    }
+    @discardableResult
+    func renameSeven(path: String, to name: String, in snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
+                     progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
+        try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
+        return try renameItem(path: path, to: name, in: snapshot, seven: true, cancellation: cancellation, progress: progress)
     }
     private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, seven: Bool = false, cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
@@ -189,7 +206,9 @@ public struct ArchiveZIPUpdater: Sendable {
             }
             let oldPointers = old.map { $0.map { UnsafePointer<CChar>($0) } }
             let newPointers = renamed.map { $0.map { UnsafePointer<CChar>($0) } }
-            result = arkiv_zip_prepare_rename(transaction, oldPointers, newPointers, renameNames.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+            result = seven
+                ? arkiv_seven_prepare_rename(transaction, oldPointers, newPointers, renameNames.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+                : arkiv_zip_prepare_rename(transaction, oldPointers, newPointers, renameNames.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
         } else if let plan {
             if seven {
                 let names = snapshot.entries.map { strdup($0.path) }

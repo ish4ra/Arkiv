@@ -466,7 +466,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
     }
     @objc func renameSelected(_ sender: Any?) {
-        guard canAddToZIP, let window, window.attachedSheet == nil,
+        guard canAddItems, let window, window.attachedSheet == nil,
               selectedPaths().count == 1, let path = selectedPaths().first,
               let row = index?.row(at: path) else { return }
         let alert = NSAlert()
@@ -486,14 +486,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         field.selectText(nil)
     }
     func renameItem(_ path: String, to name: String) {
-        guard canAddToZIP, let snapshot else { return }
+        guard canAddItems, let snapshot else { return }
         let folder = path.split(separator: "/").dropLast().joined(separator: "/")
         let destination = folder.isEmpty ? name : folder + "/" + name
-        let token = begin("Renaming in ZIP…")
+        let token = begin("Renaming in archive…")
         worker.async { [self] in
             let throttle = ProgressThrottle()
             let result = Result {
-                try ArchiveZIPUpdater().rename(path: path, to: name, in: snapshot, cancellation: token) { progress in
+                try ArchiveModificationUpdater().rename(path: path, to: name, in: snapshot, cancellation: token) { progress in
                     guard throttle.shouldUpdate() else { return }
                     DispatchQueue.main.async { [weak self] in
                         guard let self, self.isBusy else { return }
@@ -910,7 +910,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         case #selector(openSelectedFile(_:)), #selector(openSelectedArchive(_:)): return !sessionEnded && !isBusy && window?.attachedSheet == nil && selectedRegularFile != nil
         case #selector(showPackageContents(_:)): return !isBusy && selectedPackage != nil
         case #selector(replaceSelected(_:)): return canReplaceFile
-        case #selector(renameSelected(_:)): return canAddToZIP && window?.attachedSheet == nil && selectedPaths().count == 1
+        case #selector(renameSelected(_:)): return canAddItems && window?.attachedSheet == nil && selectedPaths().count == 1
         case #selector(deleteSelected(_:)): return canAddItems && window?.attachedSheet == nil && !selectedPaths().isEmpty
         case #selector(addFiles(_:)), #selector(addFolder(_:)):
             menuItem.toolTip = additionCapability.reason

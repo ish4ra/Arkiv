@@ -17,6 +17,7 @@ __attribute__((visibility("default"))) int arkiv_seven_test(int, const char *, u
 __attribute__((visibility("default"))) int arkiv_seven_probe_append(int inputfd);
 __attribute__((visibility("default"))) int arkiv_seven_append(int originalfd, int additionsfd, int outputfd, arkiv_seven_cancel, void *, arkiv_seven_progress, void *);
 __attribute__((visibility("default"))) int arkiv_seven_delete(int originalfd, const char *const *oldnames, const unsigned char *keep, uint64_t count, int outputfd, arkiv_seven_cancel, void *, arkiv_seven_progress, void *);
+__attribute__((visibility("default"))) int arkiv_seven_rename(int originalfd, const char *const *oldnames, const char *const *newnames, uint64_t count, int outputfd, arkiv_seven_cancel, void *, arkiv_seven_progress, void *);
 #ifdef __cplusplus
 }
 #endif

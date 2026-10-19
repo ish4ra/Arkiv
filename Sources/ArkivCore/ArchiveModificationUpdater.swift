@@ -16,4 +16,15 @@ public struct ArchiveModificationUpdater: Sendable {
         case .readOnly(let reason): throw ArchiveFailure.message(reason)
         }
     }
+    @discardableResult
+    public func rename(path: String, to name: String, in snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
+                       progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
+        if cancellation.isCancelled { throw ArchiveFailure.cancelled }
+        switch capability(for: snapshot) {
+        case .zip: return try ArchiveZIPUpdater().rename(path: path, to: name, in: snapshot, cancellation: cancellation, progress: progress)
+        case .sevenZip: return try ArchiveZIPUpdater().renameSeven(path: path, to: name, in: snapshot, cancellation: cancellation, progress: progress)
+        case .readOnly(let reason): throw ArchiveFailure.message(reason)
+        }
+    }
+
 }

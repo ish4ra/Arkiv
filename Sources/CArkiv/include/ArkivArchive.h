@@ -62,6 +62,7 @@ int arkiv_unlock_seven(const char *, const char *, const char *, arkiv_cancel *)
 typedef struct arkiv_zip_transaction arkiv_zip_transaction;
 /* Plain single-volume non-solid 7z root additions use the same commit/end. */
 int arkiv_seven_prepare_delete(arkiv_zip_transaction *, const char *const *, const unsigned char *, size_t, const char *, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
+int arkiv_seven_prepare_rename(arkiv_zip_transaction *, const char *const *, const char *const *, size_t, const char *, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 arkiv_zip_transaction *arkiv_seven_begin(const char *, char *, size_t);
 int arkiv_seven_prepare(arkiv_zip_transaction *, const char *, const char *, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 arkiv_zip_transaction *arkiv_zip_begin(const char *, char *, size_t);
