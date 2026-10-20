@@ -419,7 +419,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
     }
     private var canReplaceFile: Bool {
-        guard canAddToZIP, window?.attachedSheet == nil, selectedPaths().count == 1,
+        guard canAddItems, window?.attachedSheet == nil, selectedPaths().count == 1,
               let path = selectedPaths().first else { return false }
         return snapshot?.entries.filter { $0.path == path && $0.kind == .file }.count == 1 && index?.row(at: path)?.isDirectory == false
     }
@@ -438,13 +438,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
     }
     func replaceItem(_ path: String, with source: URL) {
-        guard canAddToZIP, let snapshot else { return }
+        guard canAddItems, let snapshot else { return }
         let folder = path.split(separator: "/").dropLast().joined(separator: "/")
-        let token = begin("Replacing file in ZIP…")
+        let token = begin("Replacing file in archive…")
         worker.async { [self] in
             let throttle = ProgressThrottle()
             let result = Result {
-                try ArchiveZIPUpdater().replace(path: path, with: source, in: snapshot, cancellation: token) { progress in
+                try ArchiveModificationUpdater().replace(path: path, with: source, in: snapshot, cancellation: token) { progress in
                     guard throttle.shouldUpdate() else { return }
                     DispatchQueue.main.async { [weak self] in
                         guard let self, self.isBusy else { return }

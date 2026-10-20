@@ -1162,7 +1162,7 @@ int arkiv_zip_prepare_replace(arkiv_zip_transaction *t,const char *content,size_
 
 /* The stage and publication are shared with ZIP, but the replacement is 7z.
    Only the new inputs are staged as ZIP; original 7z streams stay compressed. */
-static int seven_prepare(arkiv_zip_transaction *t,const char *addition,const char *const *oldnames,const char *const *newnames,const unsigned char *keep,size_t count,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
+static int seven_prepare(arkiv_zip_transaction *t,const char *addition,const char *const *oldnames,const char *const *newnames,const unsigned char *keep,size_t count,size_t replacement,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
     int in=-1,out=-1,result=1;struct stat st;
     if(!t||!t->seven||t->stage>=0||t->ready)goto done;
     if(cancelled(token)){result=2;goto done;}
@@ -1171,7 +1171,7 @@ static int seven_prepare(arkiv_zip_transaction *t,const char *addition,const cha
     t->stage=create_open(stage);if(t->stage<0)goto done;
     if(fstat(t->stage,&st)||!S_ISDIR(st.st_mode)||st.st_uid!=geteuid()||(st.st_mode&077)!=0||st.st_dev!=t->stamp.st_dev)goto done;
     out=openat(t->stage,"replacement.zip",O_CREAT|O_EXCL|O_RDWR|O_NOFOLLOW|O_CLOEXEC,0600);if(out<0)goto done;
-    result=newnames?arkiv_seven_rename(t->source,oldnames,newnames,count,out,seven_cancel,token,callback,context):keep?arkiv_seven_delete(t->source,oldnames,keep,count,out,seven_cancel,token,callback,context):arkiv_seven_append(t->source,in,out,seven_cancel,token,callback,context);
+    result=replacement!=SIZE_MAX?arkiv_seven_replace(t->source,in,oldnames,count,replacement,out,seven_cancel,token,callback,context):newnames?arkiv_seven_rename(t->source,oldnames,newnames,count,out,seven_cancel,token,callback,context):keep?arkiv_seven_delete(t->source,oldnames,keep,count,out,seven_cancel,token,callback,context):arkiv_seven_append(t->source,in,out,seven_cancel,token,callback,context);
     if(result)goto done;
     result=arkiv_seven_test(out,NULL,100000,20ULL*1024*1024*1024,seven_cancel,token,callback,context);
     if(result)goto done;
@@ -1190,15 +1190,20 @@ done:
 }
 
 int arkiv_seven_prepare(arkiv_zip_transaction *t,const char *addition,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
-    return seven_prepare(t,addition,NULL,NULL,NULL,0,stage,token,callback,context,error,cap);
+    return seven_prepare(t,addition,NULL,NULL,NULL,0,SIZE_MAX,stage,token,callback,context,error,cap);
 }
 int arkiv_seven_prepare_delete(arkiv_zip_transaction *t,const char *const *oldnames,const unsigned char *keep,size_t count,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
-    return seven_prepare(t,NULL,oldnames,NULL,keep,count,stage,token,callback,context,error,cap);
+    return seven_prepare(t,NULL,oldnames,NULL,keep,count,SIZE_MAX,stage,token,callback,context,error,cap);
 }
 
 int arkiv_seven_prepare_rename(arkiv_zip_transaction *t,const char *const *oldnames,const char *const *newnames,size_t count,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
     if(!oldnames||!newnames)return fail(error,cap,"Missing rename plan.");
-    return seven_prepare(t,NULL,oldnames,newnames,NULL,count,stage,token,callback,context,error,cap);
+    return seven_prepare(t,NULL,oldnames,newnames,NULL,count,SIZE_MAX,stage,token,callback,context,error,cap);
+}
+
+int arkiv_seven_prepare_replace(arkiv_zip_transaction *t,const char *content,const char *const *oldnames,size_t count,size_t replacement,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
+    if(!content||!oldnames||replacement>=count)return fail(error,cap,"Missing replacement plan.");
+    return seven_prepare(t,content,oldnames,NULL,NULL,count,replacement,stage,token,callback,context,error,cap);
 }
 
 int arkiv_zip_commit(arkiv_zip_transaction *t,arkiv_cancel *token,char *error,size_t cap) {

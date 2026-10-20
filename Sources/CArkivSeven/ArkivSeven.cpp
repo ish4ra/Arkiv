@@ -53,19 +53,21 @@ class Update: public IArchiveUpdateCallback, public ICryptoGetTextPassword2, pub
 public:
  Z7_COM_UNKNOWN_IMP_2(IArchiveUpdateCallback,ICryptoGetTextPassword2)
 public:
+ UInt32 replacement=UInt32(-1);
  State*s;int fd;std::vector<Item> items; std::vector<UInt32> retained; std::vector<UString> renamed; CMyComPtr<IInArchive> original;
  Update(State*st,int f):s(st),fd(f){}
  Z7_COM7F_IMF(SetTotal(UInt64)) {return s->tick();}
  Z7_COM7F_IMF(SetCompleted(const UInt64*n)) {if(s->progress&&n)s->progress(s->progressContext,0,*n);return s->tick();}
- Z7_COM7F_IMF(GetUpdateItemInfo(UInt32 n,Int32*d,Int32*p,UInt32*i)){*d=n>=retained.size();*p=*d||(n<retained.size()&&!renamed[retained[n]].IsEmpty());*i=n<retained.size()?retained[n]:UInt32(-1);return s->tick();}
+ Z7_COM7F_IMF(GetUpdateItemInfo(UInt32 n,Int32*d,Int32*p,UInt32*i)){*d=n>=retained.size()||(n<retained.size()&&retained[n]==replacement);*p=*d||(n<retained.size()&&!renamed[retained[n]].IsEmpty());*i=n<retained.size()?retained[n]:UInt32(-1);return s->tick();}
  Z7_COM7F_IMF(GetProperty(UInt32 i,PROPID id,PROPVARIANT*v)){
   if(i<retained.size()) {
    UInt32 old=retained[i];if(!original)return E_FAIL;
+   if(old==replacement&&id==kpidSize){CPropVariant p(UInt64(items[0].size));return p.Detach(v);}
    if(id==kpidPath&&!renamed[old].IsEmpty()){CPropVariant p(renamed[old]);return p.Detach(v);}
    return original->GetProperty(old,id,v);
   }
   i-=retained.size();if(i>=items.size())return E_FAIL;CPropVariant p;auto &a=items[i];switch(id){case kpidPath:p=a.name;break;case kpidIsDir:p=a.dir;break;case kpidSize:p=UInt64(a.size);break;case kpidAttrib:p=UInt32(a.dir?0x10:0x20);break;}p.Detach(v);return s->tick();}
- Z7_COM7F_IMF(GetStream(UInt32 i,ISequentialInStream**out)){*out=nullptr;if(i<retained.size())return E_FAIL;i-=retained.size();if(i>=items.size())return E_FAIL;auto&a=items[i];if(!a.dir){CMyComPtr<IInStream> in=new In(fd,s,a.offset,a.size);*out=in.Detach();}return s->tick();}
+ Z7_COM7F_IMF(GetStream(UInt32 i,ISequentialInStream**out)){*out=nullptr;if(i<retained.size()){if(retained[i]!=replacement)return E_FAIL;i=0;}else i-=retained.size();if(i>=items.size())return E_FAIL;auto&a=items[i];if(!a.dir){CMyComPtr<IInStream> in=new In(fd,s,a.offset,a.size);*out=in.Detach();}return s->tick();}
  Z7_COM7F_IMF(SetOperationResult(Int32 r)){return r?E_FAIL:s->tick();}
  Z7_COM7F_IMF(CryptoGetTextPassword2(Int32*defined,BSTR*p)){*defined=s->password!=nullptr;*p=nullptr;return *defined?s->secret(p):S_OK;}
 };
@@ -167,13 +169,15 @@ static int appendable(int input,State &s,IInArchive *handler,UInt32 &count,uint6
 extern "C" int arkiv_seven_probe_append(int input) {
  State s{nullptr,nullptr,nullptr};try{CMyComPtr<IInArchive> handler=new NArchive::N7z::CHandler;UInt32 count=0;uint64_t total=0;return appendable(input,s,handler,count,total);}catch(...){return 1;}
 }
-static int encode(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,int original,const unsigned char*keep=nullptr,size_t keepCount=0,const char*const*oldnames=nullptr,const char*const*newnames=nullptr){State s{password,cancel,context};s.progress=progress;s.progressContext=progressContext;try{
+static int encode(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,int original,const unsigned char*keep=nullptr,size_t keepCount=0,const char*const*oldnames=nullptr,const char*const*newnames=nullptr,size_t replacement=SIZE_MAX){State s{password,cancel,context};s.progress=progress;s.progressContext=progressContext;try{
  if(s.stopped())return 2;
  auto raw=new NArchive::N7z::CHandler;CMyComPtr<IOutArchive> handler=raw;
  UInt32 retained=0;uint64_t originalBytes=0;
  if(original>=0) {int r=appendable(original,s,static_cast<IInArchive*>(raw),retained,originalBytes);if(r)return r;}
  std::vector<unsigned char> retainedMask;std::vector<UString> renamed(retained);
- if(keep||newnames) {
+ UInt32 replaced=UInt32(-1);
+ if(keep||newnames||replacement!=SIZE_MAX) {
+  if(replacement!=SIZE_MAX&&replacement>=keepCount)return 1;
   if(!oldnames||keepCount!=retained)return 1;
   std::map<std::string,UInt32> indices;
   for(UInt32 i=0;i<retained;i++) {
@@ -188,6 +192,11 @@ static int encode(int input,int output,const char*password,int headers,arkiv_sev
    std::string name=oldnames[i];if(!name.empty()&&name.back()=='/')name.pop_back();
    auto found=indices.find(name);if(found==indices.end())return 1;
    retainedMask[found->second]=keep?keep[i]:1;
+   if(i==replacement){
+    replaced=found->second;CPropVariant dir,size;
+    if(static_cast<IInArchive*>(raw)->GetProperty(replaced,kpidIsDir,&dir)!=S_OK||dir.vt!=VT_BOOL||dir.boolVal!=VARIANT_FALSE||static_cast<IInArchive*>(raw)->GetProperty(replaced,kpidSize,&size)!=S_OK||size.vt!=VT_UI8||size.uhVal.QuadPart>originalBytes)return 1;
+    originalBytes-=size.uhVal.QuadPart;
+   }
    if(newnames&&newnames[i]) {
     if(!safe(newnames[i])||!ConvertUTF8ToUnicode(AString(newnames[i]),renamed[found->second]))return 1;
    }
@@ -195,7 +204,7 @@ static int encode(int input,int output,const char*password,int headers,arkiv_sev
   }
  }
  FILE*tmp=tmpfile();if(!tmp)return 1;struct Temp{FILE*f;~Temp(){fclose(f);}}t{tmp};
- auto cb=new Update(&s,fileno(tmp));CMyComPtr<IArchiveUpdateCallback> cbRef=cb;cb->renamed=renamed;
+ auto cb=new Update(&s,fileno(tmp));CMyComPtr<IArchiveUpdateCallback> cbRef=cb;cb->renamed=renamed;cb->replacement=replaced;
  if(original>=0)cb->original=static_cast<IInArchive*>(raw);
  for(UInt32 i=0;i<retained;i++)if(!keep||retainedMask[i])cb->retained.push_back(i);
  if(input>=0) {
@@ -203,15 +212,16 @@ static int encode(int input,int output,const char*password,int headers,arkiv_sev
  if(!r||archive_read_support_format_zip(r)!=ARCHIVE_OK||archive_read_open_fd(r,input,65536)!=ARCHIVE_OK)return 1;
  archive_entry*e;int result;uint64_t total=0;char buffer[65536];
  while((result=archive_read_next_header(r,&e))==ARCHIVE_OK){
-  if(s.stopped())return 2;if(cb->items.size()+retained>=100000)return 1;Item a;const char*p=archive_entry_pathname_utf8(e);if(!p||!safe(p)||!ConvertUTF8ToUnicode(AString(p),a.name))return 1;a.utf8=p;a.dir=archive_entry_filetype(e)==AE_IFDIR;
+  if(s.stopped())return 2;if(cb->items.size()+retained-(replacement!=SIZE_MAX?1:0)>=100000)return 1;Item a;const char*p=archive_entry_pathname_utf8(e);if(!p||!safe(p)||!ConvertUTF8ToUnicode(AString(p),a.name))return 1;a.utf8=p;a.dir=archive_entry_filetype(e)==AE_IFDIR;
   if(archive_entry_symlink(e)||archive_entry_hardlink(e)||(!a.dir&&archive_entry_filetype(e)!=AE_IFREG))return 1;
   int64_t size=archive_entry_size(e);if(size<0||uint64_t(size)>Budget-originalBytes-total)return 1;a.size=size;a.offset=total;total+=a.size;uint64_t read=0;ssize_t n;
   while((n=archive_read_data(r,buffer,sizeof(buffer)))>0){if(s.stopped())return 2;if(uint64_t(n)>a.size-read||fwrite(buffer,1,n,tmp)!=size_t(n))return 1;read+=n;}if(n<0||read!=a.size)return 1;cb->items.push_back(a);
  }
  if(result!=ARCHIVE_EOF||fflush(tmp))return 1;
  }
+ if(replacement!=SIZE_MAX&&(replaced==UInt32(-1)||cb->items.size()!=1||cb->items[0].dir))return 1;
  const wchar_t*names[]={L"0",L"x",L"s",L"mt",L"he"};CPropVariant values[5];values[0]=L"LZMA2";values[1]=UInt32(5);values[2]=false;values[3]=UInt32(2);values[4]=bool(password&&headers);
- HRESULT h=static_cast<ISetProperties*>(raw)->SetProperties(names,values,5);if(h!=S_OK)return 1;CMyComPtr<IOutStream>out=new Out(output,&s);h=handler->UpdateItems(out,cb->retained.size()+cb->items.size(),cb);return s.result(h);
+ HRESULT h=static_cast<ISetProperties*>(raw)->SetProperties(names,values,5);if(h!=S_OK)return 1;CMyComPtr<IOutStream>out=new Out(output,&s);h=handler->UpdateItems(out,cb->retained.size()+(replacement==SIZE_MAX?cb->items.size():0),cb);return s.result(h);
  }catch(...){return s.stopped()?2:1;}}
 
 extern "C" const char *arkiv_seven_library_path(){Dl_info info;return dladdr((void*)&arkiv_seven_library_path,&info)&&info.dli_fname?info.dli_fname:"";}
@@ -234,4 +244,9 @@ extern "C" int arkiv_seven_delete(int original,const char*const*oldnames,const u
 extern "C" int arkiv_seven_rename(int original,const char*const*oldnames,const char*const*newnames,uint64_t count,int output,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext) {
  if(!oldnames||!newnames||count>100000)return 1;
  return encode(-1,output,nullptr,0,cancel,context,progress,progressContext,original,nullptr,size_t(count),oldnames,newnames);
+}
+
+extern "C" int arkiv_seven_replace(int original,int content,const char*const*oldnames,uint64_t count,uint64_t replacement,int output,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext) {
+ if(!oldnames||count>100000||replacement>=count)return 1;
+ return encode(content,output,nullptr,0,cancel,context,progress,progressContext,original,nullptr,size_t(count),oldnames,nullptr,size_t(replacement));
 }

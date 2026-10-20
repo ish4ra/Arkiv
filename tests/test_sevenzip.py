@@ -242,6 +242,44 @@ class SevenZipAppendTests(unittest.TestCase):
             self.assertNotEqual(self.probe(data), 0)
             self.assertNotEqual(self.append(data)[0], 0)
 
+    def replace(self, data, names, target, contents=b'new', directory=False, cancel=None):
+        lib.arkiv_seven_replace.argtypes = [C.c_int, C.c_int, C.POINTER(C.c_char_p), C.c_uint64, C.c_uint64, C.c_int, C.c_void_p, C.c_void_p, C.c_void_p, C.c_void_p]
+        paths = (C.c_char_p * len(names))(*(name.encode('utf-8') for name in names))
+        with tempfile.TemporaryFile() as source, tempfile.TemporaryFile() as content, tempfile.TemporaryFile() as output:
+            source.write(data); source.flush()
+            with zipfile.ZipFile(content, 'w') as z:
+                z.writestr('ignored/' if directory else 'ignored.bin', contents)
+            content.seek(0)
+            result = lib.arkiv_seven_replace(source.fileno(), content.fileno(), paths, len(names), target, output.fileno(), cancel, None, None, None)
+            output.seek(0)
+            return result, output.read()
+
+    def test_replace_preserves_path_metadata_and_unrelated_packed_stream(self):
+        keep = b'unrelated packed bytes' * 100
+        mode = (stat.S_IFREG | 0o755) << 16 | 0x8020
+        data = stored_many([('keep', 0x20, keep), ('資料/猫.txt', mode, b'old payload')])
+        for contents in [b'x', b'larger' * 10000, b'']:
+            result, after = self.replace(data, ['資料/猫.txt', 'keep'], 0, contents)
+            self.assertEqual(result, 0)
+            self.assertEqual(after[32:32 + len(keep)], keep)
+            result, tar = self.decode(after)
+            self.assertEqual(result, 0)
+            with tarfile.open(fileobj=io.BytesIO(tar)) as archive:
+                self.assertEqual(archive.extractfile('資料/猫.txt').read(), contents)
+                self.assertEqual(archive.getmember('資料/猫.txt').mode & 0o777, 0o755)
+                self.assertEqual(archive.extractfile('keep').read(), keep)
+                self.assertNotIn('ignored.bin', archive.getnames())
+
+    def test_replace_rejects_ambiguous_plan_folder_solid_and_cancel(self):
+        data, _ = copy_or_lzma2()
+        self.assertNotEqual(self.replace(data, ['missing'], 0)[0], 0)
+        self.assertNotEqual(self.replace(data, ['old.txt'], 1)[0], 0)
+        self.assertNotEqual(self.replace(data, ['old.txt'], 0, directory=True)[0], 0)
+        solid, _ = copy_or_lzma2(solid=True)
+        self.assertNotEqual(self.replace(solid, ['old.txt', 'second.txt'], 0)[0], 0)
+        cancel = C.CFUNCTYPE(C.c_int, C.c_void_p)(lambda _: 1)
+        self.assertEqual(self.replace(data, ['old.txt'], 0, cancel=cancel)[0], 2)
+
     def delete(self, data, names, keep):
         lib.arkiv_seven_delete.argtypes = [C.c_int, C.POINTER(C.c_char_p), C.POINTER(C.c_ubyte), C.c_uint64, C.c_int, C.c_void_p, C.c_void_p, C.c_void_p, C.c_void_p]
         paths = (C.c_char_p * len(names))(*(name.encode('utf-8') for name in names))

@@ -93,6 +93,16 @@ public struct ArchiveZIPUpdater: Sendable {
     @discardableResult
     public func replace(path: String, with source: URL, in snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
+        try replaceItem(path: path, with: source, in: snapshot, seven: false, cancellation: cancellation, progress: progress)
+    }
+    @discardableResult
+    func replaceSeven(path: String, with source: URL, in snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
+                      progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
+        try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
+        return try replaceItem(path: path, with: source, in: snapshot, seven: true, cancellation: cancellation, progress: progress)
+    }
+    private func replaceItem(path: String, with source: URL, in snapshot: ArchiveSnapshot, seven: Bool,
+                             cancellation: ArchiveCancellation, progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         guard let entry = snapshot.entries.first(where: { $0.path == path }), entry.kind == .file,
               snapshot.entries.filter({ $0.path == path }).count == 1,
               snapshot.entries.enumerated().allSatisfy({ $0.element.id == Int64($0.offset) }),
@@ -106,7 +116,7 @@ public struct ArchiveZIPUpdater: Sendable {
               components.dropLast().indices.allSatisfy({ snapshot.index.row(at: components.prefix($0 + 1).joined(separator: "/"))?.isDirectory == true }) else {
             throw ArchiveFailure.message("Ambiguous archive paths cannot safely be replaced.")
         }
-        return try update(sources: [source], snapshot: snapshot, folder: "", plan: nil, replacement: entry, cancellation: cancellation, progress: progress)
+        return try update(sources: [source], snapshot: snapshot, folder: "", plan: nil, replacement: entry, seven: seven, cancellation: cancellation, progress: progress)
     }
     @discardableResult
     public func delete(paths: Set<String>, from snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
@@ -174,7 +184,7 @@ public struct ArchiveZIPUpdater: Sendable {
         try manager.createDirectory(at: stage, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? manager.removeItem(at: stage) }
         var compression: ZIPCompression = .deflate
-        if let replacement {
+        if let replacement, !seven {
             let method = arkiv_zip_replacement_method(transaction, Int(replacement.id), snapshot.entries.count, replacement.path)
             guard method == 0 || method == 8 else { throw ArchiveFailure.message("This entry cannot safely be replaced.") }
             compression = method == 0 ? .store : .deflate
@@ -196,7 +206,15 @@ public struct ArchiveZIPUpdater: Sendable {
         }
         let result: Int32
         if let replacement {
+            if seven {
+                let names = snapshot.entries.map { strdup($0.path) }
+                defer { names.forEach { free($0) } }
+                guard names.allSatisfy({ $0 != nil }) else { throw ArchiveFailure.message("Not enough memory to prepare the edit.") }
+                let pointers = names.map { $0.map { UnsafePointer<CChar>($0) } }
+                result = arkiv_seven_prepare_replace(transaction, additions!.path, pointers, snapshot.entries.count, Int(replacement.id), stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+            } else {
             result = arkiv_zip_prepare_replace(transaction, additions!.path, Int(replacement.id), snapshot.entries.count, replacement.path, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+            }
         } else if let renameNames {
             let old = snapshot.entries.map { strdup($0.path) }
             let renamed = renameNames.map { $0.flatMap { strdup($0) } }

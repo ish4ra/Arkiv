@@ -1,7 +1,7 @@
 import Foundation
 import CArkiv
 
-/// Add is deliberately separate from ZIP-only Delete, Rename, Replace and drag-in.
+/// Shared eligibility for ordinary ZIP and supported 7z edits; drag-in remains ZIP-only.
 public enum ArchiveAdditionCapability: Equatable, Sendable {
     case zip, sevenZip, readOnly(String)
     public var isAvailable: Bool {

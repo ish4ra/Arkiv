@@ -47,7 +47,7 @@ jobs:
       - name: File Services registration regression tests
         run: scripts/ci-check.sh services-tests python3 tests/test_finder_services.py -v
       - name: Plain 7z modification regressions
-        run: scripts/ci-check.sh seven-add swift test --filter 'SevenZip(Addition|Deletion|Rename)Tests' -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
+        run: scripts/ci-check.sh seven-add swift test --filter 'SevenZip(Addition|Deletion|Rename|Replacement)Tests' -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
       - name: ZIP replacement compatibility regression
         run: scripts/ci-check.sh zip-replacement swift test --filter ZIPReplacementTests -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
       - name: Native Delete confirmation regression
