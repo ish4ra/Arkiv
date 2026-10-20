@@ -57,6 +57,25 @@ final class SevenZipReplacementTests: XCTestCase {
             XCTAssertEqual(try Data(contentsOf: archive), Data("external change".utf8))
         }
     }
+    func testSourceChangesDuringStagingAndArchiveSwapBeforeCommit() throws {
+        try fixture { root, archive, snapshot in
+            let original = try Data(contentsOf: archive)
+            let source = root.appendingPathComponent("changing-source")
+            try Data(repeating: 42, count: 200_000).write(to: source)
+            XCTAssertThrowsError(try ArchiveModificationUpdater().replace(path: "資料.app/猫.txt", with: source, in: snapshot, cancellation: ArchiveCancellation(), progress: { _ in
+                if let handle = try? FileHandle(forWritingTo: source) {
+                    try? handle.truncate(atOffset: 0)
+                    try? handle.close()
+                }
+            }))
+            XCTAssertEqual(try Data(contentsOf: archive), original)
+            try Data("restored".utf8).write(to: source)
+            XCTAssertThrowsError(try ArchiveModificationUpdater().replace(path: "資料.app/猫.txt", with: source, in: snapshot, cancellation: ArchiveCancellation(), progress: { _ in
+                try? Data("external replacement".utf8).write(to: archive, options: .atomic)
+            }))
+            XCTAssertEqual(try Data(contentsOf: archive), Data("external replacement".utf8))
+        }
+    }
     func testEncryptedRemainsReadOnlyAfterUnlock() throws {
         try fixture(password: "fixture password") { root, archive, snapshot in
             let original = try Data(contentsOf: archive)
