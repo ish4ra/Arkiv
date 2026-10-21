@@ -136,11 +136,11 @@ extern "C" int arkiv_seven_decode(int input,int output,const char*password,arkiv
 static bool zero(const CPropVariant &p) {
  return p.vt==VT_EMPTY||(p.vt==VT_BOOL&&!p.boolVal)||(p.vt==VT_UI4&&!p.ulVal)||(p.vt==VT_UI8&&!p.uhVal.QuadPart);
 }
-static int appendable(int input,State &s,IInArchive *handler,UInt32 &count,uint64_t &total) {
+static int appendable(int input,State &s,IInArchive *handler,UInt32 &count,uint64_t &total,bool encryptedPolicy=false) {
  struct stat st;if(fstat(input,&st)||!S_ISREG(st.st_mode)||st.st_size<32)return 1;
  unsigned char magic[6];if(pread(input,magic,6,0)!=6||memcmp(magic,"7z\xbc\xaf\x27\x1c",6))return 1;
  CMyComPtr<IInStream> in=new In(input,&s);CMyComPtr<IArchiveOpenCallback> cb=new Open(&s);
- HRESULT h=handler->Open(in,nullptr,cb);if(h!=S_OK||s.asked)return s.result(h)==2?2:1;
+ HRESULT h=handler->Open(in,nullptr,cb);if(h!=S_OK||(!encryptedPolicy&&s.asked))return s.result(h)==2?2:1;
  CPropVariant p;
  for(PROPID id:{kpidSolid,kpidOffset,kpidErrorFlags,kpidWarningFlags,kpidReadOnly}) {
   p.Clear();if(handler->GetArchiveProperty(id,&p)!=S_OK||!zero(p))return 1;
@@ -150,7 +150,11 @@ static int appendable(int input,State &s,IInArchive *handler,UInt32 &count,uint6
  total=0;
  for(UInt32 i=0;i<count;i++) {
   if(s.stopped())return 2;
-  for(PROPID id:{kpidEncrypted,kpidIsAnti}) {p.Clear();if(handler->GetProperty(i,id,&p)!=S_OK||!zero(p))return 1;}
+  for(PROPID id:{kpidEncrypted,kpidIsAnti}) {if(encryptedPolicy&&id==kpidEncrypted)continue;p.Clear();if(handler->GetProperty(i,id,&p)!=S_OK||!zero(p))return 1;}
+  if(encryptedPolicy) {
+   p.Clear();if(handler->GetProperty(i,kpidEncrypted,&p)!=S_OK)return 1;
+   if(p.vt==VT_BOOL&&p.boolVal) {p.Clear();if(handler->GetProperty(i,kpidCRC,&p)!=S_OK||p.vt!=VT_UI4)return 1;}
+  }
   for(PROPID id:{kpidSymLink,kpidHardLink,kpidPosition}) {p.Clear();if(handler->GetProperty(i,id,&p)!=S_OK||p.vt!=VT_EMPTY)return 1;}
   p.Clear();if(handler->GetProperty(i,kpidPath,&p)!=S_OK||p.vt!=VT_BSTR)return 1;
   AString name;ConvertUnicodeToUTF8(UString(p.bstrVal),name);if(!safe(name.Ptr()))return 1;
@@ -161,10 +165,49 @@ static int appendable(int input,State &s,IInArchive *handler,UInt32 &count,uint6
   uint64_t size=p.vt==VT_UI8?p.uhVal.QuadPart:0;if((p.vt!=VT_EMPTY&&p.vt!=VT_UI8)||size>Budget-total||(dir&&size))return 1;total+=size;
   p.Clear();if(handler->GetProperty(i,kpidMethod,&p)!=S_OK)return 1;
   if(p.vt==VT_BSTR) {AString method;ConvertUnicodeToUTF8(UString(p.bstrVal),method);std::string m=method.Ptr();
+   if(encryptedPolicy) {const std::string aes=" 7zAES:19"; if(m.size()>aes.size()&&m.compare(m.size()-aes.size(),aes.size(),aes)==0)m.erase(m.size()-aes.size());}
    if(!m.empty()&&m!="Copy"&&!(m.compare(0,6,"LZMA2:")==0&&m.find_first_not_of("0123456789kKmMbB",6)==std::string::npos))return 1;
   }else if(p.vt!=VT_EMPTY)return 1;
  }
  return 0;
+}
+// Read-only foundation. A successful inspection never grants write capability.
+// Open requests a password only for an encrypted encoded header; per-item
+// kpidEncrypted independently describes data streams. Never infer this from TAR.
+extern "C" int arkiv_seven_policy(int input,const char *password,uint32_t *flags,arkiv_seven_cancel cancel,void *context) {
+ if(!flags)return 1;*flags=0;
+ State s{password,cancel,context};
+ try {
+  CMyComPtr<IInArchive> handler=new NArchive::N7z::CHandler;
+  CMyComPtr<IInStream> in=new In(input,&s);CMyComPtr<IArchiveOpenCallback> cb=new Open(&s);
+  HRESULT h=handler->Open(in,nullptr,cb);
+  if(s.asked)*flags|=2;
+  if(h!=S_OK)return s.result(h);
+  UInt32 count=0;if(handler->GetNumberOfItems(&count)!=S_OK||count>100000)return 1;
+  bool encrypted=false,plain=false;
+  CPropVariant p;
+  for(UInt32 i=0;i<count;i++) {
+   if(s.stopped())return 2;
+   p.Clear();if(handler->GetProperty(i,kpidSize,&p)!=S_OK)return 1;
+   bool data=p.vt==VT_UI8&&p.uhVal.QuadPart>0;
+   p.Clear();if(handler->GetProperty(i,kpidEncrypted,&p)!=S_OK)return 1;
+   if(p.vt!=VT_EMPTY&&p.vt!=VT_BOOL)return 1;
+   if(p.vt==VT_BOOL&&p.boolVal)encrypted=true;else if(data)plain=true;
+  }
+  if(encrypted)*flags|=1;
+  if(encrypted&&plain)*flags|=4;
+  handler->Close();
+  State gate{password,cancel,context};uint64_t total=0;
+  int layout=appendable(input,gate,handler,count,total,true);
+  if(layout==2)return 2;
+  if(!layout&&!(*flags&4))*flags|=8;
+  // Verify ALL streams using this one password. Mixed-password archives cannot
+  // qualify merely because their headers or first encrypted item were readable.
+  int result=arkiv_seven_test(input,password,100000,Budget,cancel,context,nullptr,nullptr);
+  if(result)return result;
+  *flags|=16;
+  return 0;
+ }catch(...){return s.stopped()?2:1;}
 }
 extern "C" int arkiv_seven_probe_append(int input) {
  State s{nullptr,nullptr,nullptr};try{CMyComPtr<IInArchive> handler=new NArchive::N7z::CHandler;UInt32 count=0;uint64_t total=0;return appendable(input,s,handler,count,total);}catch(...){return 1;}

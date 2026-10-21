@@ -69,6 +69,52 @@ class SevenZipTests(unittest.TestCase):
             output.seek(0)
             return output.read()
 
+    def test_encryption_policy_and_password_validation(self):
+        self.assertTrue(hasattr(lib, 'arkiv_seven_policy'), 'policy inspection API missing')
+        probe = lib.arkiv_seven_policy
+        probe.argtypes = [C.c_int, C.c_char_p, C.POINTER(C.c_uint32), C.c_void_p, C.c_void_p]
+        for headers in (False, True):
+            data = self.encode(b'policy secret', headers)
+            for password, expected in [(None, 4), (b'wrong', 5), (b'policy secret', 0)]:
+                with self.subTest(headers=headers, password_case=expected), tempfile.TemporaryFile() as f:
+                    f.write(data); f.flush()
+                    flags = C.c_uint32()
+                    self.assertEqual(probe(f.fileno(), password, C.byref(flags), None, None), expected)
+                    if expected == 0:
+                        self.assertEqual(flags.value, 1 | (2 if headers else 0) | 8 | 16)
+                    self.assertEqual(f.seek(0), 0)
+                    self.assertEqual(f.read(), data)
+        with tempfile.TemporaryFile() as f:
+            f.write(stored('plain')); f.flush()
+            flags = C.c_uint32()
+            self.assertEqual(probe(f.fileno(), None, C.byref(flags), None, None), 0)
+            self.assertEqual(flags.value, 8 | 16)
+
+    def test_policy_rejects_mixed_and_unsupported_layouts(self):
+        probe = lib.arkiv_seven_policy
+        probe.argtypes = [C.c_int, C.c_char_p, C.POINTER(C.c_uint32), C.c_void_p, C.c_void_p]
+        # Independent metadata fixture: one Copy stream and one AES stream.
+        # No CRC is present, so arbitrary AES plaintext may decode successfully.
+        # Mixed encryption must remain ineligible regardless of decoding success.
+        mixed = stored_many([('plain', 0x20, b'plain'), ('encrypted', 0x20, bytes(16))])
+        offset, length, _ = struct.unpack_from('<QQI', mixed, 12)
+        header = mixed[32 + offset:]
+        folders = b'\x07\x0b\x02\x00' + b'\x01\x01\x00' * 2
+        aes = b'\x01\x24\x06\xf1\x07\x01\x12\x53\x0f' + bytes(16)
+        header = header.replace(folders, b'\x07\x0b\x02\x00\x01\x01\x00' + aes)
+        start = struct.pack('<QQI', offset, len(header), zlib.crc32(header))
+        mixed = mixed[:8] + struct.pack('<I', zlib.crc32(start)) + start + mixed[32:32 + offset] + header
+        with tempfile.TemporaryFile() as f:
+            f.write(mixed); f.flush(); flags = C.c_uint32()
+            self.assertEqual(probe(f.fileno(), b'secret', C.byref(flags), None, None), 0)
+            self.assertEqual(flags.value & 5, 5)
+            self.assertEqual(flags.value & 8, 0)
+        for data in [stored('link', (0o120777 << 16) | 0x8000, b'target'), stored('ok') + b'trailer']:
+            with tempfile.TemporaryFile() as f:
+                f.write(data); f.flush(); flags = C.c_uint32()
+                self.assertEqual(probe(f.fileno(), None, C.byref(flags), None, None), 0)
+                self.assertEqual(flags.value & 8, 0)
+
     def test_independent_copy_fixture_and_hostile_paths(self):
         self.assertEqual(self.decode(stored('safe.txt'))[0], 0)
         for name in ['../escape', '/absolute', 'C:\\evil', 'a/../b', 'a//b', 'a:b', 'a\nb', '/'.join(['x'] * 257)]:

@@ -23,3 +23,37 @@ For LGPL replacement/relinking, rebuild the checked-in bridge and source subset 
 ## Verification
 
 `tests/test_sevenzip.py` covers a separately constructed Copy-format 7z, hostile names and link/device attributes, real plain/AES fixtures, header encryption on/off, missing/wrong password and successful retry, corruption and cancellation. `SevenZipTests.swift` exercises creation → inspection → full/selective extraction → byte comparison, Unicode/empty files/directories, collisions, magic detection, private-session cleanup, changed archives and ZIP-password rejection. Runtime-generated passwords remain in memory. Fixture password `fixture password` is public test data. Tests run through `scripts/test-engine.sh` and `swift test`; macOS bundle/Universal verification is performed by CI.
+
+## Encrypted modification policy foundation (editing remains disabled)
+
+`SevenZipPolicyInspector` inspects the original 7z and reports data encryption,
+header encryption, mixed encrypted/plain data, supported layout, full-data
+verification, and eligibility for a future encrypted-edit phase. Header encryption
+is detected from the upstream header-open password callback, independently of
+per-item `kpidEncrypted`. A missing or wrong password returns a typed failure,
+not a usable policy result. Header-encrypted archives require a password before
+the complete policy can be known.
+
+`prepareEncryptedEdit` is a read-only preparation API with an operation-local
+password-request closure. It does not enable a menu or write anything. The caller
+supplies its normal password sheet when a future edit flow uses this API. An
+already-unlocked snapshot still needs a fresh credential: its plaintext TAR is
+not evidence of password availability. The result contains no credential or
+reusable authorization. Validation opens the original with the existing no-follow
+path walker, pins the descriptor, tests every stream, and checks descriptor/path
+identity and timestamps afterward; Swift also checks the snapshot before and
+after, including after the password callback. No new plaintext spool is created.
+
+Future eligibility requires the existing ordinary non-solid, single-file,
+no-prefix/trailer, safe metadata/path rules; Copy/LZMA2 data with AES KDF exponent
+19 where encrypted; CRC metadata for encrypted entries; no mixed encrypted/plain
+nonempty data; and successful verification of all streams with one password.
+Different passwords that prevent full verification cannot qualify. Empty files
+and directories do not count as unencrypted payload streams. Header-only encryption
+can qualify, but all encrypted editing remains disabled. Unsupported layouts
+remain read-only even when their payload can be decoded. The policy is not a
+promise to preserve arbitrary header codec/KDF settings in a later writer:
+that phase must inspect those settings before permitting output.
+
+Password strings are borrowed only for the synchronous operation, never persisted
+or logged. Existing Swift allocator/secure-erasure limitations still apply.

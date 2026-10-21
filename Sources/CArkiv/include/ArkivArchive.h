@@ -31,6 +31,9 @@ int arkiv_extract_promised(const char *, const char *, const int64_t *, size_t, 
    5 wrong password or encrypted damage, 6 corrupt, 7 CRC error, 8 unsupported method,
    9 warning: format has no payload checksum. 1 operational/security error. */
 int arkiv_test(const char *, const char *, arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
+/* Read-only policy on a pinned original. Bits match arkiv_seven_policy;
+   never authorizes a commit. Password is borrowed for this operation only. */
+int arkiv_inspect_seven_policy(const char *, const char *, uint32_t *, arkiv_cancel *);
 const char *arkiv_backend_version(void);
 
 /* Publish validated output beside its private staging directory. Never replaces or

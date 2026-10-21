@@ -758,6 +758,20 @@ int arkiv_unlock_seven(const char *path, const char *output, const char *passwor
  close(in);close(out);if(result)unlink(output);return result;
 }
 
+int arkiv_inspect_seven_policy(const char *path,const char *password,uint32_t *flags,arkiv_cancel *token) {
+ if(!flags)return 1;
+ *flags=0;
+ if(cancelled(token))return 2;
+ int fd=create_open(path);if(fd<0)return 1;
+ struct stat before,after,current;int result=1;
+ if(fstat(fd,&before)||!S_ISREG(before.st_mode))goto done;
+ locale_t utf8=newlocale(LC_CTYPE_MASK,"en_US.UTF-8",NULL);
+ if(!utf8)utf8=newlocale(LC_CTYPE_MASK,"C.UTF-8",NULL);
+ if(utf8){locale_t previous=uselocale(utf8);result=arkiv_seven_policy(fd,password,flags,seven_cancel,token);uselocale(previous);freelocale(utf8);}
+ if(fstat(fd,&after)||lstat(path,&current)||!create_same_stat(&before,&after)||!create_same_stat(&before,&current))result=1;
+done:close(fd);if(result)*flags=0;return result;
+}
+
 const char *arkiv_seven_loaded_library(void) { return arkiv_seven_library_path(); }
 
 /* libarchive's seekable reader may recover a damaged central directory as empty.
