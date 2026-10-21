@@ -109,6 +109,14 @@ class SevenZipTests(unittest.TestCase):
             self.assertEqual(probe(f.fileno(), b'secret', C.byref(flags), None, None), 0)
             self.assertEqual(flags.value & 5, 5)
             self.assertEqual(flags.value & 8, 0)
+            delete = lib.arkiv_seven_delete_encrypted
+            delete.argtypes = [C.c_int, C.POINTER(C.c_char_p), C.POINTER(C.c_ubyte), C.c_uint64, C.c_int, C.c_char_p, C.c_void_p, C.c_void_p, C.c_void_p, C.c_void_p]
+            with tempfile.TemporaryFile() as output:
+                names = (C.c_char_p * 2)(b'plain', b'encrypted')
+                mask = (C.c_ubyte * 2)(1, 0)
+                self.assertNotEqual(delete(f.fileno(), names, mask, 2, output.fileno(), b'secret', None, None, None, None), 0)
+                self.assertEqual(output.seek(0, 2), 0)
+            f.seek(0); self.assertEqual(f.read(), mixed)
         for data in [stored('link', (0o120777 << 16) | 0x8000, b'target'), stored('ok') + b'trailer']:
             with tempfile.TemporaryFile() as f:
                 f.write(data); f.flush(); flags = C.c_uint32()

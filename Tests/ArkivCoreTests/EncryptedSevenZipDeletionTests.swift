@@ -42,6 +42,23 @@ final class EncryptedSevenZipDeletionTests: XCTestCase {
             }
         }
     }
+    func testMultipleFilesAndOtherEncryptedEditsRemainDisabled() throws {
+        for headers in [false, true] {
+            try fixture(headers: headers) { root, archive, snapshot in
+                let updater = ArchiveModificationUpdater(), original = try Data(contentsOf: archive)
+                XCTAssertThrowsError(try updater.rename(path: "keep.txt", to: "new.txt", in: snapshot, cancellation: ArchiveCancellation()))
+                XCTAssertThrowsError(try updater.replace(path: "keep.txt", with: root.appendingPathComponent("remove.txt"), in: snapshot, cancellation: ArchiveCancellation()))
+                XCTAssertThrowsError(try ArchiveAdditionUpdater().add(sources: [root.appendingPathComponent("keep.txt")], to: snapshot, cancellation: ArchiveCancellation()))
+                XCTAssertEqual(try Data(contentsOf: archive), original)
+                try updater.delete(paths: ["remove.txt", "資料.app/nested/🦋.txt"], from: snapshot, password: "secret", cancellation: ArchiveCancellation())
+                let fresh = try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation(), password: "secret")
+                XCTAssertNotNil(fresh.index.row(at: "keep.txt"))
+                XCTAssertNotNil(fresh.index.row(at: "資料.app/nested/empty"))
+                XCTAssertNil(fresh.index.row(at: "remove.txt"))
+                XCTAssertNil(fresh.index.row(at: "資料.app/nested/🦋.txt"))
+            }
+        }
+    }
     func testWrongPasswordCancellationAndStaleSourceAreAtomic() throws {
         for headers in [false, true] {
             try fixture(headers: headers) { _, archive, snapshot in
@@ -55,7 +72,10 @@ final class EncryptedSevenZipDeletionTests: XCTestCase {
                 let token = ArchiveCancellation()
                 XCTAssertThrowsError(try updater.delete(paths: ["remove.txt"], from: snapshot, password: "secret", cancellation: token, progress: { _ in token.cancel() }))
                 XCTAssertEqual(try Data(contentsOf: archive), original)
-                try Data("changed".utf8).write(to: archive)
+                XCTAssertThrowsError(try updater.delete(paths: ["remove.txt"], from: snapshot, password: "secret", cancellation: ArchiveCancellation(), progress: { _ in
+                    try? Data("changed".utf8).write(to: archive)
+                }))
+                XCTAssertEqual(try Data(contentsOf: archive), Data("changed".utf8))
                 XCTAssertThrowsError(try updater.delete(paths: ["remove.txt"], from: snapshot, password: "secret", cancellation: ArchiveCancellation()))
                 XCTAssertEqual(try Data(contentsOf: archive), Data("changed".utf8))
             }

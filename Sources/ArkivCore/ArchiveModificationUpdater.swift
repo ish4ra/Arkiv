@@ -17,7 +17,7 @@ public struct ArchiveModificationUpdater: Sendable {
         }
     }
     public func canDeleteEncrypted(_ snapshot: ArchiveSnapshot) -> Bool {
-        snapshot.sevenEncryptionPolicy?.eligibleForFutureEncryptedModification == true &&
+        snapshot.sevenEncryptionPolicy?.eligibleForEncryptedDeletion == true &&
             (try? SourceStamp(snapshot.url)) == snapshot.stamp
     }
     @discardableResult
@@ -27,7 +27,7 @@ public struct ArchiveModificationUpdater: Sendable {
         if canDeleteEncrypted(snapshot) {
             guard let password else { throw ArchiveFailure.passwordRequired }
             let policy = try SevenZipPolicyInspector().inspect(snapshot, password: password, cancellation: cancellation)
-            guard policy.eligibleForFutureEncryptedModification else {
+            guard policy.eligibleForEncryptedDeletion else {
                 throw ArchiveFailure.message(policy.readOnlyReason)
             }
             return try ArchiveZIPUpdater().deleteSeven(paths: paths, from: snapshot, password: password, cancellation: cancellation, progress: progress)
