@@ -115,6 +115,47 @@ class SevenZipTests(unittest.TestCase):
                 self.assertEqual(probe(f.fileno(), None, C.byref(flags), None, None), 0)
                 self.assertEqual(flags.value & 8, 0)
 
+    def test_encrypted_delete_preserves_ciphertext_and_header_policy(self):
+        self.assertTrue(hasattr(lib, 'arkiv_seven_delete_encrypted'))
+        fn = lib.arkiv_seven_delete_encrypted
+        fn.argtypes = [C.c_int, C.POINTER(C.c_char_p), C.POINTER(C.c_ubyte), C.c_uint64,
+                       C.c_int, C.c_char_p, C.c_void_p, C.c_void_p, C.c_void_p, C.c_void_p]
+        def packed(data):
+            # EncodedHeader's PackInfo PackPos is the end of file-data streams.
+            offset = struct.unpack_from('<Q', data, 12)[0]
+            header = data[32 + offset:]
+            if header[:2] == b'\x17\x06':
+                first = header[2]; value = 0; mask = 0x80; pos = 3
+                for i in range(8):
+                    if not first & mask:
+                        value |= (first & (mask - 1)) << (8 * i); break
+                    value |= header[pos] << (8 * i); pos += 1; mask >>= 1
+                offset = value
+            return data[32:32 + offset]
+        for headers in [False, True]:
+            before = self.encode(b'delete secret', headers)
+            for password, expected in [(b'wrong', 5), (b'delete secret', 0)]:
+                with tempfile.TemporaryFile() as source, tempfile.TemporaryFile() as output:
+                    source.write(before); source.flush()
+                    names = (C.c_char_p * 3)('資料 🐈/hello.txt'.encode(), b'empty/', b'zero')
+                    mask = (C.c_ubyte * 3)(1, 0, 0)
+                    result = fn(source.fileno(), names, mask, 3, output.fileno(), password, None, None, None, None)
+                    self.assertEqual(result, expected)
+                    output.seek(0); after = output.read()
+                    if result == 0:
+                        self.assertEqual(packed(before), packed(after), 'retained ciphertext must be copied in full')
+                        status, tar = self.decode(after, b'delete secret')
+                        self.assertEqual(status, 0)
+                        with tarfile.open(fileobj=io.BytesIO(tar)) as t:
+                            self.assertEqual(t.getnames(), ['資料 🐈/hello.txt'])
+                            self.assertEqual(t.extractfile(t.getmembers()[0]).read(), b'content' * 10000)
+                        flags = C.c_uint32()
+                        self.assertEqual(lib.arkiv_seven_policy(output.fileno(), password, C.byref(flags), None, None), 0)
+                        self.assertEqual(bool(flags.value & 2), headers)
+                    else:
+                        self.assertEqual(after, b'')
+                    source.seek(0); self.assertEqual(source.read(), before)
+
     def test_independent_copy_fixture_and_hostile_paths(self):
         self.assertEqual(self.decode(stored('safe.txt'))[0], 0)
         for name in ['../escape', '/absolute', 'C:\\evil', 'a/../b', 'a//b', 'a:b', 'a\nb', '/'.join(['x'] * 257)]:

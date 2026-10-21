@@ -135,10 +135,10 @@ public struct ArchiveZIPUpdater: Sendable {
         return try update(sources: sources, snapshot: snapshot, folder: "", plan: nil, seven: true, cancellation: cancellation, progress: progress)
     }
     @discardableResult
-    func deleteSeven(paths: Set<String>, from snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
+    func deleteSeven(paths: Set<String>, from snapshot: ArchiveSnapshot, password: String? = nil, cancellation: ArchiveCancellation,
                      progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
-        return try update(sources: [], snapshot: snapshot, folder: "", plan: deletionPlan(snapshot, paths: paths), seven: true, cancellation: cancellation, progress: progress)
+        return try update(sources: [], snapshot: snapshot, folder: "", plan: deletionPlan(snapshot, paths: paths), seven: true, password: password, cancellation: cancellation, progress: progress)
     }
     @discardableResult
     func renameSeven(path: String, to name: String, in snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
@@ -146,14 +146,19 @@ public struct ArchiveZIPUpdater: Sendable {
         try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
         return try renameItem(path: path, to: name, in: snapshot, seven: true, cancellation: cancellation, progress: progress)
     }
-    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, seven: Bool = false, cancellation: ArchiveCancellation,
+    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, seven: Bool = false, password: String? = nil, cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         guard (seven || snapshot.unlocked == nil), snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
         }
         let archive = canonical(snapshot.url)
         var error = [CChar](repeating: 0, count: 256)
-        guard let transaction = seven ? arkiv_seven_begin(archive.path, &error, error.count) : arkiv_zip_begin(archive.path, &error, error.count) else {
+        if password != nil && (!seven || plan == nil || renameNames != nil || replacement != nil || !sources.isEmpty) {
+            throw ArchiveFailure.message("Only encrypted Delete is supported.")
+        }
+        guard let transaction = password != nil ? arkiv_seven_encrypted_begin(archive.path, password, cancellation.pointer, &error, error.count) :
+            seven ? arkiv_seven_begin(archive.path, &error, error.count) : arkiv_zip_begin(archive.path, &error, error.count) else {
+            if cancellation.isCancelled { throw ArchiveFailure.cancelled }
             throw ArchiveFailure.message(String(cString: error))
         }
         defer { arkiv_zip_end(transaction) }
@@ -233,7 +238,11 @@ public struct ArchiveZIPUpdater: Sendable {
                 defer { names.forEach { free($0) } }
                 guard names.allSatisfy({ $0 != nil }) else { throw ArchiveFailure.message("Not enough memory to prepare the edit.") }
                 let pointers = names.map { $0.map { UnsafePointer<CChar>($0) } }
-                result = arkiv_seven_prepare_delete(transaction, pointers, plan, plan.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+                if let password {
+                    result = arkiv_seven_prepare_delete_encrypted(transaction, pointers, plan, plan.count, stage.path, password, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+                } else {
+                    result = arkiv_seven_prepare_delete(transaction, pointers, plan, plan.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+                }
             } else {
                 result = arkiv_zip_prepare_delete(transaction, plan, plan.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
             }

@@ -1230,6 +1230,18 @@ HRESULT CInArchive::ReadAndDecodePackedStreams(
 
   for (CNum i = 0; i < folders.NumFolders; i++)
   {
+    // Arkiv: decoding remains broad, but editing may only recreate ordinary
+    // AES-256 headers with the encoder's KDF policy and an integrity checksum.
+    CFolder arkivFolder;
+    folders.ParseFolderInfo(i, arkivFolder);
+    FOR_VECTOR (ci, arkivFolder.Coders)
+    {
+      const CCoderInfo &coder = arkivFolder.Coders[ci];
+      if (coder.MethodID == k_AES &&
+          (coder.Props.Size() == 0 || (((const Byte *)coder.Props)[0] & 0x3F) != 19 ||
+           !folders.FolderCRCs.ValidAndDefined(i)))
+        ArkivUnsupportedEncryptedHeader = true;
+    }
     CByteBuffer &data = dataVector.AddNew();
     const UInt64 unpackSize64 = folders.GetFolderUnpackSize(i);
     if (unpackSize64 > (UInt64(64) << 20) - arkivHeaderBytes) ThrowUnsupported();
@@ -1644,6 +1656,7 @@ HRESULT CInArchive::ReadDatabase2(
     )
 {
   db.Clear();
+  ArkivUnsupportedEncryptedHeader = false;
   db.ArcInfo.StartPosition = _arhiveBeginStreamPosition;
 
   db.ArcInfo.Version.Major = _header[6];
@@ -1802,6 +1815,8 @@ HRESULT CInArchive::ReadDatabase(
       EXTERNAL_CODECS_LOC_VARS db
       Z7_7Z_DECODER_CRYPRO_VARS
       );
+    if (ArkivUnsupportedEncryptedHeader)
+      db.UnsupportedFeatureWarning = true;
     if (ThereIsHeaderError)
       db.ThereIsHeaderError = true;
     if (res == E_NOTIMPL)

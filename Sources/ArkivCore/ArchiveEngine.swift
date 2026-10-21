@@ -28,6 +28,7 @@ public struct ArchiveSnapshot: Sendable {
     public let entries: [ArchiveEntry]
     let stamp: SourceStamp
     let unlocked: UnlockedArchive?
+    public internal(set) var sevenEncryptionPolicy: SevenZipEncryptionPolicy? = nil
     var sourceLease: ArchiveOpenedFileLease? = nil
     var backingURL: URL { unlocked?.url ?? url }
     public var index: ArchiveIndex { ArchiveIndex(entries: entries) }
@@ -141,7 +142,15 @@ public struct LibArchiveEngine: ArchiveEngine {
         }, context, &error, error.count)
         try check(result, error)
         guard try SourceStamp(url) == stamp else { throw ArchiveFailure.message("Archive changed while reading. Reopen it.") }
-        return ArchiveSnapshot(url: url, entries: collector.entries, stamp: stamp, unlocked: unlocked)
+        var snapshot = ArchiveSnapshot(url: url, entries: collector.entries, stamp: stamp, unlocked: unlocked)
+        if unlocked != nil, password != nil {
+            // Non-secret UI eligibility only. Every edit still asks for a fresh
+            // password and validates the pinned original; never retain it here.
+            snapshot.sevenEncryptionPolicy = try? SevenZipPolicyInspector().inspect(snapshot, password: password, cancellation: cancellation)
+            if cancellation.isCancelled { throw ArchiveFailure.cancelled }
+            guard try SourceStamp(url) == stamp else { throw ArchiveFailure.message("Archive changed while inspecting encryption policy.") }
+        }
+        return snapshot
     }
     public func extract(_ snapshot: ArchiveSnapshot, ids: [Int64]?, into parent: URL,
                         cancellation: ArchiveCancellation,

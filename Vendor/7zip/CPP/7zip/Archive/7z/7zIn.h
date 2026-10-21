@@ -344,6 +344,7 @@ const UInt32 kHeaderSize = 32;
 class CInArchive
 {
   friend class CStreamSwitch;
+  bool ArkivUnsupportedEncryptedHeader = false;
 
   CMyComPtr<IInStream> _stream;
 

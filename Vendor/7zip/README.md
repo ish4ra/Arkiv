@@ -9,8 +9,10 @@ Retrieved: 2026-10-10
 
 Arkiv modifications to upstream source:
 
+- `CPP/7zip/Archive/7z/7zOut.cpp`: serialize/encrypt the valid empty header when header encryption is requested, preserving it after deletion of the final item. Plain empty archives retain upstream behavior.
+
 - `CPP/7zip/Crypto/7zAes.cpp`: remove the process-global cache retaining passwords/derived keys. Retain codec-instance caches only. Bound KDF exponent to 20 (upstream encoder uses 19), retaining the direct-key special value 63.
-- `CPP/7zip/Archive/7z/7zIn.cpp`: bound packed and decoded header buffers to 64 MiB, numeric metadata counts to 1,000,000 and file count to 100,000 before allocation.
+- `CPP/7zip/Archive/7z/7zIn.cpp`: bound packed and decoded header buffers to 64 MiB, numeric metadata counts to 1,000,000 and file count to 100,000 before allocation. Mark encrypted headers with non-default KDF exponents or missing CRCs as an unsupported-feature warning for modification gating; browsing remains available.
 - `CPP/7zip/Compress/LzmaDecoder.cpp` and `Lzma2Decoder.cpp`: reject dictionaries larger than 128 MiB before allocation.
 
 These restrictions deliberately reject unusually resource-intensive archives. They do not alter AES or compression algorithms. Modified files retain upstream notices; modifications are LGPL-2.1-or-later.

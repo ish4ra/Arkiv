@@ -894,7 +894,9 @@ HRESULT COutArchive::WriteDatabase(
   sh.NextHeaderSize = 0;
   sh.NextHeaderCRC = 0; // CrcCalc(NULL, 0);
 
-  if (!db.IsEmpty())
+  // Arkiv: retain requested header encryption even after deleting the last item.
+  // WriteHeader already emits the valid empty Header/End record in this case.
+  if (!db.IsEmpty() || (options && options->PasswordIsDefined))
   {
     CMyComPtr2_Create<ISequentialOutStream, COutStreamWithCRC> crcStream;
     crcStream->SetStream(SeqStream);

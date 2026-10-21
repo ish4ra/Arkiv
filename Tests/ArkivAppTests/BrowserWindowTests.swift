@@ -179,22 +179,30 @@ final class BrowserWindowTests: XCTestCase {
         try await verifyDeleteConfirmation(format: .sevenZip)
     }
     @MainActor
-    private func verifyDeleteConfirmation(format: ArchiveFormat) async throws {
+    func testEncryptedSevenZipDeleteAsksOnceAfterConfirmation() async throws {
+        try await verifyDeleteConfirmation(format: .sevenZip, encrypted: true)
+    }
+    @MainActor
+    private func verifyDeleteConfirmation(format: ArchiveFormat, encrypted: Bool = false) async throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: root) }
         let source = root.appendingPathComponent("file.txt")
         try Data("payload".utf8).write(to: source)
-        let archive = try ArchiveCreator().create(.init(sources: [source], destination: root, name: "Delete", format: format), cancellation: ArchiveCancellation(), progress: { _ in })
+        let archive = try ArchiveCreator().create(.init(sources: [source], destination: root, name: "Delete", format: format, password: encrypted ? "secret" : nil, encryptFilenames: encrypted), cancellation: ArchiveCancellation(), progress: { _ in })
         var sounds = 0
+        var passwordRequests = 0
         let controller = BrowserWindowController(modificationFeedback: { result in
             ExtractionFeedback.completed(result, play: { sounds += 1 })
+        }, requestArchivePassword: { _, _, _, completion in
+            passwordRequests += 1
+            completion("secret")
         })
         defer { controller.close() }
         let item = NSMenuItem(title: "Delete…", action: #selector(BrowserWindowController.deleteSelected(_:)), keyEquivalent: "")
         XCTAssertFalse(controller.validateMenuItem(item))
-        controller.load(archive)
+        controller.load(archive, password: encrypted ? "secret" : nil)
         for _ in 0..<400 {
             if !controller.isBusy { break }
             try await Task.sleep(nanoseconds: 25_000_000)
@@ -243,6 +251,7 @@ final class BrowserWindowTests: XCTestCase {
         try await dismissed()
         XCTAssertEqual(try Data(contentsOf: archive), before)
         XCTAssertEqual(sounds, 0)
+        XCTAssertEqual(passwordRequests, 0, "Cancelled confirmation must not ask for a password")
         controller.deleteSelected(nil)
         let confirmedSheet = try XCTUnwrap(controller.window?.attachedSheet)
         try sheetButton(confirmedSheet, "Delete").performClick(nil)
@@ -254,8 +263,9 @@ final class BrowserWindowTests: XCTestCase {
         XCTAssertFalse(controller.isBusy)
         XCTAssertEqual(table.numberOfRows, 0)
         XCTAssertEqual(sounds, 1)
+        XCTAssertEqual(passwordRequests, encrypted ? 1 : 0, "Refresh must reuse only this operation credential, not prompt again")
         XCTAssertFalse(controller.validateMenuItem(item))
-        XCTAssertTrue(try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation()).entries.isEmpty)
+        XCTAssertTrue(try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation(), password: encrypted ? "secret" : nil).entries.isEmpty)
     }
 
     @MainActor
