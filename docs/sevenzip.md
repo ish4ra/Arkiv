@@ -76,3 +76,8 @@ policy; every file-data packed stream remains byte-for-byte unchanged. Add and
 Replace remain disabled for encrypted archives. Tests compare the complete retained ciphertext
 range, exercise header on/off, Unicode/case-only/package renames and final-item deletion, and cover password errors,
 cancellation, external source changes, recursive packages and unrelated ZIP/7z edits.
+
+On macOS, update-plan lookup uses canonical Unicode keys because Darwin
+libarchive presents spooled names in NFD while original 7z headers can use NFC.
+Ambiguous canonical duplicates are rejected. Retained header properties keep
+their original spelling; only explicitly renamed paths are changed.

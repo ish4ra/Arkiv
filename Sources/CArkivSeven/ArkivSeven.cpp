@@ -15,6 +15,9 @@
 #include <dlfcn.h>
 #include <algorithm>
 #include <map>
+#ifdef __APPLE__
+#include <CoreFoundation/CFString.h>
+#endif
 using NWindows::NCOM::CPropVariant;
 static const uint64_t Budget = uint64_t(20)*1024*1024*1024;
 struct State {
@@ -212,6 +215,24 @@ extern "C" int arkiv_seven_policy(int input,const char *password,uint32_t *flags
 extern "C" int arkiv_seven_probe_append(int input) {
  State s{nullptr,nullptr,nullptr};try{CMyComPtr<IInArchive> handler=new NArchive::N7z::CHandler;UInt32 count=0;uint64_t total=0;return appendable(input,s,handler,count,total);}catch(...){return 1;}
 }
+// Darwin libarchive presents TAR-spooled names in NFD even when the 7z
+// header stores NFC. Normalize only lookup keys, never retained properties.
+// Duplicate canonical keys fail closed instead of selecting an arbitrary item.
+static bool path_key(std::string &name) {
+#ifdef __APPLE__
+ CFStringRef original=CFStringCreateWithBytes(kCFAllocatorDefault,reinterpret_cast<const UInt8*>(name.data()),name.size(),kCFStringEncodingUTF8,false);
+ if(!original)return false;
+ CFMutableStringRef normalized=CFStringCreateMutableCopy(kCFAllocatorDefault,0,original);CFRelease(original);
+ if(!normalized)return false;
+ CFStringNormalize(normalized,kCFStringNormalizationFormD);
+ CFIndex capacity=CFStringGetMaximumSizeForEncoding(CFStringGetLength(normalized),kCFStringEncodingUTF8)+1;
+ std::vector<char> bytes(capacity);
+ bool ok=CFStringGetCString(normalized,bytes.data(),capacity,kCFStringEncodingUTF8);CFRelease(normalized);
+ if(!ok)return false;
+ name=bytes.data();
+#endif
+ return true;
+}
 static int encode(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,int original,const unsigned char*keep=nullptr,size_t keepCount=0,const char*const*oldnames=nullptr,const char*const*newnames=nullptr,size_t replacement=SIZE_MAX,bool encryptedMetadataEdit=false){State s{password,cancel,context};s.progress=progress;s.progressContext=progressContext;try{
  if(s.stopped())return 2;
  if(encryptedMetadataEdit&&(!password||((keep!=nullptr)==(newnames!=nullptr))||replacement!=SIZE_MAX||input>=0))return 1;
@@ -228,12 +249,13 @@ static int encode(int input,int output,const char*password,int headers,arkiv_sev
    CPropVariant p;if(static_cast<IInArchive*>(raw)->GetProperty(i,kpidPath,&p)!=S_OK||p.vt!=VT_BSTR)return 1;
    AString utf8;ConvertUnicodeToUTF8(UString(p.bstrVal),utf8);std::string name=utf8.Ptr();
    if(!name.empty()&&name.back()=='/')name.pop_back();
-   if(!indices.emplace(name,i).second)return 1;
+   if(!path_key(name)||!indices.emplace(name,i).second)return 1;
   }
   retainedMask.resize(retained);
   for(size_t i=0;i<keepCount;i++) {
    if(!oldnames[i]||(keep&&keep[i]>1))return 1;
    std::string name=oldnames[i];if(!name.empty()&&name.back()=='/')name.pop_back();
+   if(!path_key(name))return 1;
    auto found=indices.find(name);if(found==indices.end())return 1;
    retainedMask[found->second]=keep?keep[i]:1;
    if(i==replacement){

@@ -15,5 +15,5 @@ def build(src):
 with concurrent.futures.ThreadPoolExecutor(max_workers=min(8,os.cpu_count() or 2)) as pool:objects=list(pool.map(build,sources))
 lib=out/('libArkivSeven.dylib' if mac else 'libArkivSeven.so')
 link=['-dynamiclib','-Wl,-install_name,@rpath/libArkivSeven.dylib'] if mac else ['-shared','-Wl,-z,defs']
-subprocess.run([os.environ.get('CXX','c++'),*flags,*link,*objects,'-larchive','-lpthread',*([] if mac else ['-ldl']),'-o',str(lib)],check=True)
+subprocess.run([os.environ.get('CXX','c++'),*flags,*link,*objects,'-larchive','-lpthread',*(['-framework','CoreFoundation'] if mac else ['-ldl']),'-o',str(lib)],check=True)
 print(lib)
