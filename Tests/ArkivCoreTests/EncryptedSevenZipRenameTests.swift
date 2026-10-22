@@ -30,18 +30,23 @@ final class EncryptedSevenZipRenameTests: XCTestCase {
                 XCTAssertTrue(updater.canRenameEncrypted(snapshot))
                 var fresh = snapshot
                 for (path, name) in [("keep.txt", "KEEP.txt"), ("資料.app", "新しい 🦋.app"), ("新しい 🦋.app/nested/🦋.txt", "résumé 🐈.txt"), ("新しい 🦋.app/nested/empty", "EMPTY")] {
-                    try updater.rename(path: path, to: name, in: fresh, password: "secret", cancellation: ArchiveCancellation())
-                    fresh = try engine.inspect(archive, cancellation: ArchiveCancellation(), password: "secret")
+                    do { try updater.rename(path: path, to: name, in: fresh, password: "secret", cancellation: ArchiveCancellation()) }
+                    catch { XCTFail("Rename transaction failed for \(path): \(error)"); return }
+                    do { fresh = try engine.inspect(archive, cancellation: ArchiveCancellation(), password: "secret") }
+                    catch { XCTFail("Reopen after rename failed: \(error)"); return }
                     XCTAssertEqual(fresh.sevenEncryptionPolicy?.headersEncrypted, headers)
                     XCTAssertEqual(fresh.sevenEncryptionPolicy?.dataEncrypted, true)
                     XCTAssertEqual(try engine.test(archive, cancellation: ArchiveCancellation(), password: "secret").state, .ok)
                 }
-                let out = try engine.extract(fresh, ids: nil, into: root, cancellation: ArchiveCancellation(), progress: { _ in })
+                let out: URL
+                do { out = try engine.extract(fresh, ids: nil, into: root, cancellation: ArchiveCancellation(), progress: { _ in }) }
+                catch { XCTFail("Extraction after rename failed: \(error)"); return }
                 XCTAssertEqual(try Data(contentsOf: out.appendingPathComponent("KEEP.txt")), Data("retained".utf8))
                 XCTAssertEqual(try Data(contentsOf: out.appendingPathComponent("remove.txt")), Data("deleted".utf8))
                 XCTAssertEqual(try Data(contentsOf: out.appendingPathComponent("新しい 🦋.app/nested/résumé 🐈.txt")), Data("child".utf8))
                 XCTAssertTrue(FileManager.default.fileExists(atPath: out.appendingPathComponent("新しい 🦋.app/nested/EMPTY").path))
-                try updater.delete(paths: ["新しい 🦋.app"], from: fresh, password: "secret", cancellation: ArchiveCancellation())
+                do { try updater.delete(paths: ["新しい 🦋.app"], from: fresh, password: "secret", cancellation: ArchiveCancellation()) }
+                catch { XCTFail("Encrypted Delete after rename failed: \(error)"); return }
                 fresh = try engine.inspect(archive, cancellation: ArchiveCancellation(), password: "secret")
                 XCTAssertEqual(Set(fresh.entries.map(\.path)), ["KEEP.txt", "remove.txt"])
             }
