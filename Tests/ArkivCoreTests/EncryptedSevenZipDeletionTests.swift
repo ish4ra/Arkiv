@@ -28,7 +28,7 @@ final class EncryptedSevenZipDeletionTests: XCTestCase {
             try fixture(headers: headers) { root, archive, snapshot in
                 let updater = ArchiveModificationUpdater(), engine = LibArchiveEngine()
                 XCTAssertTrue(updater.canDeleteEncrypted(snapshot))
-                XCTAssertFalse(updater.capability(for: snapshot).isAvailable, "Other encrypted edits remain disabled")
+                XCTAssertFalse(updater.capability(for: snapshot).isAvailable, "Encrypted Add/Replace remain disabled")
                 try updater.delete(paths: ["remove.txt"], from: snapshot, password: "secret", cancellation: ArchiveCancellation())
                 var fresh = try engine.inspect(archive, cancellation: ArchiveCancellation(), password: "secret")
                 XCTAssertNil(fresh.index.row(at: "remove.txt"))
@@ -42,7 +42,7 @@ final class EncryptedSevenZipDeletionTests: XCTestCase {
             }
         }
     }
-    func testMultipleFilesAndOtherEncryptedEditsRemainDisabled() throws {
+    func testMultipleFilesAndEncryptedAddReplaceRemainDisabled() throws {
         for headers in [false, true] {
             try fixture(headers: headers) { root, archive, snapshot in
                 let updater = ArchiveModificationUpdater(), original = try Data(contentsOf: archive)

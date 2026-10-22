@@ -466,7 +466,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
     }
     @objc func renameSelected(_ sender: Any?) {
-        guard canAddItems, let window, window.attachedSheet == nil,
+        guard canRenameItems, let window, window.attachedSheet == nil,
               selectedPaths().count == 1, let path = selectedPaths().first,
               let row = index?.row(at: path) else { return }
         let alert = NSAlert()
@@ -486,14 +486,23 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         field.selectText(nil)
     }
     func renameItem(_ path: String, to name: String) {
-        guard canAddItems, let snapshot else { return }
+        guard canRenameItems, let snapshot else { return }
+        if ArchiveModificationUpdater().canRenameEncrypted(snapshot) {
+            requestArchivePassword(snapshot.url, false, window) { [weak self] password in
+                guard let self, let password else { return }
+                self.performRename(path, to: name, snapshot: snapshot, password: password)
+            }
+        } else { performRename(path, to: name, snapshot: snapshot, password: nil) }
+    }
+    private func performRename(_ path: String, to name: String, snapshot: ArchiveSnapshot, password: String?) {
+        guard !sessionEnded, canRenameItems, self.snapshot?.url == snapshot.url else { return }
         let folder = path.split(separator: "/").dropLast().joined(separator: "/")
         let destination = folder.isEmpty ? name : folder + "/" + name
         let token = begin("Renaming in archive…")
         worker.async { [self] in
             let throttle = ProgressThrottle()
             let result = Result {
-                try ArchiveModificationUpdater().rename(path: path, to: name, in: snapshot, cancellation: token) { progress in
+                try ArchiveModificationUpdater().rename(path: path, to: name, in: snapshot, password: password, cancellation: token) { progress in
                     guard throttle.shouldUpdate() else { return }
                     DispatchQueue.main.async { [weak self] in
                         guard let self, self.isBusy else { return }
@@ -508,7 +517,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                 case .success(let url):
                     self.snapshot = nil; self.index = nil; self.zipAdditionAvailable = false
                     search.stringValue = ""
-                    load(url, browsingFolder: folder, selectingPath: destination)
+                    load(url, password: password, browsingFolder: folder, selectingPath: destination)
                 case .failure(let error): present(error)
                 }
             }
@@ -589,6 +598,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         return FileManager.default.isWritableFile(atPath: snapshot.url.path)
             && FileManager.default.isWritableFile(atPath: snapshot.url.deletingLastPathComponent().path)
     }
+    private var canRenameItems: Bool { canDeleteItems }
     private var canDeleteItems: Bool {
         if canAddItems { return true }
         guard !isBusy, let snapshot, ArchiveModificationUpdater().canDeleteEncrypted(snapshot) else { return false }
@@ -925,7 +935,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         case #selector(openSelectedFile(_:)), #selector(openSelectedArchive(_:)): return !sessionEnded && !isBusy && window?.attachedSheet == nil && selectedRegularFile != nil
         case #selector(showPackageContents(_:)): return !isBusy && selectedPackage != nil
         case #selector(replaceSelected(_:)): return canReplaceFile
-        case #selector(renameSelected(_:)): return canAddItems && window?.attachedSheet == nil && selectedPaths().count == 1
+        case #selector(renameSelected(_:)): return canRenameItems && window?.attachedSheet == nil && selectedPaths().count == 1
         case #selector(deleteSelected(_:)): return canDeleteItems && window?.attachedSheet == nil && !selectedPaths().isEmpty
         case #selector(addFiles(_:)), #selector(addFolder(_:)):
             menuItem.toolTip = additionCapability.reason

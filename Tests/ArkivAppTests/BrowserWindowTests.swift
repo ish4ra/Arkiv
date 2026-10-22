@@ -384,22 +384,30 @@ final class BrowserWindowTests: XCTestCase {
         try await verifyRenameSheet(format: .sevenZip)
     }
     @MainActor
-    private func verifyRenameSheet(format: ArchiveFormat) async throws {
+    func testEncryptedSevenZipRenameAsksOnceAndRefreshes() async throws {
+        try await verifyRenameSheet(format: .sevenZip, encrypted: true)
+    }
+    @MainActor
+    private func verifyRenameSheet(format: ArchiveFormat, encrypted: Bool = false) async throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: root) }
         let sources = ["file.txt", "other.txt"].map { root.appendingPathComponent($0) }
         for source in sources { try Data("payload".utf8).write(to: source) }
-        let archive = try ArchiveCreator().create(.init(sources: sources, destination: root, name: "Rename", format: format), cancellation: ArchiveCancellation(), progress: { _ in })
+        let archive = try ArchiveCreator().create(.init(sources: sources, destination: root, name: "Rename", format: format, password: encrypted ? "secret" : nil, encryptFilenames: encrypted), cancellation: ArchiveCancellation(), progress: { _ in })
         var sounds = 0
+        var passwordRequests = 0
         let controller = BrowserWindowController(modificationFeedback: { result in
             ExtractionFeedback.completed(result, play: { sounds += 1 })
+        }, requestArchivePassword: { _, _, _, completion in
+            passwordRequests += 1
+            completion("secret")
         })
         defer { controller.close() }
         let item = NSMenuItem(title: "Rename…", action: #selector(BrowserWindowController.renameSelected(_:)), keyEquivalent: "")
         XCTAssertFalse(controller.validateMenuItem(item))
-        controller.load(archive)
+        controller.load(archive, password: encrypted ? "secret" : nil)
         func idle() async throws {
             for _ in 0..<400 {
                 if !controller.isBusy && controller.window?.attachedSheet == nil { return }
@@ -425,6 +433,7 @@ final class BrowserWindowTests: XCTestCase {
         try await idle()
         XCTAssertEqual(try Data(contentsOf: archive), before)
         XCTAssertEqual(sounds, 0)
+        XCTAssertEqual(passwordRequests, 0)
         controller.renameSelected(nil)
         let sheet = try XCTUnwrap(controller.window?.attachedSheet)
         let name = try XCTUnwrap(descendants(sheet.contentView!).compactMap { $0 as? NSTextField }.first { $0.isEditable })
@@ -432,10 +441,11 @@ final class BrowserWindowTests: XCTestCase {
         try XCTUnwrap(descendants(sheet.contentView!).compactMap { $0 as? NSButton }.first { $0.title == "Rename" }).performClick(nil)
         try await idle()
         XCTAssertEqual(sounds, 1)
+        XCTAssertEqual(passwordRequests, encrypted ? 1 : 0)
         XCTAssertEqual(table.numberOfRows, 2)
         XCTAssertEqual(table.selectedRowIndexes.count, 1)
         XCTAssertTrue(controller.validateMenuItem(item))
-        XCTAssertEqual(Set(try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation()).entries.map(\.path)), ["資料 🐘.txt", "other.txt"])
+        XCTAssertEqual(Set(try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation(), password: encrypted ? "secret" : nil).entries.map(\.path)), ["資料 🐘.txt", "other.txt"])
     }
 
     @MainActor

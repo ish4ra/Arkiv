@@ -45,7 +45,7 @@ public struct ArchiveZIPUpdater: Sendable {
                        progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
         try renameItem(path: path, to: name, in: snapshot, seven: false, cancellation: cancellation, progress: progress)
     }
-    private func renameItem(path: String, to name: String, in snapshot: ArchiveSnapshot, seven: Bool,
+    private func renameItem(path: String, to name: String, in snapshot: ArchiveSnapshot, seven: Bool, password: String? = nil,
                             cancellation: ArchiveCancellation, progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         guard !name.isEmpty, name != ".", name != "..", !name.contains("/"), !name.contains("\\"), !name.contains(":"),
               !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
@@ -87,7 +87,7 @@ public struct ArchiveZIPUpdater: Sendable {
             let proposed = ArchiveSnapshot(url: snapshot.url, entries: entries, stamp: snapshot.stamp, unlocked: snapshot.unlocked)
             try ArchiveAdditionUpdater.validateSevenPaths(proposed)
         }
-        return try update(sources: [], snapshot: snapshot, folder: "", plan: nil, renameNames: names, seven: seven, cancellation: cancellation, progress: progress)
+        return try update(sources: [], snapshot: snapshot, folder: "", plan: nil, renameNames: names, seven: seven, password: password, cancellation: cancellation, progress: progress)
     }
     /// Replaces exactly one regular file while retaining its archive name and metadata.
     @discardableResult
@@ -141,10 +141,10 @@ public struct ArchiveZIPUpdater: Sendable {
         return try update(sources: [], snapshot: snapshot, folder: "", plan: deletionPlan(snapshot, paths: paths), seven: true, password: password, cancellation: cancellation, progress: progress)
     }
     @discardableResult
-    func renameSeven(path: String, to name: String, in snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
+    func renameSeven(path: String, to name: String, in snapshot: ArchiveSnapshot, password: String? = nil, cancellation: ArchiveCancellation,
                      progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
-        return try renameItem(path: path, to: name, in: snapshot, seven: true, cancellation: cancellation, progress: progress)
+        return try renameItem(path: path, to: name, in: snapshot, seven: true, password: password, cancellation: cancellation, progress: progress)
     }
     private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, seven: Bool = false, password: String? = nil, cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
@@ -153,8 +153,8 @@ public struct ArchiveZIPUpdater: Sendable {
         }
         let archive = canonical(snapshot.url)
         var error = [CChar](repeating: 0, count: 256)
-        if password != nil && (!seven || plan == nil || renameNames != nil || replacement != nil || !sources.isEmpty) {
-            throw ArchiveFailure.message("Only encrypted Delete is supported.")
+        if password != nil && (!seven || ((plan != nil) == (renameNames != nil)) || replacement != nil || !sources.isEmpty) {
+            throw ArchiveFailure.message("Only encrypted Delete and Rename are supported.")
         }
         guard let transaction = password != nil ? arkiv_seven_encrypted_begin(archive.path, password, cancellation.pointer, &error, error.count) :
             seven ? arkiv_seven_begin(archive.path, &error, error.count) : arkiv_zip_begin(archive.path, &error, error.count) else {
@@ -229,9 +229,13 @@ public struct ArchiveZIPUpdater: Sendable {
             }
             let oldPointers = old.map { $0.map { UnsafePointer<CChar>($0) } }
             let newPointers = renamed.map { $0.map { UnsafePointer<CChar>($0) } }
-            result = seven
-                ? arkiv_seven_prepare_rename(transaction, oldPointers, newPointers, renameNames.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
-                : arkiv_zip_prepare_rename(transaction, oldPointers, newPointers, renameNames.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+            if let password {
+                result = arkiv_seven_prepare_rename_encrypted(transaction, oldPointers, newPointers, renameNames.count, stage.path, password, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+            } else {
+                result = seven
+                    ? arkiv_seven_prepare_rename(transaction, oldPointers, newPointers, renameNames.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+                    : arkiv_zip_prepare_rename(transaction, oldPointers, newPointers, renameNames.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+            }
         } else if let plan {
             if seven {
                 let names = snapshot.entries.map { strdup($0.path) }

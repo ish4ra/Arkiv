@@ -11,14 +11,15 @@ public struct SevenZipEncryptionPolicy: Equatable, Sendable {
     public var eligibleForFutureEncryptedModification: Bool {
         (dataEncrypted || headersEncrypted) && !mixedEncryption && supportedLayout && allDataVerified
     }
-    /// Eligibility is only a hint: Delete revalidates the original with a fresh password.
+    /// Eligibility is only a hint: Each edit revalidates the original with a fresh password.
     public var eligibleForEncryptedDeletion: Bool { eligibleForFutureEncryptedModification }
-    /// No general encrypted-edit permission: Add/Rename/Replace remain disabled.
+    public var eligibleForEncryptedRenaming: Bool { eligibleForFutureEncryptedModification }
+    /// No general encrypted-edit permission: Add/Replace remain disabled.
     public var modificationEnabled: Bool { false }
     public var readOnlyReason: String {
         if mixedEncryption { return "Mixed encrypted and plain data remains read-only." }
         if !supportedLayout { return "Unsupported 7z layout or metadata remains read-only." }
-        return "Only Delete is available for eligible encrypted 7z archives."
+        return "Only Delete and Rename are available for eligible encrypted 7z archives."
     }
 }
 

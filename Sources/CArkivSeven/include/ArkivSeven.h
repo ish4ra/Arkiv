@@ -18,6 +18,7 @@ __attribute__((visibility("default"))) int arkiv_seven_test(int, const char *, u
    No write authorization. Failure outputs are diagnostic only. */
 __attribute__((visibility("default"))) int arkiv_seven_policy(int, const char *, uint32_t *, arkiv_seven_cancel, void *);
 __attribute__((visibility("default"))) int arkiv_seven_delete_encrypted(int, const char *const *, const unsigned char *, uint64_t, int, const char *, arkiv_seven_cancel, void *, arkiv_seven_progress, void *);
+__attribute__((visibility("default"))) int arkiv_seven_rename_encrypted(int, const char *const *, const char *const *, uint64_t, int, const char *, arkiv_seven_cancel, void *, arkiv_seven_progress, void *);
 /* Append preserves all original packed streams; additions is a validated private ZIP. */
 __attribute__((visibility("default"))) int arkiv_seven_probe_append(int inputfd);
 __attribute__((visibility("default"))) int arkiv_seven_append(int originalfd, int additionsfd, int outputfd, arkiv_seven_cancel, void *, arkiv_seven_progress, void *);
