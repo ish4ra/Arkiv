@@ -64,6 +64,7 @@ int arkiv_unlock_seven(const char *, const char *, const char *, arkiv_cancel *)
 /* Conservative ZIP32 mutation; transaction owns pinned source and parent descriptors. */
 typedef struct arkiv_zip_transaction arkiv_zip_transaction;
 arkiv_zip_transaction *arkiv_seven_encrypted_begin(const char *, const char *, arkiv_cancel *, char *, size_t);
+int arkiv_seven_prepare_replace_encrypted(arkiv_zip_transaction *, const char *, const char *const *, size_t, size_t, const char *, const char *, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 int arkiv_seven_prepare_add_encrypted(arkiv_zip_transaction *, const char *, const char *, const char *, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 int arkiv_seven_prepare_delete_encrypted(arkiv_zip_transaction *, const char *const *, const unsigned char *, size_t, const char *, const char *, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 int arkiv_seven_prepare_rename_encrypted(arkiv_zip_transaction *, const char *const *, const char *const *, size_t, const char *, const char *, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);

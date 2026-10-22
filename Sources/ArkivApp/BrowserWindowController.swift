@@ -419,7 +419,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
     }
     private var canReplaceFile: Bool {
-        guard canAddItems, additionCapability.isAvailable, window?.attachedSheet == nil, selectedPaths().count == 1,
+        guard canAddItems, window?.attachedSheet == nil, selectedPaths().count == 1,
               let path = selectedPaths().first else { return false }
         return snapshot?.entries.filter { $0.path == path && $0.kind == .file }.count == 1 && index?.row(at: path)?.isDirectory == false
     }
@@ -438,13 +438,22 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
     }
     func replaceItem(_ path: String, with source: URL) {
-        guard canAddItems, additionCapability.isAvailable, let snapshot else { return }
+        guard canAddItems, let snapshot else { return }
+        if ArchiveModificationUpdater().canReplaceEncrypted(snapshot) {
+            requestArchivePassword(snapshot.url, false, window) { [weak self] password in
+                guard let self, let password else { return }
+                self.performReplacement(path, with: source, snapshot: snapshot, password: password)
+            }
+        } else { performReplacement(path, with: source, snapshot: snapshot, password: nil) }
+    }
+    private func performReplacement(_ path: String, with source: URL, snapshot: ArchiveSnapshot, password: String?) {
+        guard !sessionEnded, canAddItems, self.snapshot?.url == snapshot.url else { return }
         let folder = path.split(separator: "/").dropLast().joined(separator: "/")
         let token = begin("Replacing file in archive…")
         worker.async { [self] in
             let throttle = ProgressThrottle()
             let result = Result {
-                try ArchiveModificationUpdater().replace(path: path, with: source, in: snapshot, cancellation: token) { progress in
+                try ArchiveModificationUpdater().replace(path: path, with: source, in: snapshot, password: password, cancellation: token) { progress in
                     guard throttle.shouldUpdate() else { return }
                     DispatchQueue.main.async { [weak self] in
                         guard let self, self.isBusy else { return }
@@ -459,7 +468,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                 case .success(let url):
                     self.snapshot = nil; self.index = nil; self.zipAdditionAvailable = false
                     search.stringValue = ""
-                    load(url, browsingFolder: folder, selectingPath: path)
+                    load(url, password: password, browsingFolder: folder, selectingPath: path)
                 case .failure(let error): present(error)
                 }
             }

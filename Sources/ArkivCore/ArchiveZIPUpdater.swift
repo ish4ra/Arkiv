@@ -96,12 +96,12 @@ public struct ArchiveZIPUpdater: Sendable {
         try replaceItem(path: path, with: source, in: snapshot, seven: false, cancellation: cancellation, progress: progress)
     }
     @discardableResult
-    func replaceSeven(path: String, with source: URL, in snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
+    func replaceSeven(path: String, with source: URL, in snapshot: ArchiveSnapshot, password: String? = nil, cancellation: ArchiveCancellation,
                       progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
-        return try replaceItem(path: path, with: source, in: snapshot, seven: true, cancellation: cancellation, progress: progress)
+        return try replaceItem(path: path, with: source, in: snapshot, seven: true, password: password, cancellation: cancellation, progress: progress)
     }
-    private func replaceItem(path: String, with source: URL, in snapshot: ArchiveSnapshot, seven: Bool,
+    private func replaceItem(path: String, with source: URL, in snapshot: ArchiveSnapshot, seven: Bool, password: String? = nil,
                              cancellation: ArchiveCancellation, progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         guard let entry = snapshot.entries.first(where: { $0.path == path }), entry.kind == .file,
               snapshot.entries.filter({ $0.path == path }).count == 1,
@@ -116,7 +116,7 @@ public struct ArchiveZIPUpdater: Sendable {
               components.dropLast().indices.allSatisfy({ snapshot.index.row(at: components.prefix($0 + 1).joined(separator: "/"))?.isDirectory == true }) else {
             throw ArchiveFailure.message("Ambiguous archive paths cannot safely be replaced.")
         }
-        return try update(sources: [source], snapshot: snapshot, folder: "", plan: nil, replacement: entry, seven: seven, cancellation: cancellation, progress: progress)
+        return try update(sources: [source], snapshot: snapshot, folder: "", plan: nil, replacement: entry, seven: seven, password: password, cancellation: cancellation, progress: progress)
     }
     @discardableResult
     public func delete(paths: Set<String>, from snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
@@ -154,8 +154,8 @@ public struct ArchiveZIPUpdater: Sendable {
         let archive = canonical(snapshot.url)
         var error = [CChar](repeating: 0, count: 256)
         let encryptedOperations = (plan != nil ? 1 : 0) + (renameNames != nil ? 1 : 0) + (!sources.isEmpty ? 1 : 0)
-        if password != nil && (!seven || encryptedOperations != 1 || replacement != nil) {
-            throw ArchiveFailure.message("Only encrypted Add, Delete and Rename are supported.")
+        if password != nil && (!seven || encryptedOperations != 1 || (replacement != nil && sources.count != 1)) {
+            throw ArchiveFailure.message("Choose one supported encrypted archive edit.")
         }
         guard let transaction = password != nil ? arkiv_seven_encrypted_begin(archive.path, password, cancellation.pointer, &error, error.count) :
             seven ? arkiv_seven_begin(archive.path, &error, error.count) : arkiv_zip_begin(archive.path, &error, error.count) else {
@@ -217,7 +217,11 @@ public struct ArchiveZIPUpdater: Sendable {
                 defer { names.forEach { free($0) } }
                 guard names.allSatisfy({ $0 != nil }) else { throw ArchiveFailure.message("Not enough memory to prepare the edit.") }
                 let pointers = names.map { $0.map { UnsafePointer<CChar>($0) } }
+                if let password {
+                    result = arkiv_seven_prepare_replace_encrypted(transaction, additions!.path, pointers, snapshot.entries.count, Int(replacement.id), stage.path, password, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+                } else {
                 result = arkiv_seven_prepare_replace(transaction, additions!.path, pointers, snapshot.entries.count, Int(replacement.id), stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+                }
             } else {
             result = arkiv_zip_prepare_replace(transaction, additions!.path, Int(replacement.id), snapshot.entries.count, replacement.path, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
             }

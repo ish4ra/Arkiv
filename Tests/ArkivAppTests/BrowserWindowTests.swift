@@ -171,7 +171,7 @@ final class BrowserWindowTests: XCTestCase {
     }
 
     @MainActor
-    func testEncryptedSevenZipAddAsksOnceRefreshesAndKeepsReplaceDisabled() async throws {
+    func testEncryptedSevenZipAddAsksOnceRefreshesAndScopesReplaceToRegularFiles() async throws {
         _ = NSApplication.shared
         let fm = FileManager.default, engine = LibArchiveEngine()
         let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -207,7 +207,7 @@ final class BrowserWindowTests: XCTestCase {
         table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         XCTAssertTrue(controller.validateMenuItem(addFiles))
         XCTAssertTrue(controller.validateMenuItem(addFolder))
-        XCTAssertFalse(controller.validateMenuItem(replace))
+        XCTAssertTrue(controller.validateMenuItem(replace))
         let original = try Data(contentsOf: archive)
         controller.addItems([added, folder])
         try await idle()

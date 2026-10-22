@@ -1183,14 +1183,14 @@ int arkiv_zip_prepare_replace(arkiv_zip_transaction *t,const char *content,size_
 static int seven_prepare(arkiv_zip_transaction *t,const char *addition,const char *const *oldnames,const char *const *newnames,const unsigned char *keep,size_t count,size_t replacement,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap,const char *password) {
     int in=-1,out=-1,result=1;struct stat st;
     if(!t||!t->seven||t->stage>=0||t->ready)goto done;
-    if(t->seven==2?(!password||((keep!=NULL)+(newnames!=NULL)+(addition!=NULL)!=1)||replacement!=SIZE_MAX):password!=NULL)goto done;
+    if(t->seven==2?(!password||((keep!=NULL)+(newnames!=NULL)+(addition!=NULL)!=1)||(replacement!=SIZE_MAX&&(!addition||!oldnames||replacement>=count))):password!=NULL)goto done;
     if(cancelled(token)){result=2;goto done;}
     if(addition){in=create_open(addition);if(in<0)goto done;}
     else if(!keep&&!newnames)goto done;
     t->stage=create_open(stage);if(t->stage<0)goto done;
     if(fstat(t->stage,&st)||!S_ISDIR(st.st_mode)||st.st_uid!=geteuid()||(st.st_mode&077)!=0||st.st_dev!=t->stamp.st_dev)goto done;
     out=openat(t->stage,"replacement.zip",O_CREAT|O_EXCL|O_RDWR|O_NOFOLLOW|O_CLOEXEC,0600);if(out<0)goto done;
-    result=password?(addition?arkiv_seven_append_encrypted(t->source,in,out,password,seven_cancel,token,callback,context):newnames?arkiv_seven_rename_encrypted(t->source,oldnames,newnames,count,out,password,seven_cancel,token,callback,context):arkiv_seven_delete_encrypted(t->source,oldnames,keep,count,out,password,seven_cancel,token,callback,context)):replacement!=SIZE_MAX?arkiv_seven_replace(t->source,in,oldnames,count,replacement,out,seven_cancel,token,callback,context):newnames?arkiv_seven_rename(t->source,oldnames,newnames,count,out,seven_cancel,token,callback,context):keep?arkiv_seven_delete(t->source,oldnames,keep,count,out,seven_cancel,token,callback,context):arkiv_seven_append(t->source,in,out,seven_cancel,token,callback,context);
+    result=password?(replacement!=SIZE_MAX?arkiv_seven_replace_encrypted(t->source,in,oldnames,count,replacement,out,password,seven_cancel,token,callback,context):addition?arkiv_seven_append_encrypted(t->source,in,out,password,seven_cancel,token,callback,context):newnames?arkiv_seven_rename_encrypted(t->source,oldnames,newnames,count,out,password,seven_cancel,token,callback,context):arkiv_seven_delete_encrypted(t->source,oldnames,keep,count,out,password,seven_cancel,token,callback,context)):replacement!=SIZE_MAX?arkiv_seven_replace(t->source,in,oldnames,count,replacement,out,seven_cancel,token,callback,context):newnames?arkiv_seven_rename(t->source,oldnames,newnames,count,out,seven_cancel,token,callback,context):keep?arkiv_seven_delete(t->source,oldnames,keep,count,out,seven_cancel,token,callback,context):arkiv_seven_append(t->source,in,out,seven_cancel,token,callback,context);
     if(result)goto done;
     result=arkiv_seven_test(out,password,100000,20ULL*1024*1024*1024,seven_cancel,token,callback,context);
     if(result)goto done;
@@ -1223,6 +1223,11 @@ int arkiv_seven_prepare_rename(arkiv_zip_transaction *t,const char *const *oldna
 int arkiv_seven_prepare_replace(arkiv_zip_transaction *t,const char *content,const char *const *oldnames,size_t count,size_t replacement,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
     if(!content||!oldnames||replacement>=count)return fail(error,cap,"Missing replacement plan.");
     return seven_prepare(t,content,oldnames,NULL,NULL,count,replacement,stage,token,callback,context,error,cap,NULL);
+}
+
+int arkiv_seven_prepare_replace_encrypted(arkiv_zip_transaction *t,const char *content,const char *const *oldnames,size_t count,size_t replacement,const char *stage,const char *password,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
+    if(!t||t->seven!=2||!password||!content||!oldnames||replacement>=count)return fail(error,cap,"Encrypted Replace requires a validated single-file transaction.");
+    return seven_prepare(t,content,oldnames,NULL,NULL,count,replacement,stage,token,callback,context,error,cap,password);
 }
 
 int arkiv_seven_prepare_add_encrypted(arkiv_zip_transaction *t,const char *addition,const char *stage,const char *password,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {

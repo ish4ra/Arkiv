@@ -253,6 +253,53 @@ class SevenZipTests(unittest.TestCase):
                         self.assertEqual(after, b'')
                     source.seek(0); self.assertEqual(source.read(), before)
 
+    def test_encrypted_replace_preserves_unrelated_ciphertext(self):
+        fn = lib.arkiv_seven_replace_encrypted
+        fn.argtypes = [C.c_int, C.c_int, C.POINTER(C.c_char_p), C.c_uint64, C.c_uint64,
+                       C.c_int, C.c_char_p, C.c_void_p, C.c_void_p, C.c_void_p, C.c_void_p]
+        def packed(data):
+            # EncodedHeader's PackInfo PackPos is the end of file-data streams.
+            offset = struct.unpack_from('<Q', data, 12)[0]
+            header = data[32 + offset:]
+            if header[:2] == b'\x17\x06':
+                first = header[2]; value = 0; mask = 0x80; pos = 3
+                for i in range(8):
+                    if not first & mask:
+                        value |= (first & (mask - 1)) << (8 * i); break
+                    value |= header[pos] << (8 * i); pos += 1; mask >>= 1
+                offset = value
+            return data[32:32 + offset]
+        for headers in [False, True]:
+            before = self.encode(b'replace secret', headers)
+            retained = packed(before)
+            for content in [b'initial target' * 1000, b'x', b'large replacement' * 10000, b'', b'from empty']:
+                for password, expected in [(b'wrong', 5), (b'replace secret', 0)]:
+                    with tempfile.TemporaryFile() as source, tempfile.TemporaryFile() as additions, tempfile.TemporaryFile() as output:
+                        source.write(before); source.flush()
+                        with zipfile.ZipFile(additions, 'w') as z:
+                            z.writestr('disk-name-must-not-be-used.bin', content)
+                        additions.seek(0)
+                        names = (C.c_char_p * 3)('資料 🐈/hello.txt'.encode(), b'empty/', b'zero')
+                        self.assertEqual(fn(source.fileno(), additions.fileno(), names, 3, 2, output.fileno(), password, None, None, None, None), expected)
+                        output.seek(0); after = output.read()
+                        if expected == 0:
+                            self.assertTrue(packed(after).startswith(retained), 'unrelated ciphertext must be copied verbatim')
+                            flags = C.c_uint32()
+                            self.assertEqual(lib.arkiv_seven_policy(output.fileno(), password, C.byref(flags), None, None), 0)
+                            self.assertTrue(flags.value & 1)
+                            self.assertFalse(flags.value & 4, 'replacement must not introduce plaintext data')
+                            self.assertEqual(bool(flags.value & 2), headers)
+                            status, tar = self.decode(after, password)
+                            self.assertEqual(status, 0)
+                            with tarfile.open(fileobj=io.BytesIO(tar)) as t:
+                                self.assertEqual(set(t.getnames()), {'資料 🐈/hello.txt', 'empty', 'zero'})
+                                self.assertEqual(t.extractfile('zero').read(), content)
+                                self.assertEqual(t.extractfile('資料 🐈/hello.txt').read(), b'content' * 10000)
+                        else:
+                            self.assertEqual(after, b'')
+                        source.seek(0); self.assertEqual(source.read(), before)
+                before = after
+
     def test_independent_copy_fixture_and_hostile_paths(self):
         self.assertEqual(self.decode(stored('safe.txt'))[0], 0)
         for name in ['../escape', '/absolute', 'C:\\evil', 'a/../b', 'a//b', 'a:b', 'a\nb', '/'.join(['x'] * 257)]:

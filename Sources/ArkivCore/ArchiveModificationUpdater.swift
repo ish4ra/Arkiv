@@ -7,14 +7,27 @@ public struct ArchiveModificationUpdater: Sendable {
         ArchiveAdditionUpdater().capability(for: snapshot)
     }
     @discardableResult
-    public func replace(path: String, with source: URL, in snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
+    public func replace(path: String, with source: URL, in snapshot: ArchiveSnapshot, password: String? = nil, cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
         if cancellation.isCancelled { throw ArchiveFailure.cancelled }
+        if canReplaceEncrypted(snapshot) {
+            guard let password else { throw ArchiveFailure.passwordRequired }
+            let policy = try SevenZipPolicyInspector().inspect(snapshot, password: password, cancellation: cancellation)
+            guard policy.eligibleForFutureEncryptedModification,
+                  policy.dataEncrypted || snapshot.entries.allSatisfy({ $0.size == 0 }) else {
+                throw ArchiveFailure.message(policy.readOnlyReason)
+            }
+            return try ArchiveZIPUpdater().replaceSeven(path: path, with: source, in: snapshot, password: password, cancellation: cancellation, progress: progress)
+        }
         switch capability(for: snapshot) {
         case .zip: return try ArchiveZIPUpdater().replace(path: path, with: source, in: snapshot, cancellation: cancellation, progress: progress)
         case .sevenZip: return try ArchiveZIPUpdater().replaceSeven(path: path, with: source, in: snapshot, cancellation: cancellation, progress: progress)
         case .readOnly(let reason): throw ArchiveFailure.message(reason)
         }
+    }
+    /// Same data-encryption eligibility as Add; selection is validated separately.
+    public func canReplaceEncrypted(_ snapshot: ArchiveSnapshot) -> Bool {
+        ArchiveAdditionUpdater().canAddEncrypted(snapshot)
     }
     public func canDeleteEncrypted(_ snapshot: ArchiveSnapshot) -> Bool {
         snapshot.sevenEncryptionPolicy?.eligibleForEncryptedDeletion == true &&
