@@ -129,10 +129,10 @@ public struct ArchiveZIPUpdater: Sendable {
         try update(sources: sources, snapshot: snapshot, folder: folder, plan: nil, cancellation: cancellation, progress: progress)
     }
     @discardableResult
-    func addSeven(sources: [URL], to snapshot: ArchiveSnapshot, cancellation: ArchiveCancellation,
+    func addSeven(sources: [URL], to snapshot: ArchiveSnapshot, password: String? = nil, cancellation: ArchiveCancellation,
                   progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
-        return try update(sources: sources, snapshot: snapshot, folder: "", plan: nil, seven: true, cancellation: cancellation, progress: progress)
+        return try update(sources: sources, snapshot: snapshot, folder: "", plan: nil, seven: true, password: password, cancellation: cancellation, progress: progress)
     }
     @discardableResult
     func deleteSeven(paths: Set<String>, from snapshot: ArchiveSnapshot, password: String? = nil, cancellation: ArchiveCancellation,
@@ -153,8 +153,9 @@ public struct ArchiveZIPUpdater: Sendable {
         }
         let archive = canonical(snapshot.url)
         var error = [CChar](repeating: 0, count: 256)
-        if password != nil && (!seven || ((plan != nil) == (renameNames != nil)) || replacement != nil || !sources.isEmpty) {
-            throw ArchiveFailure.message("Only encrypted Delete and Rename are supported.")
+        let encryptedOperations = (plan != nil ? 1 : 0) + (renameNames != nil ? 1 : 0) + (!sources.isEmpty ? 1 : 0)
+        if password != nil && (!seven || encryptedOperations != 1 || replacement != nil) {
+            throw ArchiveFailure.message("Only encrypted Add, Delete and Rename are supported.")
         }
         guard let transaction = password != nil ? arkiv_seven_encrypted_begin(archive.path, password, cancellation.pointer, &error, error.count) :
             seven ? arkiv_seven_begin(archive.path, &error, error.count) : arkiv_zip_begin(archive.path, &error, error.count) else {
@@ -250,6 +251,8 @@ public struct ArchiveZIPUpdater: Sendable {
             } else {
                 result = arkiv_zip_prepare_delete(transaction, plan, plan.count, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
             }
+        } else if seven, let password {
+            result = arkiv_seven_prepare_add_encrypted(transaction, additions!.path, stage.path, password, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
         } else if seven {
             result = arkiv_seven_prepare(transaction, additions!.path, stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
         } else {

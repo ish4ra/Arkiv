@@ -419,7 +419,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
     }
     private var canReplaceFile: Bool {
-        guard canAddItems, window?.attachedSheet == nil, selectedPaths().count == 1,
+        guard canAddItems, additionCapability.isAvailable, window?.attachedSheet == nil, selectedPaths().count == 1,
               let path = selectedPaths().first else { return false }
         return snapshot?.entries.filter { $0.path == path && $0.kind == .file }.count == 1 && index?.row(at: path)?.isDirectory == false
     }
@@ -438,7 +438,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
     }
     func replaceItem(_ path: String, with source: URL) {
-        guard canAddItems, let snapshot else { return }
+        guard canAddItems, additionCapability.isAvailable, let snapshot else { return }
         let folder = path.split(separator: "/").dropLast().joined(separator: "/")
         let token = begin("Replacing file in archive…")
         worker.async { [self] in
@@ -606,7 +606,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
             && FileManager.default.isWritableFile(atPath: snapshot.url.deletingLastPathComponent().path)
     }
     private var canAddItems: Bool {
-        guard !isBusy, additionCapability.isAvailable, let snapshot else { return false }
+        guard !isBusy, let snapshot, additionCapability.isAvailable || ArchiveAdditionUpdater().canAddEncrypted(snapshot) else { return false }
         return FileManager.default.isWritableFile(atPath: snapshot.url.path)
             && FileManager.default.isWritableFile(atPath: snapshot.url.deletingLastPathComponent().path)
     }
@@ -625,11 +625,20 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     /// Shared by both native pickers; all transaction work stays in ArkivCore.
     func addItems(_ urls: [URL], folder: String = "") {
         guard canAddItems, !urls.isEmpty, let snapshot else { return }
+        if ArchiveAdditionUpdater().canAddEncrypted(snapshot) {
+            requestArchivePassword(snapshot.url, false, window) { [weak self] password in
+                guard let self, let password else { return }
+                self.performAddition(urls, folder: folder, snapshot: snapshot, password: password)
+            }
+        } else { performAddition(urls, folder: folder, snapshot: snapshot, password: nil) }
+    }
+    private func performAddition(_ urls: [URL], folder: String, snapshot: ArchiveSnapshot, password: String?) {
+        guard !sessionEnded, canAddItems, self.snapshot?.url == snapshot.url else { return }
         let token = begin("Adding to archive…")
         worker.async { [self] in
             let throttle = ProgressThrottle()
             let result = Result {
-                try ArchiveAdditionUpdater().add(sources: urls, to: snapshot, folder: folder, cancellation: token) { progress in
+                try ArchiveAdditionUpdater().add(sources: urls, to: snapshot, folder: folder, password: password, cancellation: token) { progress in
                     guard throttle.shouldUpdate() else { return }
                     DispatchQueue.main.async { [weak self] in
                         guard let self, self.isBusy else { return }
@@ -646,7 +655,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                     // not a failed transaction and never trigger another success sound.
                     self.snapshot = nil; self.index = nil; self.zipAdditionAvailable = false
                     search.stringValue = ""
-                    load(url, browsingFolder: folder)
+                    load(url, password: password, browsingFolder: folder)
                 case .failure(let error): present(error)
                 }
             }
@@ -938,7 +947,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         case #selector(renameSelected(_:)): return canRenameItems && window?.attachedSheet == nil && selectedPaths().count == 1
         case #selector(deleteSelected(_:)): return canDeleteItems && window?.attachedSheet == nil && !selectedPaths().isEmpty
         case #selector(addFiles(_:)), #selector(addFolder(_:)):
-            menuItem.toolTip = additionCapability.reason
+            menuItem.toolTip = canAddItems ? nil : additionCapability.reason
             return canAddItems && window?.attachedSheet == nil
         case #selector(copyPath(_:)), #selector(extractSelected(_:)): return !isBusy && !selectedPaths().isEmpty
         case #selector(testArchive(_:)), #selector(extractAll(_:)), #selector(showInfo(_:)): return !isBusy && snapshot != nil

@@ -233,12 +233,12 @@ static bool path_key(std::string &name) {
 #endif
  return true;
 }
-static int encode(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,int original,const unsigned char*keep=nullptr,size_t keepCount=0,const char*const*oldnames=nullptr,const char*const*newnames=nullptr,size_t replacement=SIZE_MAX,bool encryptedMetadataEdit=false){State s{password,cancel,context};s.progress=progress;s.progressContext=progressContext;try{
+static int encode(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,int original,const unsigned char*keep=nullptr,size_t keepCount=0,const char*const*oldnames=nullptr,const char*const*newnames=nullptr,size_t replacement=SIZE_MAX,bool encryptedEdit=false){State s{password,cancel,context};s.progress=progress;s.progressContext=progressContext;try{
  if(s.stopped())return 2;
- if(encryptedMetadataEdit&&(!password||((keep!=nullptr)==(newnames!=nullptr))||replacement!=SIZE_MAX||input>=0))return 1;
+ if(encryptedEdit&&(!password||((keep!=nullptr)+(newnames!=nullptr)+(input>=0)!=1)||replacement!=SIZE_MAX))return 1;
  auto raw=new NArchive::N7z::CHandler;CMyComPtr<IOutArchive> handler=raw;
  UInt32 retained=0;uint64_t originalBytes=0;
- if(original>=0) {int r=appendable(original,s,static_cast<IInArchive*>(raw),retained,originalBytes,encryptedMetadataEdit);if(r)return r;}
+ if(original>=0) {int r=appendable(original,s,static_cast<IInArchive*>(raw),retained,originalBytes,encryptedEdit);if(r)return r;}
  std::vector<unsigned char> retainedMask;std::vector<UString> renamed(retained);
  UInt32 replaced=UInt32(-1);
  if(keep||newnames||replacement!=SIZE_MAX) {
@@ -307,26 +307,30 @@ extern "C" int arkiv_seven_delete(int original,const char*const*oldnames,const u
  return encode(-1,output,nullptr,0,cancel,context,progress,progressContext,original,keep,size_t(count),oldnames);
 }
 
-// Encrypted metadata edits retain file streams and rebuild headers with the original policy.
-static int encrypted_metadata_edit(int original,const char*const*oldnames,const unsigned char*keep,const char*const*newnames,uint64_t count,int output,const char*password,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext) {
- if(!password||((keep!=nullptr)==(newnames!=nullptr))||!oldnames||count>100000)return 1;
+// Encrypted edits retain old streams and rebuild headers with the original policy.
+static int encrypted_edit(int original,const char*const*oldnames,const unsigned char*keep,const char*const*newnames,uint64_t count,int output,const char*password,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,int input=-1) {
+ if(!password||((keep!=nullptr)+(newnames!=nullptr)+(input>=0)!=1)||((keep||newnames)&&!oldnames)||count>100000)return 1;
  uint32_t before=0;int r=arkiv_seven_policy(original,password,&before,cancel,context);
  if(r)return r;
  if(!(before&3)||(before&4)||!(before&8)||!(before&16))return 1;
- r=encode(-1,output,password,(before&2)!=0,cancel,context,progress,progressContext,original,keep,size_t(count),oldnames,newnames,SIZE_MAX,true);
+ r=encode(input,output,password,(before&2)!=0,cancel,context,progress,progressContext,original,keep,size_t(count),oldnames,newnames,SIZE_MAX,true);
  if(r)return r;
  uint32_t after=0;r=arkiv_seven_policy(output,password,&after,cancel,context);
  if(r)return r;
  // Last-data deletion can leave no encrypted data streams, but never change
  // whether the header is encrypted (including an empty resulting archive).
- return (after&2)==(before&2)&&!(after&4)&&(!newnames||(after&1)==(before&1))?0:1;
+ return (after&2)==(before&2)&&!(after&4)&&(after&24)==24&&(!newnames||(after&1)==(before&1))?0:1;
 }
 
+extern "C" int arkiv_seven_append_encrypted(int original,int additions,int output,const char*password,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext) {
+ if(additions<0)return 1;
+ return encrypted_edit(original,nullptr,nullptr,nullptr,0,output,password,cancel,context,progress,progressContext,additions);
+}
 extern "C" int arkiv_seven_delete_encrypted(int original,const char*const*oldnames,const unsigned char*keep,uint64_t count,int output,const char*password,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext) {
- return encrypted_metadata_edit(original,oldnames,keep,nullptr,count,output,password,cancel,context,progress,progressContext);
+ return encrypted_edit(original,oldnames,keep,nullptr,count,output,password,cancel,context,progress,progressContext);
 }
 extern "C" int arkiv_seven_rename_encrypted(int original,const char*const*oldnames,const char*const*newnames,uint64_t count,int output,const char*password,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext) {
- return encrypted_metadata_edit(original,oldnames,nullptr,newnames,count,output,password,cancel,context,progress,progressContext);
+ return encrypted_edit(original,oldnames,nullptr,newnames,count,output,password,cancel,context,progress,progressContext);
 }
 
 extern "C" int arkiv_seven_rename(int original,const char*const*oldnames,const char*const*newnames,uint64_t count,int output,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext) {

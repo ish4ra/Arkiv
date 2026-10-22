@@ -35,11 +35,31 @@ public struct ArchiveAdditionUpdater: Sendable {
         arkiv_zip_end(transaction)
         return .sevenZip
     }
+    /// Non-secret UI hint only. Every Add revalidates the pinned original.
+    public func canAddEncrypted(_ snapshot: ArchiveSnapshot) -> Bool {
+        guard let policy = snapshot.sevenEncryptionPolicy,
+              policy.eligibleForFutureEncryptedModification,
+              (try? SourceStamp(snapshot.url)) == snapshot.stamp else { return false }
+        // Header-only encryption with plain nonempty data cannot be extended
+        // with encrypted streams without producing a mixed-encryption archive.
+        return policy.dataEncrypted || snapshot.entries.allSatisfy { $0.size == 0 }
+    }
     /// Adds at the archive root for 7z. ZIP retains its existing folder-aware API.
     @discardableResult
-    public func add(sources: [URL], to snapshot: ArchiveSnapshot, folder: String = "", cancellation: ArchiveCancellation,
+    public func add(sources: [URL], to snapshot: ArchiveSnapshot, folder: String = "", password: String? = nil, cancellation: ArchiveCancellation,
                     progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
         if cancellation.isCancelled { throw ArchiveFailure.cancelled }
+        guard !sources.isEmpty else { throw ArchiveFailure.message("Choose files or a folder to add.") }
+        if canAddEncrypted(snapshot) {
+            guard folder.isEmpty else { throw ArchiveFailure.message("7z additions are supported only at the archive root.") }
+            guard let password else { throw ArchiveFailure.passwordRequired }
+            let policy = try SevenZipPolicyInspector().inspect(snapshot, password: password, cancellation: cancellation)
+            guard policy.eligibleForFutureEncryptedModification,
+                  policy.dataEncrypted || snapshot.entries.allSatisfy({ $0.size == 0 }) else {
+                throw ArchiveFailure.message(policy.readOnlyReason)
+            }
+            return try ArchiveZIPUpdater().addSeven(sources: sources, to: snapshot, password: password, cancellation: cancellation, progress: progress)
+        }
         switch capability(for: snapshot) {
         case .zip:
             return try ArchiveZIPUpdater().add(sources: sources, to: snapshot, folder: folder, cancellation: cancellation, progress: progress)
