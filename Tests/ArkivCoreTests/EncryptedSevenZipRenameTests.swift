@@ -29,9 +29,20 @@ final class EncryptedSevenZipRenameTests: XCTestCase {
                 let updater = ArchiveModificationUpdater(), engine = LibArchiveEngine()
                 XCTAssertTrue(updater.canRenameEncrypted(snapshot))
                 var fresh = snapshot
-                for (path, name) in [("keep.txt", "KEEP.txt"), ("資料.app", "新しい 🦋.app"), ("新しい 🦋.app/nested/🦋.txt", "résumé 🐈.txt"), ("新しい 🦋.app/nested/empty", "EMPTY")] {
+                for (step, pair) in [("keep.txt", "KEEP.txt"), ("資料.app", "新しい 🦋.app"), ("新しい 🦋.app/nested/🦋.txt", "résumé 🐈.txt"), ("新しい 🦋.app/nested/empty", "EMPTY")].enumerated() {
+                    let (path, name) = pair
                     do { try updater.rename(path: path, to: name, in: fresh, password: "secret", cancellation: ArchiveCancellation()) }
-                    catch { XCTFail("Rename transaction failed for \(path): \(error)"); return }
+                    catch {
+                        // Only fixed fixture stage numbers and allowlisted failure categories
+                        // enter public annotations; never runtime filenames or credentials.
+                        print("::error::Encrypted Rename fixture stage \(step + 1)")
+                        if case ArchiveFailure.message(let message) = error {
+                            for allowed in ["Cannot safely build and verify the updated 7z. Original archive unchanged.", "Cannot safely build and verify the updated ZIP. Original archive unchanged.", "Ambiguous archive paths cannot safely be renamed.", "Choose one archive item and enter a valid name without separators or control characters.", "Unsupported 7z layout or metadata remains read-only.", "Archive changed since it was opened. Reopen it.", "Cannot safely verify the original 7z encryption policy."] where message == allowed {
+                                print("::error::" + allowed)
+                            }
+                        }
+                        XCTFail("Rename transaction failed for \(path): \(error)"); return
+                    }
                     do { fresh = try engine.inspect(archive, cancellation: ArchiveCancellation(), password: "secret") }
                     catch { XCTFail("Reopen after rename failed: \(error)"); return }
                     XCTAssertEqual(fresh.sevenEncryptionPolicy?.headersEncrypted, headers)
