@@ -75,6 +75,38 @@ final class EncryptedSevenZipAdditionTests: XCTestCase {
             }
         }
     }
+    func testHeaderEncryptedEmptyArchiveCanReceiveEncryptedData() throws {
+        try fixture(headers: true) { root, archive, snapshot in
+            try ArchiveModificationUpdater().delete(paths: ["existing.txt"], from: snapshot, password: "secret", cancellation: ArchiveCancellation())
+            let engine = LibArchiveEngine(), updater = ArchiveAdditionUpdater()
+            let empty = try engine.inspect(archive, cancellation: ArchiveCancellation(), password: "secret")
+            XCTAssertTrue(updater.canAddEncrypted(empty))
+            let file = root.appendingPathComponent("new.txt")
+            try Data("new encrypted payload".utf8).write(to: file)
+            try updater.add(sources: [file], to: empty, password: "secret", cancellation: ArchiveCancellation())
+            let fresh = try engine.inspect(archive, cancellation: ArchiveCancellation(), password: "secret")
+            XCTAssertEqual(fresh.sevenEncryptionPolicy?.dataEncrypted, true)
+            XCTAssertEqual(fresh.sevenEncryptionPolicy?.headersEncrypted, true)
+            XCTAssertEqual(fresh.sevenEncryptionPolicy?.mixedEncryption, false)
+        }
+    }
+    func testUnsupportedPolicyDoesNotEnableAdd() throws {
+        try fixture(headers: true) { root, archive, snapshot in
+            let updater = ArchiveAdditionUpdater(), original = try Data(contentsOf: archive)
+            for policy in [
+                SevenZipEncryptionPolicy(dataEncrypted: true, headersEncrypted: true, mixedEncryption: true, supportedLayout: false, allDataVerified: true),
+                SevenZipEncryptionPolicy(dataEncrypted: true, headersEncrypted: true, mixedEncryption: false, supportedLayout: false, allDataVerified: true),
+                SevenZipEncryptionPolicy(dataEncrypted: true, headersEncrypted: true, mixedEncryption: false, supportedLayout: true, allDataVerified: false),
+                SevenZipEncryptionPolicy(dataEncrypted: false, headersEncrypted: true, mixedEncryption: false, supportedLayout: true, allDataVerified: true)
+            ] {
+                var unsupported = snapshot
+                unsupported.sevenEncryptionPolicy = policy
+                XCTAssertFalse(updater.canAddEncrypted(unsupported))
+                XCTAssertThrowsError(try updater.add(sources: [root.appendingPathComponent("existing.txt")], to: unsupported, password: "secret", cancellation: ArchiveCancellation()))
+                XCTAssertEqual(try Data(contentsOf: archive), original)
+            }
+        }
+    }
     func testCancellationAndChangedSourceNeverCommit() throws {
         for headers in [false, true] {
             try fixture(headers: headers) { root, archive, snapshot in

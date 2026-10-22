@@ -171,6 +171,64 @@ final class BrowserWindowTests: XCTestCase {
     }
 
     @MainActor
+    func testEncryptedSevenZipAddAsksOnceRefreshesAndKeepsReplaceDisabled() async throws {
+        _ = NSApplication.shared
+        let fm = FileManager.default, engine = LibArchiveEngine()
+        let root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try fm.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? fm.removeItem(at: root) }
+        let old = root.appendingPathComponent("old.txt"), added = root.appendingPathComponent("new.txt")
+        try Data("old".utf8).write(to: old)
+        try Data("new".utf8).write(to: added)
+        let folder = root.appendingPathComponent("資料")
+        try fm.createDirectory(at: folder.appendingPathComponent("empty"), withIntermediateDirectories: true)
+        let archive = try ArchiveCreator().create(.init(sources: [old], destination: root, name: "Encrypted", format: .sevenZip, password: "secret", encryptFilenames: true), cancellation: ArchiveCancellation(), progress: { _ in })
+        var sounds = 0, requests = 0
+        var suppliedPassword: String? = nil
+        let controller = BrowserWindowController(modificationFeedback: { result in
+            ExtractionFeedback.completed(result, play: { sounds += 1 })
+        }, requestArchivePassword: { _, _, _, completion in
+            requests += 1; completion(suppliedPassword)
+        })
+        defer { controller.close() }
+        func idle() async throws {
+            for _ in 0..<2400 {
+                if !controller.isBusy && controller.window?.attachedSheet == nil { return }
+                try await Task.sleep(nanoseconds: 25_000_000)
+            }
+            XCTFail("Encrypted Add should finish and refresh")
+        }
+        controller.load(archive, password: "secret")
+        try await idle()
+        let table = try XCTUnwrap(descendants(controller.window!.contentView!).compactMap { $0 as? NSTableView }.first)
+        let addFiles = NSMenuItem(title: "Add Files…", action: #selector(BrowserWindowController.addFiles(_:)), keyEquivalent: "")
+        let addFolder = NSMenuItem(title: "Add Folder…", action: #selector(BrowserWindowController.addFolder(_:)), keyEquivalent: "")
+        let replace = NSMenuItem(title: "Replace File…", action: #selector(BrowserWindowController.replaceSelected(_:)), keyEquivalent: "")
+        table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        XCTAssertTrue(controller.validateMenuItem(addFiles))
+        XCTAssertTrue(controller.validateMenuItem(addFolder))
+        XCTAssertFalse(controller.validateMenuItem(replace))
+        let original = try Data(contentsOf: archive)
+        controller.addItems([added, folder])
+        try await idle()
+        XCTAssertEqual(requests, 1)
+        XCTAssertEqual(sounds, 0)
+        XCTAssertEqual(try Data(contentsOf: archive), original)
+        suppliedPassword = "secret"
+        controller.addItems([added, folder])
+        try await idle()
+        XCTAssertEqual(requests, 2, "One prompt per transaction, none on refresh")
+        XCTAssertEqual(sounds, 1)
+        XCTAssertEqual(table.numberOfRows, 3)
+        table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        XCTAssertFalse(controller.validateMenuItem(replace))
+        let fresh = try engine.inspect(archive, cancellation: ArchiveCancellation(), password: "secret")
+        XCTAssertNotNil(fresh.index.row(at: "資料/empty"))
+        XCTAssertNotNil(fresh.index.row(at: "new.txt"))
+        XCTAssertEqual(fresh.sevenEncryptionPolicy?.headersEncrypted, true)
+    }
+
+    @MainActor
     func testDeleteConfirmationCancellationRefreshAndSound() async throws {
         try await verifyDeleteConfirmation(format: .zip)
     }
