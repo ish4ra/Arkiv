@@ -513,8 +513,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
     }
     private func performFolderReplacement(_ path: String, with source: URL, snapshot: ArchiveSnapshot) {
-        guard !sessionEnded, canReplaceFolder, self.snapshot?.url == snapshot.url,
-              self.snapshot?.stamp == snapshot.stamp else { return }
+        guard !sessionEnded, canReplaceFolder, self.snapshot?.url == snapshot.url else { return }
         let folder = path.split(separator: "/").dropLast().joined(separator: "/")
         let token = begin("Replacing folder in archive…")
         worker.async { [self] in
