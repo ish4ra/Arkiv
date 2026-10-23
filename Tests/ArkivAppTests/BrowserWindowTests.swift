@@ -603,4 +603,64 @@ final class BrowserWindowTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: sevenOutput.appendingPathComponent("Folder/b.txt")), Data("old".utf8))
     }
 
+    @MainActor
+    func testNewFolderSheetCancellationNestedSelectionAndZIPOnly() async throws {
+        _ = NSApplication.shared
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try manager.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? manager.removeItem(at: root) }
+        let source = root.appendingPathComponent("existing.txt")
+        try Data("payload".utf8).write(to: source)
+        let archive = try ArchiveCreator().create(.init(sources: [source], destination: root, name: "Folders"), cancellation: ArchiveCancellation(), progress: { _ in })
+        var sounds = 0
+        let controller = BrowserWindowController(modificationFeedback: { result in
+            ExtractionFeedback.completed(result, play: { sounds += 1 })
+        })
+        defer { controller.close() }
+        let item = NSMenuItem(title: "New Folder…", action: #selector(BrowserWindowController.newFolder(_:)), keyEquivalent: "")
+        XCTAssertFalse(controller.validateMenuItem(item))
+        func idle() async throws {
+            for _ in 0..<2400 {
+                if !controller.isBusy && controller.window?.attachedSheet == nil { return }
+                try await Task.sleep(nanoseconds: 25_000_000)
+            }
+            XCTFail("Folder creation should finish and dismiss its sheet")
+        }
+        controller.load(archive); try await idle()
+        let table = try XCTUnwrap(descendants(controller.window!.contentView!).compactMap { $0 as? NSTableView }.first)
+        XCTAssertNotNil(table.menu?.items.first { $0.action == item.action })
+        XCTAssertTrue(controller.validateMenuItem(item), "No selection is required")
+        let before = try Data(contentsOf: archive)
+        controller.newFolder(nil)
+        let cancelled = try XCTUnwrap(controller.window?.attachedSheet)
+        XCTAssertFalse(controller.validateMenuItem(item))
+        cancelled.cancelOperation(nil)
+        try await idle()
+        XCTAssertEqual(try Data(contentsOf: archive), before)
+        XCTAssertEqual(sounds, 0)
+        controller.newFolder(nil)
+        let sheet = try XCTUnwrap(controller.window?.attachedSheet)
+        let name = try XCTUnwrap(descendants(sheet.contentView!).compactMap { $0 as? NSTextField }.first { $0.isEditable })
+        name.stringValue = "資料 🐈"
+        try XCTUnwrap(descendants(sheet.contentView!).compactMap { $0 as? NSButton }.first { $0.title == "Create" }).performClick(nil)
+        try await idle()
+        XCTAssertEqual(sounds, 1)
+        XCTAssertEqual(table.selectedRowIndexes.count, 1)
+        controller.activate(row: table.selectedRow)
+        XCTAssertEqual(table.numberOfRows, 0)
+        controller.createFolder(named: "empty")
+        try await idle()
+        XCTAssertEqual(sounds, 2)
+        XCTAssertEqual(table.selectedRow, 0)
+        XCTAssertEqual(controller.dropFolder(proposedRow: -1, operation: .on), "資料 🐈")
+        let snapshot = try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation())
+        XCTAssertNotNil(snapshot.index.row(at: "資料 🐈/empty"))
+        for encrypted in [false, true] {
+            let seven = try ArchiveCreator().create(.init(sources: [source], destination: root, name: "ReadOnly", format: .sevenZip, password: encrypted ? "secret" : nil, encryptFilenames: encrypted), cancellation: ArchiveCancellation(), progress: { _ in })
+            controller.load(seven, password: encrypted ? "secret" : nil); try await idle()
+            XCTAssertFalse(controller.validateMenuItem(item), "New Folder is ZIP-only")
+        }
+    }
+
 }
