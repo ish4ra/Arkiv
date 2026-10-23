@@ -611,7 +611,8 @@ static int seven_cancel(void *token) { return cancelled(token); }
 static int create_archive(const char *const *sources, size_t count, const char *parent,
                      const char *stage, const char *name, char *published_name, size_t published_capacity, int compression, arkiv_limits limits,
                      arkiv_cancel *token, arkiv_progress_callback progress, void *context,
-                     char *error, size_t capacity, int seven, const char *password, int headers, const char *prefix) {
+                     char *error, size_t capacity, int seven, const char *password, int headers, const char *prefix, const char *root) {
+    if (root && (count != 1 || seven || !safe_path(root))) return fail(error, capacity, "Invalid replacement folder.");
     if (prefix && *prefix && !safe_path(prefix)) return fail(error, capacity, "Invalid archive folder.");
     if (cancelled(token)) return 2;
     size_t extension = seven ? 3 : 4;
@@ -643,12 +644,13 @@ static int create_archive(const char *const *sources, size_t count, const char *
         status = 1;
         int fd = create_open(sources[i]);
         if (fd < 0) goto done;
+        if (root) { struct stat source_stat; if (fstat(fd,&source_stat) || !S_ISDIR(source_stat.st_mode)) { close(fd); goto done; } }
         const char *base = strrchr(sources[i], '/');
         char *entry_path = NULL;
         if (prefix && *prefix) {
             if (asprintf(&entry_path, "%s/%s", prefix, base ? base + 1 : sources[i]) < 0) { close(fd); goto done; }
         }
-        status = create_walk(&state, fd, entry_path ? entry_path : (base ? base + 1 : sources[i]), 0);
+        status = create_walk(&state, fd, root ? root : (entry_path ? entry_path : (base ? base + 1 : sources[i])), 0);
         free(entry_path); close(fd);
         if (status) goto done;
     }
@@ -707,21 +709,26 @@ done:
     return status;
 }
 
+int arkiv_create_zip_folder(const char *const *sources, size_t count, const char *parent, const char *stage,
+ const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
+ arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity, const char *root) {
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,"",root);
+}
 int arkiv_create_zip_at(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity, const char *prefix) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,prefix);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,prefix,NULL);
 }
 int arkiv_create_archive(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity,
  int seven, const char *password, int headers) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers,"");
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers,"",NULL);
 }
 int arkiv_create_zip(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,"");
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,"",NULL);
 }
 int arkiv_is_seven(const char *path) {
  int fd=create_open(path); if(fd<0)return 0;unsigned char b[6];ssize_t n=read(fd,b,6);close(fd);
@@ -1010,6 +1017,7 @@ static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsig
     int in=-1,out=-1,result=1;struct zip_envelope z;struct stat st;uint32_t *offsets=NULL;unsigned char content[46], contentLocal[30];uint64_t contentStart=0;
     int replacing=replacement!=SIZE_MAX, emptyDeflate=0;
     if(!t||t->seven||t->stage>=0||t->ready)goto done;
+    if(keep && count!=t->zip.count)goto done;
     if(addition) {
         in=create_open(addition);
         if(in<0||!zip_envelope(in,&z)||(!replacing&&(t->zip.count+z.count>=65535||
@@ -1036,7 +1044,7 @@ static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsig
     t->stage=create_open(stage);if(t->stage<0)goto done;
     if(fstat(t->stage,&st)||!S_ISDIR(st.st_mode)||st.st_uid!=geteuid()||(st.st_mode&077)!=0||st.st_dev!=t->stamp.st_dev)goto done;
     out=openat(t->stage,"replacement.zip",O_CREAT|O_EXCL|O_RDWR|O_NOFOLLOW|O_CLOEXEC,0600);if(out<0)goto done;
-    if(addition&&!replacing) {
+    if(addition&&!replacing&&!keep) {
     result=zip_copy(t->source,out,0,t->zip.offset,token);if(result)goto done;
     result=zip_copy(in,out,0,z.offset,token);if(result)goto done;
     result=zip_copy(t->source,out,t->zip.offset,t->zip.size,token);if(result)goto done;
@@ -1116,6 +1124,12 @@ static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsig
             if(callback)callback(context,i+1,recordEnd);
             cursor+=46+n+extra+comment;
         }
+        off_t additionOffset=lseek(out,0,SEEK_CUR);
+        if(additionOffset<0)goto done;
+        if(addition && keep) {
+            result=zip_copy(in,out,0,z.offset,token);if(result)goto done;
+            result=1;
+        }
         off_t central=lseek(out,0,SEEK_CUR);if(central<0||central>=UINT32_MAX)goto done;
         cursor=t->zip.offset;
         for(size_t i=0;i<count;i++) {
@@ -1145,6 +1159,21 @@ static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsig
             }
             cursor+=46+n+rest;
         }
+        if(addition && keep) {
+            uint64_t extraCursor=z.offset;
+            for(unsigned i=0;i<z.count;i++) {
+                unsigned char h[46];
+                if(pread(in,h,46,extraCursor)!=46)goto done;
+                uint64_t offset=(uint64_t)integrity_u32(h+42)+additionOffset;
+                if(offset>=UINT32_MAX)goto done;
+                zip_put32(h+42,offset);
+                if(write(out,h,46)!=46)goto done;
+                uint64_t length=integrity_u16(h+28)+integrity_u16(h+30)+integrity_u16(h+32);
+                result=zip_copy(in,out,extraCursor+46,length,token);if(result)goto done;
+                result=1;extraCursor+=46+length;
+            }
+            retained+=z.count;
+        }
         off_t finish=lseek(out,0,SEEK_CUR);if(finish<central||(uint64_t)finish+22+t->zip.comment>=UINT32_MAX)goto done;
         unsigned char *e=t->zip.end;zip_put16(e+8,retained);zip_put16(e+10,retained);zip_put32(e+12,finish-central);zip_put32(e+16,central);
         if(write(out,e,22+t->zip.comment)!=22+t->zip.comment)goto done;
@@ -1164,6 +1193,10 @@ done:free(offsets);if(in>=0)close(in);if(out>=0)close(out);if(result==1)fail(err
 }
 int arkiv_zip_prepare(arkiv_zip_transaction *t,const char *addition,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
     return zip_prepare(t,addition,NULL,NULL,NULL,0,SIZE_MAX,NULL,stage,token,callback,context,error,cap);
+}
+int arkiv_zip_prepare_subtree(arkiv_zip_transaction *t,const char *addition,const unsigned char *keep,size_t count,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
+    if(!addition||!keep)return fail(error,cap,"Invalid subtree replacement.");
+    return zip_prepare(t,addition,keep,NULL,NULL,count,SIZE_MAX,NULL,stage,token,callback,context,error,cap);
 }
 int arkiv_zip_prepare_delete(arkiv_zip_transaction *t,const unsigned char *keep,size_t count,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
     return zip_prepare(t,NULL,keep,NULL,NULL,count,SIZE_MAX,NULL,stage,token,callback,context,error,cap);

@@ -38,6 +38,21 @@ public struct ArchiveZIPUpdater: Sendable {
         return try update(sources: [], snapshot: snapshot, folder: folder, plan: nil, newFolder: name,
                           cancellation: cancellation, progress: progress)
     }
+    /// Replace one directory subtree without changing its archive path.
+    @discardableResult
+    public func replaceFolder(path: String, with source: URL, in snapshot: ArchiveSnapshot,
+                              cancellation: ArchiveCancellation,
+                              progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
+        guard snapshot.index.row(at: path)?.isDirectory == true,
+              source.isFileURL, (source.host == nil || source.host == "" || source.host == "localhost"),
+              source.query == nil, source.fragment == nil,
+              (try FileManager.default.attributesOfItem(atPath: source.path)[.type] as? FileAttributeType) == .typeDirectory else {
+            throw ArchiveFailure.message("Choose one archive folder and one local folder.")
+        }
+        try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
+        return try update(sources: [source], snapshot: snapshot, folder: "", plan: deletionPlan(snapshot, paths: [path]),
+                          folderReplacement: path, cancellation: cancellation, progress: progress)
+    }
     private func deletionPlan(_ snapshot: ArchiveSnapshot, paths: Set<String>) throws -> [UInt8] {
         let index = snapshot.index
         guard !paths.isEmpty, paths.allSatisfy({ index.row(at: $0) != nil }),
@@ -158,7 +173,7 @@ public struct ArchiveZIPUpdater: Sendable {
         try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
         return try renameItem(path: path, to: name, in: snapshot, seven: true, password: password, cancellation: cancellation, progress: progress)
     }
-    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, newFolder: String? = nil, seven: Bool = false, password: String? = nil, cancellation: ArchiveCancellation,
+    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, newFolder: String? = nil, folderReplacement: String? = nil, seven: Bool = false, password: String? = nil, cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         guard (seven || snapshot.unlocked == nil), snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
@@ -195,7 +210,7 @@ public struct ArchiveZIPUpdater: Sendable {
         }
         for sourceURL in sources {
             let source = canonical(sourceURL)
-            guard replacement != nil || roots.insert(key(source.lastPathComponent)).inserted else {
+            guard replacement != nil || folderReplacement != nil || roots.insert(key(source.lastPathComponent)).inserted else {
                 throw ArchiveFailure.message("An item named ‘\(source.lastPathComponent)’ already exists in the destination archive folder. Rename the source item before adding it.")
             }
             guard canonical(source) != archive, (try? SourceStamp(source).inode) != snapshot.stamp.inode else {
@@ -220,9 +235,9 @@ public struct ArchiveZIPUpdater: Sendable {
             guard method == 0 || method == 8 else { throw ArchiveFailure.message("This entry cannot safely be replaced.") }
             compression = method == 0 ? .store : .deflate
         }
-        let additions = try plan == nil && renameNames == nil ? ArchiveCreator().create(ArchiveCreationRequest(sources: sources, destination: stage, name: "additions", compression: compression),
-                                                    archiveFolder: folder, cancellation: cancellation, progress: progress) : nil
-        if seven, let additions {
+        let additions = try (plan == nil || folderReplacement != nil) && renameNames == nil ? ArchiveCreator().create(ArchiveCreationRequest(sources: sources, destination: stage, name: "additions", compression: compression),
+                                                    archiveFolder: folder, replacementRoot: folderReplacement, cancellation: cancellation, progress: progress) : nil
+        if seven || folderReplacement != nil, let additions {
             // Check every staged descendant, including implicit directories and
             // Unicode/case aliases, before handing the new manifest to 7-Zip.
             let incoming = try LibArchiveEngine().inspect(additions, cancellation: cancellation)
@@ -236,7 +251,10 @@ public struct ArchiveZIPUpdater: Sendable {
             Unmanaged<ZIPAdditionProgress>.fromOpaque(context).takeUnretainedValue().callback(ArchiveProgress(files: files, bytes: bytes))
         }
         let result: Int32
-        if let replacement {
+        if folderReplacement != nil, let plan, let additions {
+            result = arkiv_zip_prepare_subtree(transaction, additions.path, plan, plan.count, stage.path,
+                                              cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+        } else if let replacement {
             if seven {
                 let names = snapshot.entries.map { strdup($0.path) }
                 defer { names.forEach { free($0) } }
