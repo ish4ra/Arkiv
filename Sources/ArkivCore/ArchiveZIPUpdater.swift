@@ -26,6 +26,18 @@ public struct ArchiveZIPUpdater: Sendable {
         arkiv_zip_end(transaction)
         return true
     }
+    /// Adds an explicit empty ZIP directory through the existing Add transaction.
+    @discardableResult
+    public func createFolder(named name: String, in snapshot: ArchiveSnapshot, folder: String = "",
+                             cancellation: ArchiveCancellation,
+                             progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
+        guard !name.isEmpty, name != ".", name != "..", !name.contains("/"), !name.contains("\\"), !name.contains(":"),
+              !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+            throw ArchiveFailure.message("Enter a valid folder name without separators or control characters.")
+        }
+        return try update(sources: [], snapshot: snapshot, folder: folder, plan: nil, newFolder: name,
+                          cancellation: cancellation, progress: progress)
+    }
     private func deletionPlan(_ snapshot: ArchiveSnapshot, paths: Set<String>) throws -> [UInt8] {
         let index = snapshot.index
         guard !paths.isEmpty, paths.allSatisfy({ index.row(at: $0) != nil }),
@@ -146,7 +158,7 @@ public struct ArchiveZIPUpdater: Sendable {
         try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
         return try renameItem(path: path, to: name, in: snapshot, seven: true, password: password, cancellation: cancellation, progress: progress)
     }
-    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, seven: Bool = false, password: String? = nil, cancellation: ArchiveCancellation,
+    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, newFolder: String? = nil, seven: Bool = false, password: String? = nil, cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         guard (seven || snapshot.unlocked == nil), snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
@@ -176,6 +188,11 @@ public struct ArchiveZIPUpdater: Sendable {
             throw ArchiveFailure.message("Choose an existing archive folder.")
         }
         var roots = Set(snapshot.index.children(of: folder).map { key($0.name) })
+        if let newFolder {
+            guard !seven, password == nil, roots.insert(key(newFolder)).inserted else {
+                throw ArchiveFailure.message("A folder or file with that name already exists in this archive directory.")
+            }
+        }
         for sourceURL in sources {
             let source = canonical(sourceURL)
             guard replacement != nil || roots.insert(key(source.lastPathComponent)).inserted else {
@@ -189,6 +206,14 @@ public struct ArchiveZIPUpdater: Sendable {
         let stage = archive.deletingLastPathComponent().appendingPathComponent(".arkiv-add-" + UUID().uuidString, isDirectory: true)
         try manager.createDirectory(at: stage, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         defer { try? manager.removeItem(at: stage) }
+        var sources = sources
+        if let newFolder {
+            let inputs = stage.appendingPathComponent("input", isDirectory: true)
+            try manager.createDirectory(at: inputs, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+            let empty = inputs.appendingPathComponent(newFolder, isDirectory: true)
+            try manager.createDirectory(at: empty, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o755])
+            sources = [empty]
+        }
         var compression: ZIPCompression = .deflate
         if let replacement, !seven {
             let method = arkiv_zip_replacement_method(transaction, Int(replacement.id), snapshot.entries.count, replacement.path)

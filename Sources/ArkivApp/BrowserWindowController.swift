@@ -135,6 +135,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
             item.target = self
         }
         menu.addItem(withTitle: "Replace File…", action: #selector(replaceSelected(_:)), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "New Folder…", action: #selector(newFolder(_:)), keyEquivalent: "").target = self
         let rename = menu.addItem(withTitle: "Rename…", action: #selector(renameSelected(_:)), keyEquivalent: "")
         rename.target = self
         let delete = menu.addItem(withTitle: "Delete…", action: #selector(deleteSelected(_:)), keyEquivalent: "")
@@ -469,6 +470,57 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                     self.snapshot = nil; self.index = nil; self.zipAdditionAvailable = false
                     search.stringValue = ""
                     load(url, password: password, browsingFolder: folder, selectingPath: path)
+                case .failure(let error): present(error)
+                }
+            }
+        }
+    }
+    private var canCreateFolder: Bool {
+        guard canAddItems, case .zip = additionCapability else { return false }
+        return window?.attachedSheet == nil
+    }
+    @objc func newFolder(_ sender: Any?) {
+        guard canCreateFolder, let window else { return }
+        let alert = NSAlert()
+        alert.messageText = "New Folder"
+        alert.informativeText = "Create an empty folder in the current archive directory."
+        let field = NSTextField(string: "New Folder")
+        field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
+        field.setAccessibilityIdentifier("archiveNewFolderName")
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Create")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn else { return }
+            self?.createFolder(named: field.stringValue)
+        }
+        field.selectText(nil)
+    }
+    func createFolder(named name: String) {
+        guard canCreateFolder, let snapshot else { return }
+        let folder = currentPath
+        let destination = folder.isEmpty ? name : folder + "/" + name
+        let token = begin("Creating folder in archive…")
+        worker.async { [self] in
+            let throttle = ProgressThrottle()
+            let result = Result {
+                try ArchiveZIPUpdater().createFolder(named: name, in: snapshot, folder: folder, cancellation: token) { progress in
+                    guard throttle.shouldUpdate() else { return }
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.isBusy else { return }
+                        self.status.stringValue = "\(progress.files) entries verified"
+                    }
+                }
+            }
+            DispatchQueue.main.async { [self] in
+                finish()
+                modificationFeedback(result)
+                switch result {
+                case .success(let url):
+                    self.snapshot = nil; self.index = nil; self.zipAdditionAvailable = false
+                    search.stringValue = ""
+                    load(url, browsingFolder: folder, selectingPath: destination)
                 case .failure(let error): present(error)
                 }
             }
@@ -953,6 +1005,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         case #selector(openSelectedFile(_:)), #selector(openSelectedArchive(_:)): return !sessionEnded && !isBusy && window?.attachedSheet == nil && selectedRegularFile != nil
         case #selector(showPackageContents(_:)): return !isBusy && selectedPackage != nil
         case #selector(replaceSelected(_:)): return canReplaceFile
+        case #selector(newFolder(_:)): return canCreateFolder
         case #selector(renameSelected(_:)): return canRenameItems && window?.attachedSheet == nil && selectedPaths().count == 1
         case #selector(deleteSelected(_:)): return canDeleteItems && window?.attachedSheet == nil && !selectedPaths().isEmpty
         case #selector(addFiles(_:)), #selector(addFolder(_:)):

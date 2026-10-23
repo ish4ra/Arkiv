@@ -179,6 +179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let open = file.addItem(withTitle: "Open Archive…", action: #selector(openArchive(_:)), keyEquivalent: "o"); open.target = self
         file.addItem(.separator())
         file.addItem(withTitle: "Replace File…", action: #selector(BrowserWindowController.replaceSelected(_:)), keyEquivalent: "")
+        file.addItem(withTitle: "New Folder…", action: #selector(BrowserWindowController.newFolder(_:)), keyEquivalent: "")
         file.addItem(withTitle: "Rename…", action: #selector(BrowserWindowController.renameSelected(_:)), keyEquivalent: "")
         let delete = file.addItem(withTitle: "Delete…", action: #selector(BrowserWindowController.deleteSelected(_:)), keyEquivalent: "\u{8}")
         delete.keyEquivalentModifierMask = [.command]
