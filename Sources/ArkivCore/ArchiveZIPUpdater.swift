@@ -50,7 +50,11 @@ public struct ArchiveZIPUpdater: Sendable {
             throw ArchiveFailure.message("Choose one archive folder and one local folder.")
         }
         try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
-        return try update(sources: [source], snapshot: snapshot, folder: "", plan: deletionPlan(snapshot, paths: [path]),
+        var keep = try deletionPlan(snapshot, paths: [path])
+        for (i, entry) in snapshot.entries.enumerated() where entry.kind == .directory && entry.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) == path {
+            keep[i] = 1 // Preserve the explicit root directory record and all its metadata.
+        }
+        return try update(sources: [source], snapshot: snapshot, folder: "", plan: keep,
                           folderReplacement: path, cancellation: cancellation, progress: progress)
     }
     private func deletionPlan(_ snapshot: ArchiveSnapshot, paths: Set<String>) throws -> [UInt8] {
@@ -236,7 +240,7 @@ public struct ArchiveZIPUpdater: Sendable {
             compression = method == 0 ? .store : .deflate
         }
         let additions = try (plan == nil || folderReplacement != nil) && renameNames == nil ? ArchiveCreator().create(ArchiveCreationRequest(sources: sources, destination: stage, name: "additions", compression: compression),
-                                                    archiveFolder: folder, replacementRoot: folderReplacement, cancellation: cancellation, progress: progress) : nil
+                                                    archiveFolder: folder, replacementRoot: folderReplacement, omitReplacementRoot: folderReplacement.map { path in snapshot.entries.contains { $0.kind == .directory && $0.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) == path } } ?? false, cancellation: cancellation, progress: progress) : nil
         if seven || folderReplacement != nil, let additions {
             // Check every staged descendant, including implicit directories and
             // Unicode/case aliases, before handing the new manifest to 7-Zip.

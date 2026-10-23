@@ -23,6 +23,7 @@ final class ZIPFolderReplacementTests: XCTestCase {
         try bytes.write(to: archive)
         let input = root.appendingPathComponent("different-name")
         try fm.createDirectory(at: input, withIntermediateDirectories: false)
+        try fm.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1234567890)], ofItemAtPath: input.path)
         try body(root, archive, LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation()), input)
         XCTAssertFalse(try fm.contentsOfDirectory(atPath: root.path).contains { $0.hasPrefix(".arkiv-") })
     }
@@ -32,6 +33,8 @@ final class ZIPFolderReplacementTests: XCTestCase {
             try fm.createDirectory(at: input.appendingPathComponent("new/空 🐈"), withIntermediateDirectories: true)
             try Data("new contents".utf8).write(to: input.appendingPathComponent("match.txt"))
             try Data("added".utf8).write(to: input.appendingPathComponent("new/file"))
+            try fm.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1234567890)], ofItemAtPath: input.path)
+            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: input.appendingPathComponent("new/file").path)
             let before = try Data(contentsOf: archive)
             try updater.replaceFolder(path: "資料.app", with: input, in: snapshot, cancellation: ArchiveCancellation())
             var fresh = try engine.inspect(archive, cancellation: ArchiveCancellation())
@@ -40,12 +43,15 @@ final class ZIPFolderReplacementTests: XCTestCase {
             // The first unrelated local record is retained byte-for-byte, including its payload.
             let next = try XCTUnwrap(before.range(of: Data([0x50,0x4b,3,4]), in: 4..<before.count)?.lowerBound)
             XCTAssertEqual(before.prefix(next), after.prefix(next))
+            let firstChild = try XCTUnwrap(before.range(of: Data([0x50,0x4b,3,4]), in: (next+4)..<before.count)?.lowerBound)
+            XCTAssertEqual(before.prefix(firstChild), after.prefix(firstChild), "Preserve the selected directory record and its metadata too")
             XCTAssertEqual(after.suffix(7), Data("comment".utf8))
             XCTAssertEqual(try engine.test(archive, cancellation: ArchiveCancellation()).state, .ok)
             let out = try engine.extract(fresh, ids: nil, into: root, cancellation: ArchiveCancellation(), progress: { _ in })
             XCTAssertEqual(try Data(contentsOf: out.appendingPathComponent("資料.app/match.txt")), Data("new contents".utf8))
             XCTAssertEqual(try Data(contentsOf: out.appendingPathComponent("keep.txt")), Data("unrelated".utf8))
             XCTAssertEqual(try fm.contentsOfDirectory(atPath: out.appendingPathComponent("資料.app/new/空 🐈").path), [])
+            XCTAssertEqual((try fm.attributesOfItem(atPath: out.appendingPathComponent("資料.app/new/file").path)[.posixPermissions] as? NSNumber)?.intValue, 0o755)
             // Replace a nested folder with empty contents; its archive basename is retained.
             let empty = root.appendingPathComponent("empty")
             try fm.createDirectory(at: empty, withIntermediateDirectories: false)
@@ -81,4 +87,22 @@ final class ZIPFolderReplacementTests: XCTestCase {
             XCTAssertThrowsError(try updater.replaceFolder(path: "資料.app", with: input, in: snapshot, cancellation: ArchiveCancellation()))
         }
     }
+    func testImplicitFolderEmptyReplacementAndSevenZipRejected() throws {
+        try fixture { root, _, _, input in
+            let creator = ArchiveCreator(), engine = LibArchiveEngine(), updater = ArchiveZIPUpdater()
+            let archive = try creator.create(.init(sources: [root.appendingPathComponent("keep.txt")], destination: root, name: "Implicit"), archiveFolder: "implicit", cancellation: ArchiveCancellation(), progress: { _ in })
+            let snapshot = try engine.inspect(archive, cancellation: ArchiveCancellation())
+            XCTAssertEqual(snapshot.entries.count, 1)
+            try updater.replaceFolder(path: "implicit", with: input, in: snapshot, cancellation: ArchiveCancellation())
+            let fresh = try engine.inspect(archive, cancellation: ArchiveCancellation())
+            XCTAssertEqual(fresh.entries.map(\.path), ["implicit/"])
+            let out = try engine.extract(fresh, ids: nil, into: root, cancellation: ArchiveCancellation(), progress: { _ in })
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: out.appendingPathComponent("implicit").path), [])
+            let seven = try creator.create(.init(sources: [input], destination: root, name: "ReadOnly", format: .sevenZip), cancellation: ArchiveCancellation(), progress: { _ in })
+            let before = try Data(contentsOf: seven)
+            XCTAssertThrowsError(try updater.replaceFolder(path: "different-name", with: input, in: engine.inspect(seven, cancellation: ArchiveCancellation()), cancellation: ArchiveCancellation()))
+            XCTAssertEqual(try Data(contentsOf: seven), before)
+        }
+    }
+
 }

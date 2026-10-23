@@ -110,3 +110,36 @@ or a crash-recovery mechanism.
 4. Cancel the chooser and a large rewrite before commit: no edit or sound.
 5. Verify multiple selections, folders and read-only archive formats disable
    Replace File. Check Add/Delete/Rename and Finder drag-in/out still work.
+
+## Replace Folder
+
+For an eligible writable ZIP, select exactly one directory/package and choose
+**Replace Folder…**. Choose a local directory, then explicitly confirm the
+destructive replacement. The selected archive path stays fixed; its old descendants
+are removed, and the chosen directory's contents become its new descendants.
+The disk directory's basename is not added as a wrapper. An empty source leaves
+an empty archive directory. This is not a merge or an update-by-date operation.
+
+The existing transaction combines a retained-record mask with a private, verified
+ZIP of the incoming subtree. All retained local records (including an explicit
+selected directory record) are copied verbatim. Retained central records preserve
+CRC, compression, extras, comments, attributes and timestamps; only local-record
+offsets change where necessary. The archive comment is preserved. An implicit
+selected directory gets an explicit record so empty replacement remains visible.
+Incoming descendants are encoded through the existing ZIP creator using Deflate
+(Store where the writer requires it for empty data/directories), with source
+modification times and ordinary permission bits, including executable bits.
+Old descendant metadata is replaced, not merged; filesystem ACLs/xattrs are not
+imported. Source links and special files fail closed under the existing creator
+policy. Unsupported/encrypted/ZIP64/multipart ZIPs and all other formats stay
+read-only for this action.
+
+Full output integrity verification, source revalidation and coordinated atomic
+commit precede success feedback. Cancellation/failure before commit leaves the
+original unchanged and cleans staging. After success the parent folder refreshes,
+the replaced folder is selected, and completion feedback plays once.
+
+On Mac, test a disposable folder/package with added, removed and changed files,
+nested empty directories and Unicode names. Cancel the destructive sheet first;
+then replace, run Test Archive and extract to compare with the chosen source.
+Repeat with an empty source and verify unrelated entries remain unchanged.

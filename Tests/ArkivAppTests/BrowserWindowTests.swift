@@ -663,4 +663,59 @@ final class BrowserWindowTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testFolderReplacementConfirmationCancelRefreshAndZIPOnly() async throws {
+        _ = NSApplication.shared
+        let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let folder = root.appendingPathComponent("Example.app"), input = root.appendingPathComponent("different")
+        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        try fm.createDirectory(at: input, withIntermediateDirectories: false)
+        defer { try? fm.removeItem(at: root) }
+        try Data("old".utf8).write(to: folder.appendingPathComponent("old"))
+        let file = root.appendingPathComponent("keep.txt")
+        try Data("keep".utf8).write(to: file)
+        let archive = try ArchiveCreator().create(.init(sources: [folder,file], destination: root, name: "Replace"), cancellation: ArchiveCancellation(), progress: { _ in })
+        var sounds = 0
+        let controller = BrowserWindowController(modificationFeedback: { result in
+            ExtractionFeedback.completed(result, play: { sounds += 1 })
+        })
+        defer { controller.close() }
+        func idle() async throws {
+            for _ in 0..<2400 {
+                if !controller.isBusy && controller.window?.attachedSheet == nil { return }
+                try await Task.sleep(nanoseconds: 25_000_000)
+            }
+            XCTFail("Folder replacement did not complete")
+        }
+        let item = NSMenuItem(title: "Replace Folder…", action: #selector(BrowserWindowController.replaceSelectedFolder(_:)), keyEquivalent: "")
+        XCTAssertFalse(controller.validateMenuItem(item))
+        controller.load(archive); try await idle()
+        let table = try XCTUnwrap(descendants(controller.window!.contentView!).compactMap { $0 as? NSTableView }.first)
+        XCTAssertNotNil(table.menu?.items.first { $0.action == item.action })
+        table.selectRowIndexes(IndexSet(integersIn: 0..<2), byExtendingSelection: false)
+        XCTAssertFalse(controller.validateMenuItem(item))
+        table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
+        XCTAssertFalse(controller.validateMenuItem(item), "Regular files use Replace File")
+        table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        XCTAssertTrue(controller.validateMenuItem(item))
+        let before = try Data(contentsOf: archive)
+        controller.confirmFolderReplacement("Example.app", with: input)
+        let cancelled = try XCTUnwrap(controller.window?.attachedSheet)
+        let destructive = try XCTUnwrap(descendants(cancelled.contentView!).compactMap { $0 as? NSButton }.first { $0.title == "Replace" })
+        XCTAssertTrue(destructive.hasDestructiveAction)
+        XCTAssertNotEqual(destructive.keyEquivalent, "\r")
+        cancelled.cancelOperation(nil); try await idle()
+        XCTAssertEqual(try Data(contentsOf: archive), before); XCTAssertEqual(sounds, 0)
+        controller.confirmFolderReplacement("Example.app", with: input)
+        let sheet = try XCTUnwrap(controller.window?.attachedSheet)
+        try XCTUnwrap(descendants(sheet.contentView!).compactMap { $0 as? NSButton }.first { $0.title == "Replace" }).performClick(nil)
+        try await idle()
+        XCTAssertEqual(sounds, 1); XCTAssertEqual(table.selectedRow, 0)
+        XCTAssertEqual(Set(try LibArchiveEngine().inspect(archive, cancellation: ArchiveCancellation()).entries.map(\.path)), ["Example.app/", "keep.txt"])
+        let seven = try ArchiveCreator().create(.init(sources: [folder], destination: root, name: "ReadOnly", format: .sevenZip), cancellation: ArchiveCancellation(), progress: { _ in })
+        controller.load(seven); try await idle()
+        table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        XCTAssertFalse(controller.validateMenuItem(item))
+    }
+
 }

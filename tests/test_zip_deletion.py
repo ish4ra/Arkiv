@@ -62,6 +62,28 @@ class DeletionTests(unittest.TestCase):
                     records.append(record); start += len(record)
                 return records
             self.assertEqual(central(self.before, old.start_dir)[1:], central(after, new.start_dir))
+    def test_subtree_splice_preserves_retained_raw_metadata(self):
+        addition = self.root / "addition.zip"
+        with zipfile.ZipFile(addition, "w") as z:
+            z.writestr("new/empty/", b"")
+            z.writestr("new/file", b"replacement")
+        LIB.arkiv_zip_prepare_subtree.argtypes = [C.c_void_p, C.c_char_p, C.POINTER(C.c_ubyte), C.c_size_t, C.c_char_p, C.c_void_p, C.c_void_p, C.c_void_p, C.c_char_p, C.c_size_t]
+        self.assertEqual(LIB.arkiv_zip_prepare_subtree(self.t, os.fsencode(addition), (C.c_ubyte*3)(0,1,1), 3, os.fsencode(self.stage), None, None, None, self.error, 256), 0, self.error.value)
+        self.assertEqual(self.path.read_bytes(), self.before)
+        self.assertEqual(self.commit(), 0)
+        after = self.path.read_bytes()
+        with zipfile.ZipFile(io.BytesIO(self.before)) as old, zipfile.ZipFile(self.path) as new:
+            self.assertIsNone(new.testzip())
+            self.assertEqual(new.comment, old.comment)
+            self.assertEqual(self.before[old.infolist()[1].header_offset:old.start_dir], after[:new.getinfo("new/empty/").header_offset])
+            for name in ["資料/é.txt", "last"]:
+                a,b = old.getinfo(name),new.getinfo(name)
+                for field in ["CRC", "compress_size", "file_size", "comment", "extra", "external_attr", "date_time", "compress_type"]:
+                    self.assertEqual(getattr(a,field),getattr(b,field))
+                self.assertEqual(old.read(name),new.read(name))
+            self.assertEqual(new.read("new/file"),b"replacement")
+            self.assertNotIn("remove",new.namelist())
+
     def reopen(self, data):
         LIB.arkiv_zip_end(self.t)
         self.path.write_bytes(data)

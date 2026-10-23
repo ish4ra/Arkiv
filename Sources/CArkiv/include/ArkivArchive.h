@@ -99,6 +99,6 @@ void arkiv_open_sweep(const char *);
 int arkiv_cancel_is_set(arkiv_cancel *);
 
 int arkiv_zip_prepare_subtree(arkiv_zip_transaction *, const char *, const unsigned char *, size_t, const char *, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
-int arkiv_create_zip_folder(const char *const *, size_t, const char *, const char *, const char *, char *, size_t, int, arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t, const char *);
+int arkiv_create_zip_folder(const char *const *, size_t, const char *, const char *, const char *, char *, size_t, int, arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t, const char *, int);
 
 #endif

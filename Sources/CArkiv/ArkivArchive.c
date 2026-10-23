@@ -546,7 +546,7 @@ struct create_state {
     struct archive *writer; arkiv_limits limits; arkiv_cancel *token;
     arkiv_progress_callback progress; void *context;
     uint64_t entries, bytes; char *error; size_t capacity;
-    dev_t stage_dev; ino_t stage_ino;
+    dev_t stage_dev; ino_t stage_ino; int omit_root, preserve_permissions;
 };
 static int create_walk(struct create_state *s, int fd, const char *path, unsigned depth) {
     if (cancelled(s->token)) return 2;
@@ -555,18 +555,21 @@ static int create_walk(struct create_state *s, int fd, const char *path, unsigne
         (!S_ISREG(st.st_mode) && !S_ISDIR(st.st_mode)) ||
         (st.st_dev == s->stage_dev && st.st_ino == s->stage_ino))
         return fail(s->error, s->capacity, "Source contains a link, special file, or unsafe path.");
-    if (++s->entries > s->limits.max_entries || st.st_size < 0 ||
+    int omit = s->omit_root && depth == 0 && S_ISDIR(st.st_mode);
+    if ((!omit && ++s->entries > s->limits.max_entries) || st.st_size < 0 ||
         (S_ISREG(st.st_mode) && (uint64_t)st.st_size > s->limits.max_bytes - s->bytes))
         return fail(s->error, s->capacity, "Creation safety limit exceeded.");
+    if (!omit) {
     struct archive_entry *entry = archive_entry_new();
     if (!entry) return fail(s->error, s->capacity, "Cannot allocate ZIP entry.");
     archive_entry_set_pathname_utf8(entry, path);
     archive_entry_set_filetype(entry, S_ISDIR(st.st_mode) ? AE_IFDIR : AE_IFREG);
-    archive_entry_set_perm(entry, S_ISDIR(st.st_mode) ? 0755 : 0644);
+    archive_entry_set_perm(entry, s->preserve_permissions ? st.st_mode & 0777 : (S_ISDIR(st.st_mode) ? 0755 : 0644));
     archive_entry_set_mtime(entry, st.st_mtime, 0);
     archive_entry_set_size(entry, S_ISDIR(st.st_mode) ? 0 : st.st_size);
     int result = archive_write_header(s->writer, entry); archive_entry_free(entry);
     if (result != ARCHIVE_OK) return fail(s->error, s->capacity, "Cannot write ZIP header.");
+    }
     if (S_ISDIR(st.st_mode)) {
         DIR *dir = fdopendir(dup(fd));
         if (!dir) return fail(s->error, s->capacity, "Cannot enumerate source folder.");
@@ -603,7 +606,7 @@ static int create_walk(struct create_state *s, int fd, const char *path, unsigne
     struct stat final_stat;
     if (fstat(fd, &final_stat) || !create_same_stat(&final_stat, &st))
         return fail(s->error, s->capacity, "Source changed during creation.");
-    if (archive_write_finish_entry(s->writer) != ARCHIVE_OK) return fail(s->error, s->capacity, "Cannot finish ZIP entry.");
+    if (!omit && archive_write_finish_entry(s->writer) != ARCHIVE_OK) return fail(s->error, s->capacity, "Cannot finish ZIP entry.");
     if (s->progress) s->progress(s->context, s->entries, s->bytes);
     return 0;
 }
@@ -611,7 +614,8 @@ static int seven_cancel(void *token) { return cancelled(token); }
 static int create_archive(const char *const *sources, size_t count, const char *parent,
                      const char *stage, const char *name, char *published_name, size_t published_capacity, int compression, arkiv_limits limits,
                      arkiv_cancel *token, arkiv_progress_callback progress, void *context,
-                     char *error, size_t capacity, int seven, const char *password, int headers, const char *prefix, const char *root) {
+                     char *error, size_t capacity, int seven, const char *password, int headers, const char *prefix, const char *root, int omit_root) {
+    if (omit_root && !root) return fail(error, capacity, "Invalid replacement root.");
     if (root && (count != 1 || seven || !safe_path(root))) return fail(error, capacity, "Invalid replacement folder.");
     if (prefix && *prefix && !safe_path(prefix)) return fail(error, capacity, "Invalid archive folder.");
     if (cancelled(token)) return 2;
@@ -638,7 +642,7 @@ static int create_archive(const char *const *sources, size_t count, const char *
         archive_write_open_fd(writer, output) != ARCHIVE_OK) goto done;
     struct stat stage_stat;
     if (fstat(stagefd, &stage_stat)) goto done;
-    struct create_state state = { writer, limits, token, progress, context, 0, 0, error, capacity, stage_stat.st_dev, stage_stat.st_ino };
+    struct create_state state = { writer, limits, token, progress, context, 0, 0, error, capacity, stage_stat.st_dev, stage_stat.st_ino, omit_root, root != NULL };
     for (size_t i = 0; i < count; i++) {
         /* Each new root begins in failure state until it is fully written. */
         status = 1;
@@ -711,24 +715,24 @@ done:
 
 int arkiv_create_zip_folder(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
- arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity, const char *root) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,"",root);
+ arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity, const char *root, int omit_root) {
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,"",root,omit_root);
 }
 int arkiv_create_zip_at(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity, const char *prefix) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,prefix,NULL);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,prefix,NULL,0);
 }
 int arkiv_create_archive(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity,
  int seven, const char *password, int headers) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers,"",NULL);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers,"",NULL,0);
 }
 int arkiv_create_zip(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,"",NULL);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,"",NULL,0);
 }
 int arkiv_is_seven(const char *path) {
  int fd=create_open(path); if(fd<0)return 0;unsigned char b[6];ssize_t n=read(fd,b,6);close(fd);

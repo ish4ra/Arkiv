@@ -27,7 +27,7 @@ public struct ArchiveCreator: Sendable {
                        progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         try create(request, archiveFolder: "", cancellation: cancellation, progress: progress)
     }
-    func create(_ request: ArchiveCreationRequest, archiveFolder: String, replacementRoot: String? = nil, cancellation: ArchiveCancellation,
+    func create(_ request: ArchiveCreationRequest, archiveFolder: String, replacementRoot: String? = nil, omitReplacementRoot: Bool = false, cancellation: ArchiveCancellation,
                 progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         try validateArchivePassword(request.password)
         if request.format == .zip, request.password != nil {
@@ -101,7 +101,7 @@ public struct ArchiveCreator: Sendable {
                     return arkiv_create_zip_folder(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
                         filename, &published, published.count, request.compression == .store ? 0 : 1,
                         arkiv_limits(max_entries: 100_000, max_bytes: 20 * 1024 * 1024 * 1024),
-                        cancellation.pointer, callback, context, &error, error.count, replacementRoot)
+                        cancellation.pointer, callback, context, &error, error.count, replacementRoot, omitReplacementRoot ? 1 : 0)
                 }
                 if !archiveFolder.isEmpty {
                     return arkiv_create_zip_at(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
