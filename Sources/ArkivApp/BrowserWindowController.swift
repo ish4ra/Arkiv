@@ -486,7 +486,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
               let path = selectedPaths().first else { return }
         let panel = NSOpenPanel()
         panel.canChooseFiles = false; panel.canChooseDirectories = true
-        panel.treatsFilePackagesAsDirectories = false
+        panel.treatsFilePackagesAsDirectories = true
         panel.allowsMultipleSelection = false
         panel.prompt = "Choose Folder"
         panel.message = "Choose replacement contents. The archive folder keeps its existing name."
