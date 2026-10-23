@@ -477,10 +477,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     }
     private var canCreateFolder: Bool {
         guard canAddItems, case .zip = additionCapability else { return false }
-        return window?.attachedSheet == nil
+        return true
     }
     @objc func newFolder(_ sender: Any?) {
-        guard canCreateFolder, let window else { return }
+        guard canCreateFolder, let window, window.attachedSheet == nil else { return }
         let alert = NSAlert()
         alert.messageText = "New Folder"
         alert.informativeText = "Create an empty folder in the current archive directory."
@@ -1005,7 +1005,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         case #selector(openSelectedFile(_:)), #selector(openSelectedArchive(_:)): return !sessionEnded && !isBusy && window?.attachedSheet == nil && selectedRegularFile != nil
         case #selector(showPackageContents(_:)): return !isBusy && selectedPackage != nil
         case #selector(replaceSelected(_:)): return canReplaceFile
-        case #selector(newFolder(_:)): return canCreateFolder
+        case #selector(newFolder(_:)): return canCreateFolder && window?.attachedSheet == nil
         case #selector(renameSelected(_:)): return canRenameItems && window?.attachedSheet == nil && selectedPaths().count == 1
         case #selector(deleteSelected(_:)): return canDeleteItems && window?.attachedSheet == nil && !selectedPaths().isEmpty
         case #selector(addFiles(_:)), #selector(addFolder(_:)):
