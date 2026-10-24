@@ -1014,10 +1014,20 @@ int arkiv_zip_replacement_method(arkiv_zip_transaction *t, size_t ordinal, size_
     }
     return -1;
 }
+/* Read one newly encoded regular-file payload; metadata comes from the old record. */
+static int zip_update_content(int fd,uint64_t central,unsigned char *h,unsigned char *l,uint64_t *start) {
+    if(pread(fd,h,46,central)!=46||memcmp(h,"PK\001\002",4)||
+       (integrity_u32(h+38)&0x10)||((integrity_u32(h+38)>>16)&S_IFMT)!=S_IFREG)return 0;
+    uint64_t off=integrity_u32(h+42);
+    if(pread(fd,l,30,off)!=30||memcmp(l,"PK\003\004",4))return 0;
+    *start=off+30u+integrity_u16(l+26)+integrity_u16(l+28);
+    return 1;
+}
 /* Keep masks follow listing ordinals: accepted ZIPs have identical local/central order.
    Deletion leaves retained local records byte-identical; rename changes names and encoding flags.
    Replacement splices generated compressed bytes into the selected record, retaining its metadata. */
-static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsigned char *keep,const char *const *oldnames,const char *const *names,size_t count,size_t replacement,const char *expected,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
+static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsigned char *keep,const char *const *oldnames,const char *const *names,size_t count,size_t replacement,const char *expected,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap,const int64_t *updates,const unsigned char *incoming_keep,size_t incoming_count) {
+    uint64_t *incomingCenters=NULL;uint32_t *newOffsets=NULL;unsigned char *seenUpdates=NULL;
     int in=-1,out=-1,result=1;struct zip_envelope z;struct stat st;uint32_t *offsets=NULL;unsigned char content[46], contentLocal[30];uint64_t contentStart=0;
     int replacing=replacement!=SIZE_MAX, emptyDeflate=0;
     if(!t||t->seven||t->stage>=0||t->ready)goto done;
@@ -1045,6 +1055,27 @@ static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsig
         }
     } else if(replacing)goto done;
     else if(count!=t->zip.count||(!keep&&!names&&count))goto done;
+    if(updates) {
+        if(!addition||!keep||(!incoming_keep&&incoming_count)||incoming_count!=z.count||replacing||names)goto done;
+        incomingCenters=calloc(z.count+1,sizeof(*incomingCenters));
+        newOffsets=calloc(z.count?z.count:1,sizeof(*newOffsets));
+        seenUpdates=calloc(z.count?z.count:1,1);
+        if(!incomingCenters||!newOffsets||!seenUpdates)goto done;
+        uint64_t cursor=z.offset;
+        for(size_t i=0;i<z.count;i++) {
+            unsigned char h[46];
+            if(incoming_keep[i]>1||pread(in,h,46,cursor)!=46)goto done;
+            incomingCenters[i]=cursor;
+            cursor+=46u+integrity_u16(h+28)+integrity_u16(h+30)+integrity_u16(h+32);
+        }
+        for(size_t i=0;i<count;i++) {
+            if(!keep[i]||updates[i]<-1)goto done;
+            if(updates[i]>=0) {
+                if((uint64_t)updates[i]>=z.count||incoming_keep[updates[i]]||seenUpdates[updates[i]])goto done;
+                seenUpdates[updates[i]]=1;
+            }
+        }
+    } else if(incoming_keep)goto done;
     t->stage=create_open(stage);if(t->stage<0)goto done;
     if(fstat(t->stage,&st)||!S_ISDIR(st.st_mode)||st.st_uid!=geteuid()||(st.st_mode&077)!=0||st.st_dev!=t->stamp.st_dev)goto done;
     out=openat(t->stage,"replacement.zip",O_CREAT|O_EXCL|O_RDWR|O_NOFOLLOW|O_CLOEXEC,0600);if(out<0)goto done;
@@ -1081,10 +1112,16 @@ static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsig
             if(!keep||keep[i]) {
                 off_t position=lseek(out,0,SEEK_CUR);if(position<0||(uint64_t)position+recordEnd-off>=UINT32_MAX)goto done;
                 offsets[i]=(uint32_t)position;
-                if(replacing&&i==replacement) {
+                if(updates && updates[i]>=0) {
+                    unsigned mode=integrity_u32(h+38)>>16;
+                    if((integrity_u32(h+38)&0x10)||((mode&S_IFMT)&&(mode&S_IFMT)!=S_IFREG)||
+                       !zip_update_content(in,incomingCenters[updates[i]],content,contentLocal,&contentStart))goto done;
+                }
+                if((replacing&&i==replacement)||(updates&&updates[i]>=0)) {
                     uint64_t length=30u+n+integrity_u16(l+28)+integrity_u32(content+20)+(integrity_u16(h+8)&8?16:0);
                     if((uint64_t)position+length>=UINT32_MAX)goto done;
                     memcpy(l+14,content+16,12);
+                    zip_put16(l+8,integrity_u16(content+10));
                     zip_put16(l+6,(integrity_u16(l+6)&~6)|(integrity_u16(content+8)&6));
                     if(integrity_u16(l+4)<integrity_u16(content+6))zip_put16(l+4,integrity_u16(content+6));
                     if(write(out,l,30)!=30)goto done;
@@ -1131,8 +1168,19 @@ static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsig
         off_t additionOffset=lseek(out,0,SEEK_CUR);
         if(additionOffset<0)goto done;
         if(addition && keep) {
-            result=zip_copy(in,out,0,z.offset,token);if(result)goto done;
-            result=1;
+            if(incoming_keep) {
+                for(size_t j=0;j<z.count;j++) {
+                    if(!incoming_keep[j])continue;
+                    unsigned char h[46],next[46];
+                    if(pread(in,h,46,incomingCenters[j])!=46)goto done;
+                    uint64_t off=integrity_u32(h+42),end=z.offset;
+                    if(j+1<z.count) { if(pread(in,next,46,incomingCenters[j+1])!=46)goto done;end=integrity_u32(next+42); }
+                    off_t position=lseek(out,0,SEEK_CUR);
+                    if(position<0||end<off||(uint64_t)position+end-off>=UINT32_MAX)goto done;
+                    newOffsets[j]=(uint32_t)position;
+                    result=zip_copy(in,out,off,end-off,token);if(result)goto done;result=1;
+                }
+            } else { result=zip_copy(in,out,0,z.offset,token);if(result)goto done;result=1; }
         }
         off_t central=lseek(out,0,SEEK_CUR);if(central<0||central>=UINT32_MAX)goto done;
         cursor=t->zip.offset;
@@ -1143,7 +1191,9 @@ static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsig
             if(cursor+46+n+rest>centralEnd)goto done;
             if(!keep||keep[i]) {
                 zip_put32(h+42,offsets[i]);
-                if(replacing&&i==replacement) {
+                if(updates&&updates[i]>=0 && !zip_update_content(in,incomingCenters[updates[i]],content,contentLocal,&contentStart))goto done;
+                if((replacing&&i==replacement)||(updates&&updates[i]>=0)) {
+                    zip_put16(h+10,integrity_u16(content+10));
                     memcpy(h+16,content+16,12);
                     zip_put16(h+8,(integrity_u16(h+8)&~6)|(integrity_u16(content+8)&6));
                     if(integrity_u16(h+6)<integrity_u16(content+6))zip_put16(h+6,integrity_u16(content+6));
@@ -1168,15 +1218,15 @@ static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsig
             for(unsigned i=0;i<z.count;i++) {
                 unsigned char h[46];
                 if(pread(in,h,46,extraCursor)!=46)goto done;
-                uint64_t offset=(uint64_t)integrity_u32(h+42)+additionOffset;
+                uint64_t length=integrity_u16(h+28)+integrity_u16(h+30)+integrity_u16(h+32);
+                if(incoming_keep&&!incoming_keep[i]) { extraCursor+=46+length;continue; }
+                uint64_t offset=incoming_keep?newOffsets[i]:(uint64_t)integrity_u32(h+42)+additionOffset;
                 if(offset>=UINT32_MAX)goto done;
                 zip_put32(h+42,offset);
                 if(write(out,h,46)!=46)goto done;
-                uint64_t length=integrity_u16(h+28)+integrity_u16(h+30)+integrity_u16(h+32);
                 result=zip_copy(in,out,extraCursor+46,length,token);if(result)goto done;
-                result=1;extraCursor+=46+length;
+                result=1;extraCursor+=46+length;retained++;
             }
-            retained+=z.count;
         }
         off_t finish=lseek(out,0,SEEK_CUR);if(finish<central||(uint64_t)finish+22+t->zip.comment>=UINT32_MAX)goto done;
         unsigned char *e=t->zip.end;zip_put16(e+8,retained);zip_put16(e+10,retained);zip_put32(e+12,finish-central);zip_put32(e+16,central);
@@ -1193,26 +1243,32 @@ static int zip_prepare(arkiv_zip_transaction *t,const char *addition,const unsig
     result=arkiv_test(output,NULL,(arkiv_limits){100000,20ULL*1024*1024*1024},token,callback,context,error,cap);free(output);
     if(result!=0&&result!=2)result=1;
     if(!result) { if(fstat(out,&t->replacement_stamp))result=1;else t->ready=1; }
-done:free(offsets);if(in>=0)close(in);if(out>=0)close(out);if(result==1)fail(error,cap,"Cannot safely build and verify the updated ZIP. Original archive unchanged.");return result;
+done:free(incomingCenters);free(newOffsets);free(seenUpdates);free(offsets);if(in>=0)close(in);if(out>=0)close(out);if(result==1)fail(error,cap,"Cannot safely build and verify the updated ZIP. Original archive unchanged.");return result;
 }
 int arkiv_zip_prepare(arkiv_zip_transaction *t,const char *addition,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
-    return zip_prepare(t,addition,NULL,NULL,NULL,0,SIZE_MAX,NULL,stage,token,callback,context,error,cap);
+    return zip_prepare(t,addition,NULL,NULL,NULL,0,SIZE_MAX,NULL,stage,token,callback,context,error,cap,NULL,NULL,0);
+}
+int arkiv_zip_prepare_merge(arkiv_zip_transaction *t,const char *addition,const int64_t *updates,size_t count,const unsigned char *incoming_keep,size_t incoming_count,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
+    if(!updates||(!incoming_keep&&incoming_count))return fail(error,cap,"Invalid folder merge plan.");
+    unsigned char *keep=malloc(count?count:1);if(!keep)return 1;memset(keep,1,count);
+    int result=zip_prepare(t,addition,keep,NULL,NULL,count,SIZE_MAX,NULL,stage,token,callback,context,error,cap,updates,incoming_keep,incoming_count);
+    free(keep);return result;
 }
 int arkiv_zip_prepare_subtree(arkiv_zip_transaction *t,const char *addition,const unsigned char *keep,size_t count,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
     if(!addition||!keep)return fail(error,cap,"Invalid subtree replacement.");
-    return zip_prepare(t,addition,keep,NULL,NULL,count,SIZE_MAX,NULL,stage,token,callback,context,error,cap);
+    return zip_prepare(t,addition,keep,NULL,NULL,count,SIZE_MAX,NULL,stage,token,callback,context,error,cap,NULL,NULL,0);
 }
 int arkiv_zip_prepare_delete(arkiv_zip_transaction *t,const unsigned char *keep,size_t count,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
-    return zip_prepare(t,NULL,keep,NULL,NULL,count,SIZE_MAX,NULL,stage,token,callback,context,error,cap);
+    return zip_prepare(t,NULL,keep,NULL,NULL,count,SIZE_MAX,NULL,stage,token,callback,context,error,cap,NULL,NULL,0);
 }
 
 int arkiv_zip_prepare_rename(arkiv_zip_transaction *t,const char *const *oldnames,const char *const *names,size_t count,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
     if(!oldnames||!names)return fail(error,cap,"Missing rename plan.");
-    return zip_prepare(t,NULL,NULL,oldnames,names,count,SIZE_MAX,NULL,stage,token,callback,context,error,cap);
+    return zip_prepare(t,NULL,NULL,oldnames,names,count,SIZE_MAX,NULL,stage,token,callback,context,error,cap,NULL,NULL,0);
 }
 
 int arkiv_zip_prepare_replace(arkiv_zip_transaction *t,const char *content,size_t ordinal,size_t count,const char *name,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
-    return zip_prepare(t,content,NULL,NULL,NULL,count,ordinal,name,stage,token,callback,context,error,cap);
+    return zip_prepare(t,content,NULL,NULL,NULL,count,ordinal,name,stage,token,callback,context,error,cap,NULL,NULL,0);
 }
 
 /* The stage and publication are shared with ZIP, but the replacement is 7z.

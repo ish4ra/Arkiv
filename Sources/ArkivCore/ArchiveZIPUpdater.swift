@@ -43,6 +43,17 @@ public struct ArchiveZIPUpdater: Sendable {
     public func replaceFolder(path: String, with source: URL, in snapshot: ArchiveSnapshot,
                               cancellation: ArchiveCancellation,
                               progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
+        try editFolder(path: path, with: source, in: snapshot, merge: false, cancellation: cancellation, progress: progress)
+    }
+    @discardableResult
+    public func updateFolder(path: String, with source: URL, in snapshot: ArchiveSnapshot,
+                             cancellation: ArchiveCancellation,
+                             progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
+        try editFolder(path: path, with: source, in: snapshot, merge: true, cancellation: cancellation, progress: progress)
+    }
+    private func editFolder(path: String, with source: URL, in snapshot: ArchiveSnapshot, merge: Bool,
+                            cancellation: ArchiveCancellation,
+                            progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         guard snapshot.index.row(at: path)?.isDirectory == true,
               source.isFileURL, (source.host == nil || source.host == "" || source.host == "localhost"),
               source.query == nil, source.fragment == nil,
@@ -55,7 +66,7 @@ public struct ArchiveZIPUpdater: Sendable {
             keep[i] = 1 // Preserve the explicit root directory record and all its metadata.
         }
         return try update(sources: [source], snapshot: snapshot, folder: "", plan: keep,
-                          folderReplacement: path, cancellation: cancellation, progress: progress)
+                          folderReplacement: path, folderMerge: merge, cancellation: cancellation, progress: progress)
     }
     private func deletionPlan(_ snapshot: ArchiveSnapshot, paths: Set<String>) throws -> [UInt8] {
         let index = snapshot.index
@@ -177,7 +188,7 @@ public struct ArchiveZIPUpdater: Sendable {
         try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
         return try renameItem(path: path, to: name, in: snapshot, seven: true, password: password, cancellation: cancellation, progress: progress)
     }
-    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, newFolder: String? = nil, folderReplacement: String? = nil, seven: Bool = false, password: String? = nil, cancellation: ArchiveCancellation,
+    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, newFolder: String? = nil, folderReplacement: String? = nil, folderMerge: Bool = false, seven: Bool = false, password: String? = nil, cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         guard (seven || snapshot.unlocked == nil), snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
@@ -255,7 +266,39 @@ public struct ArchiveZIPUpdater: Sendable {
             Unmanaged<ZIPAdditionProgress>.fromOpaque(context).takeUnretainedValue().callback(ArchiveProgress(files: files, bytes: bytes))
         }
         let result: Int32
-        if folderReplacement != nil, let plan, let additions {
+        if folderMerge, let additions {
+            let incoming = try LibArchiveEngine().inspect(additions, cancellation: cancellation)
+            func normalized(_ path: String) -> String { path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) }
+            struct Node { let path: String; let directory: Bool; var ordinal: Int? }
+            var nodes = [String: Node]()
+            for (i, entry) in snapshot.entries.enumerated() {
+                let parts = normalized(entry.path).split(separator: "/")
+                for n in 1...parts.count {
+                    let path = parts.prefix(n).joined(separator: "/")
+                    let explicit = n == parts.count
+                    var node = nodes[key(path)] ?? Node(path: path, directory: !explicit || entry.kind == .directory, ordinal: nil)
+                    if explicit { node.ordinal = i }
+                    nodes[key(path)] = node
+                }
+            }
+            var updates = [Int64](repeating: -1, count: snapshot.entries.count)
+            var append = [UInt8](repeating: 1, count: incoming.entries.count)
+            for (i, entry) in incoming.entries.enumerated() {
+                let path = normalized(entry.path)
+                guard let old = nodes[key(path)] else { continue }
+                guard old.path == path, old.directory == (entry.kind == .directory) else {
+                    throw ArchiveFailure.message("A file/folder conflict or case-only alias prevents this folder update.")
+                }
+                if let ordinal = old.ordinal {
+                    append[i] = 0
+                    if entry.kind == .file { updates[ordinal] = Int64(i) }
+                }
+            }
+            let combined = snapshot.entries + incoming.entries.enumerated().filter { append[$0.offset] != 0 }.map(\.element)
+            try ArchiveAdditionUpdater.validateSevenPaths(ArchiveSnapshot(url: snapshot.url, entries: combined, stamp: snapshot.stamp, unlocked: nil))
+            result = arkiv_zip_prepare_merge(transaction, additions.path, updates, updates.count, append, append.count,
+                                             stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+        } else if folderReplacement != nil, let plan, let additions {
             result = arkiv_zip_prepare_subtree(transaction, additions.path, plan, plan.count, stage.path,
                                               cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
         } else if let replacement {
