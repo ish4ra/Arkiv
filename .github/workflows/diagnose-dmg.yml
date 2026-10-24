@@ -19,7 +19,15 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           [[ "$JOB_ID" =~ ^[0-9]+$ ]]
-          gh api "repos/$REPOSITORY/actions/jobs/$JOB_ID/logs" > "$RUNNER_TEMP/job.log"
+          if ! gh api "repos/$REPOSITORY/actions/jobs/$JOB_ID/logs" > "$RUNNER_TEMP/job.log" 2> "$RUNNER_TEMP/download-error"; then
+            python3 - "$RUNNER_TEMP/download-error" <<'PYERROR'
+          import re, sys
+          from pathlib import Path
+          message = re.sub(r'https://\S+', '[URL]', Path(sys.argv[1]).read_text())[:500]
+          print("::error::Log download: " + message.replace("\n", " ").replace("%", "%25"))
+          PYERROR
+            exit 1
+          fi
           python3 - "$RUNNER_TEMP/job.log" <<'PY'
           import re, sys
           from pathlib import Path
