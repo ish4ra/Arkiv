@@ -528,14 +528,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                     }
                 }
                 DispatchQueue.main.async { [self] in
-                    finish()
-                    modificationFeedback(result)
+                    self.finish()
+                    self.modificationFeedback(result)
                     switch result {
                     case .success(let url):
                         self.snapshot = nil; self.index = nil; self.zipAdditionAvailable = false
-                        search.stringValue = ""
-                        load(url, browsingFolder: folder, selectingPaths: paths)
-                    case .failure(let error): present(error)
+                        self.search.stringValue = ""
+                        self.load(url, browsingFolder: folder, selectingPaths: paths)
+                    case .failure(let error): self.present(error)
                     }
                 }
             }
