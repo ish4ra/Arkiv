@@ -21,6 +21,38 @@ class ReplacementTests(unittest.TestCase):
             entry.external_attr = 0o100600 << 16
             z.writestr(entry, payload)
         return LIB.arkiv_zip_prepare_replace(self.t, os.fsencode(content), ordinal, count, name, os.fsencode(self.stage), token, None, None, self.error, 256)
+    def test_folder_merge_keeps_raw_records_and_matching_metadata(self):
+        self.fixture(comment=b"entry comment", method=zipfile.ZIP_STORED)
+        content = self.root / "merge.zip"
+        with zipfile.ZipFile(content, "w") as z:
+            for name, payload in [("old", b"updated"*100), ("new", b"added")]:
+                entry = zipfile.ZipInfo(name)
+                entry.external_attr = 0o100600 << 16
+                entry.compress_type = zipfile.ZIP_DEFLATED
+                z.writestr(entry, payload)
+        with zipfile.ZipFile(self.path) as z:
+            original = z.infolist()
+            old_central = z.start_dir
+        LIB.arkiv_zip_prepare_merge.argtypes = [C.c_void_p,C.c_char_p,C.POINTER(C.c_int64),C.c_size_t,C.POINTER(C.c_ubyte),C.c_size_t,C.c_char_p,C.c_void_p,C.c_void_p,C.c_void_p,C.c_char_p,C.c_size_t]
+        result = LIB.arkiv_zip_prepare_merge(self.t,os.fsencode(content),(C.c_int64*2)(0,-1),2,(C.c_ubyte*2)(0,1),2,os.fsencode(self.stage),None,None,None,self.error,256)
+        self.assertEqual(result,0,self.error.value)
+        self.assertEqual(self.path.read_bytes(),self.before)
+        self.assertEqual(self.commit(),0,self.error.value)
+        after = self.path.read_bytes()
+        with zipfile.ZipFile(self.path) as z:
+            self.assertEqual(z.namelist(),["old","keep","new"])
+            self.assertEqual(z.read("old"),b"updated"*100)
+            self.assertEqual(z.read("keep"),b"payload"*100)
+            self.assertEqual(z.read("new"),b"added")
+            self.assertIsNone(z.testzip())
+            self.assertEqual(z.comment,b"archive\x00\xff")
+            for old in original:
+                current = z.getinfo(old.filename)
+                for field in ["filename","date_time","extra","comment","external_attr","internal_attr"]:
+                    self.assertEqual(getattr(old,field),getattr(current,field),field)
+            self.assertEqual(self.before[original[1].header_offset:old_central],
+                             after[z.getinfo("keep").header_offset:z.getinfo("new").header_offset],
+                             "Entire archive-only local record remains byte-for-byte identical")
     def test_apple_stored_empty_content_keeps_original_deflate(self):
         # Apple's libarchive writes empty files as Store even when Deflate is requested.
         self.fixture(method=zipfile.ZIP_DEFLATED)

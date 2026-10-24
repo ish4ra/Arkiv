@@ -150,7 +150,7 @@ The app builds for arm64 by default. Set `ARKIV_ARCH=universal` for both build s
 Planned work that is **not** in current builds:
 
 - **Formats:** TAR creation, compressed TAR (`.tar.gz`, `.tar.bz2`, `.tar.xz`), broader RAR5 and RAR4 verification, multipart archives
-- **Archive work:** encrypted ZIP after interoperability testing, folder and multi-file updates, editing more formats, archive comments
+- **Archive work:** encrypted ZIP after interoperability testing, general multi-selection and update-by-date operations, editing more formats, archive comments
 - **Tools:** checksums, split/combine, benchmark, a command-line companion
 - **App:** Settings, Open Recent, more columns and an archive inspector, a Quick Look extension for archives in Finder
 - **Distribution:** Developer ID signing and notarization, the final app icon and archive document icons

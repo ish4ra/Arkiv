@@ -1,8 +1,6 @@
 # Editing writable ZIPs
 
-Open an eligible ZIP and select entries in the browser. **File → Delete…** is also available in the table context menu. Other archive formats
-remain read-only for modification. Folder replacement and multi-file update
-remain deferred.
+Open an eligible ZIP and select entries in the browser. **File → Delete…** is also available in the table context menu. This document describes ZIP-only editing; see [7z editing](sevenzip.md) for its separate eligibility rules. General multi-selection update and update-by-date remain deferred.
 
 Delete requires a native destructive confirmation. Files, folders and packages
 can be selected together. Folder/package deletion includes all descendants;
@@ -32,7 +30,7 @@ Select exactly one regular file and choose **File → Replace File…** or the
 matching context-menu command. Choose one local regular disk file in the native
 file panel. Its bytes replace the selected entry's contents; the archive path
 and filename stay unchanged, even when the chosen disk file has a different
-name. Folder/package replacement and multi-file updates are unavailable.
+name. For one selected directory/package, use the separate Replace Folder or Update Folder commands below. General multi-selection updates remain unavailable.
 
 Replacement uses the same transaction and full verification as other ZIP edits.
 Unrelated entries are not recompressed, and the archive comment is preserved.
@@ -49,7 +47,7 @@ The refreshed browser keeps the replaced entry selected in its original parent.
 
 ## Transaction and preservation
 
-Delete, Rename, Replace File and Add share `ArchiveZIPUpdater` and the same pinned-source,
+Delete, Rename, Replace File, New Folder, Replace Folder, Update Folder and Add share `ArchiveZIPUpdater` and the same pinned-source,
 private sibling replacement, full verification and coordinated atomic commit
 architecture. The original ZIP is never edited in place. Stale snapshots and
 changed source/replacement files are rejected before commit. Cancellation or
@@ -143,3 +141,40 @@ On Mac, test a disposable folder/package with added, removed and changed files,
 nested empty directories and Unicode names. Cancel the destructive sheet first;
 then replace, run Test Archive and extract to compare with the chosen source.
 Repeat with an empty source and verify unrelated entries remain unchanged.
+
+
+## Update Folder
+
+Select exactly one folder/package in an eligible writable ZIP and choose
+**File → Update Folder…** or the table context-menu command. Choose one local
+folder in the native picker and confirm the merge. Progress, cancellation and
+errors use the existing edit flow. On success the parent refreshes, the selected
+archive folder remains selected, and normal completion feedback plays once.
+
+The selected archive path/name stays fixed; the disk folder's basename is never
+added as a wrapper. Matching regular files receive new contents, new paths are
+added, and archive-only descendants remain untouched. Existing directories are
+retained, including their metadata. Empty source folders do not remove anything.
+Unlike Replace Folder, this operation never deletes archive-only descendants.
+It does not compare timestamps or mean “Replace Older.”
+
+Unchanged local records, including compressed bytes and accepted extras, remain
+raw; retained central records change only offsets where necessary. The archive
+comment is preserved. Matching file records retain their original filename,
+timestamps, attributes, comments and supported extra fields; CRC, sizes,
+compression method/flags and required reader version are updated for the staged
+payload. Payloads use the existing creator's Deflate/Store behavior. New entries
+use the existing folder-creation metadata policy. No recompression is performed
+for entries absent from the chosen source.
+
+Case-only aliases, ambiguous Unicode paths and file/directory collisions fail
+atomically instead of replacing a directory with a file or merging ambiguous
+names. Existing encrypted, ZIP64, multipart and unusual ZIP restrictions apply.
+Other archive formats and multiple selections do not enable this command.
+The existing source-link/special-file restrictions remain unchanged.
+
+Real-Mac checks: update a disposable ZIP folder with a matching file, a new file,
+an empty nested directory and an archive-only file. Verify replaced bytes, added
+paths and retained archive-only data with Test Archive and extraction. Repeat
+with an empty source, cancel the picker/confirmation, and check that package
+selection works without adding a disk-folder wrapper.

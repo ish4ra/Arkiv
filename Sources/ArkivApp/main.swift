@@ -180,6 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         file.addItem(.separator())
         file.addItem(withTitle: "Replace File…", action: #selector(BrowserWindowController.replaceSelected(_:)), keyEquivalent: "")
         file.addItem(withTitle: "Replace Folder…", action: #selector(BrowserWindowController.replaceSelectedFolder(_:)), keyEquivalent: "")
+        file.addItem(withTitle: "Update Folder…", action: #selector(BrowserWindowController.updateSelectedFolder(_:)), keyEquivalent: "")
         file.addItem(withTitle: "New Folder…", action: #selector(BrowserWindowController.newFolder(_:)), keyEquivalent: "")
         file.addItem(withTitle: "Rename…", action: #selector(BrowserWindowController.renameSelected(_:)), keyEquivalent: "")
         let delete = file.addItem(withTitle: "Delete…", action: #selector(BrowserWindowController.deleteSelected(_:)), keyEquivalent: "\u{8}")

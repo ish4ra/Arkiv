@@ -137,6 +137,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         menu.addItem(withTitle: "Replace File…", action: #selector(replaceSelected(_:)), keyEquivalent: "").target = self
         menu.addItem(withTitle: "New Folder…", action: #selector(newFolder(_:)), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Replace Folder…", action: #selector(replaceSelectedFolder(_:)), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Update Folder…", action: #selector(updateSelectedFolder(_:)), keyEquivalent: "").target = self
         let rename = menu.addItem(withTitle: "Rename…", action: #selector(renameSelected(_:)), keyEquivalent: "")
         rename.target = self
         let delete = menu.addItem(withTitle: "Delete…", action: #selector(deleteSelected(_:)), keyEquivalent: "")
@@ -481,7 +482,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
               let path = selectedPaths().first else { return false }
         return index?.row(at: path)?.isDirectory == true
     }
-    @objc func replaceSelectedFolder(_ sender: Any?) {
+    @objc func replaceSelectedFolder(_ sender: Any?) { chooseFolderSource(merge: false) }
+    @objc func updateSelectedFolder(_ sender: Any?) { chooseFolderSource(merge: true) }
+    private func chooseFolderSource(merge: Bool) {
         guard canReplaceFolder, let window, window.attachedSheet == nil,
               let path = selectedPaths().first else { return }
         let panel = NSOpenPanel()
@@ -489,43 +492,47 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         panel.treatsFilePackagesAsDirectories = true
         panel.allowsMultipleSelection = false
         panel.prompt = "Choose Folder"
-        panel.message = "Choose replacement contents. The archive folder keeps its existing name."
+        panel.message = merge ? "Choose contents to merge. Archive-only items will be kept." : "Choose replacement contents. The archive folder keeps its existing name."
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let source = panel.url else { return }
             // Present confirmation after AppKit has dismissed the chooser.
-            DispatchQueue.main.async { self?.confirmFolderReplacement(path, with: source) }
+            DispatchQueue.main.async { self?.confirmFolderReplacement(path, with: source, merge: merge) }
         }
     }
-    func confirmFolderReplacement(_ path: String, with source: URL) {
+    func confirmFolderReplacement(_ path: String, with source: URL, merge: Bool = false) {
         guard canReplaceFolder, selectedPaths().first == path, let snapshot, let window,
               window.attachedSheet == nil else { return }
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Replace contents of ‘\(path.split(separator: "/").last ?? "")’?"
-        alert.informativeText = "All existing contents will be replaced by the chosen folder’s contents. Items absent from the chosen folder will be removed. The archive folder’s name stays unchanged."
-        let replace = alert.addButton(withTitle: "Replace")
+        alert.messageText = "\(merge ? "Update" : "Replace") contents of ‘\(path.split(separator: "/").last ?? "")’?"
+        alert.informativeText = merge ? "Matching files will receive the chosen folder’s contents, and new items will be added. Archive-only items will be kept. This does not compare modification dates." : "All existing contents will be replaced by the chosen folder’s contents. Items absent from the chosen folder will be removed. The archive folder’s name stays unchanged."
+        let replace = alert.addButton(withTitle: merge ? "Update" : "Replace")
         replace.hasDestructiveAction = true
         replace.keyEquivalent = ""
         alert.addButton(withTitle: "Cancel")
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn else { return }
-            self?.performFolderReplacement(path, with: source, snapshot: snapshot)
+            self?.performFolderReplacement(path, with: source, snapshot: snapshot, merge: merge)
         }
     }
-    private func performFolderReplacement(_ path: String, with source: URL, snapshot: ArchiveSnapshot) {
+    private func performFolderReplacement(_ path: String, with source: URL, snapshot: ArchiveSnapshot, merge: Bool) {
         guard !sessionEnded, canReplaceFolder, self.snapshot?.url == snapshot.url else { return }
         let folder = path.split(separator: "/").dropLast().joined(separator: "/")
-        let token = begin("Replacing folder in archive…")
+        let token = begin(merge ? "Updating folder in archive…" : "Replacing folder in archive…")
         worker.async { [self] in
             let throttle = ProgressThrottle()
             let result = Result {
-                try ArchiveZIPUpdater().replaceFolder(path: path, with: source, in: snapshot, cancellation: token) { progress in
+                let report: @Sendable (ArchiveProgress) -> Void = { progress in
                     guard throttle.shouldUpdate() else { return }
                     DispatchQueue.main.async { [weak self] in
                         guard let self, self.isBusy else { return }
                         self.status.stringValue = "\(progress.files) entries · \(ByteCountFormatter.string(fromByteCount: Int64(progress.bytes), countStyle: .file)) processed"
                     }
                 }
+                if merge {
+                    return try ArchiveZIPUpdater().updateFolder(path: path, with: source, in: snapshot, cancellation: token, progress: report)
+                }
+                return try ArchiveZIPUpdater().replaceFolder(path: path, with: source, in: snapshot, cancellation: token, progress: report)
             }
             DispatchQueue.main.async { [self] in
                 finish()
@@ -1070,7 +1077,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         case #selector(openSelectedFile(_:)), #selector(openSelectedArchive(_:)): return !sessionEnded && !isBusy && window?.attachedSheet == nil && selectedRegularFile != nil
         case #selector(showPackageContents(_:)): return !isBusy && selectedPackage != nil
         case #selector(replaceSelected(_:)): return canReplaceFile
-        case #selector(replaceSelectedFolder(_:)): return canReplaceFolder && window?.attachedSheet == nil
+        case #selector(replaceSelectedFolder(_:)), #selector(updateSelectedFolder(_:)): return canReplaceFolder && window?.attachedSheet == nil
         case #selector(newFolder(_:)): return canCreateFolder && window?.attachedSheet == nil
         case #selector(renameSelected(_:)): return canRenameItems && window?.attachedSheet == nil && selectedPaths().count == 1
         case #selector(deleteSelected(_:)): return canDeleteItems && window?.attachedSheet == nil && !selectedPaths().isEmpty
