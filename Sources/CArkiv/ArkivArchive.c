@@ -734,7 +734,8 @@ arkiv_file_pin *arkiv_file_pin_begin(const char *path) {
  return p;
 }
 int arkiv_file_pin_valid(arkiv_file_pin *p) {
- if(!p)return 0;struct stat held,current;int fd=create_open(p->path);if(fd<0)return 0;
+ if(!p)return 0;
+ struct stat held,current;int fd=create_open(p->path);if(fd<0)return 0;
  int ok=!fstat(p->fd,&held)&&!fstat(fd,&current)&&create_same_stat(&held,&p->stamp)&&create_same_stat(&current,&p->stamp);
  close(fd);return ok;
 }

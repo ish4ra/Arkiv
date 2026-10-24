@@ -137,6 +137,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         menu.addItem(withTitle: "Replace File…", action: #selector(replaceSelected(_:)), keyEquivalent: "").target = self
         menu.addItem(withTitle: "New Folder…", action: #selector(newFolder(_:)), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Replace Folder…", action: #selector(replaceSelectedFolder(_:)), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Update Selected Files…", action: #selector(updateSelectedFiles(_:)), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Update Folder…", action: #selector(updateSelectedFolder(_:)), keyEquivalent: "").target = self
         let rename = menu.addItem(withTitle: "Rename…", action: #selector(renameSelected(_:)), keyEquivalent: "")
         rename.target = self
@@ -240,7 +241,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         }
         window?.toolbar?.validateVisibleItems()
     }
-    func load(_ url: URL, password: String? = nil, browsingFolder: String = "", selectingPath: String? = nil) {
+    func load(_ url: URL, password: String? = nil, browsingFolder: String = "", selectingPath: String? = nil, selectingPaths: Set<String> = []) {
         guard !sessionEnded else { return }
         quickLook.close()
         if openRequest != nil {
@@ -271,9 +272,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                     self.window?.title = url.lastPathComponent
                     self.window?.representedURL = url
                     self.reload()
-                    if let selectingPath, let row = self.rows.firstIndex(where: { $0.path == selectingPath }) {
-                        self.table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-                        self.table.scrollRowToVisible(row)
+                    let wanted = selectingPaths.union(selectingPath.map { [$0] } ?? [])
+                    let selected = IndexSet(self.rows.indices.filter { wanted.contains(self.rows[$0].path) })
+                    if !selected.isEmpty {
+                        self.table.selectRowIndexes(selected, byExtendingSelection: false)
+                        if let first = selected.first { self.table.scrollRowToVisible(first) }
                     }
                     self.window?.makeFirstResponder(self.table)
                 case .failure(let error):
@@ -473,6 +476,67 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                     search.stringValue = ""
                     load(url, password: password, browsingFolder: folder, selectingPath: path)
                 case .failure(let error): present(error)
+                }
+            }
+        }
+    }
+    private var canUpdateSelectedFiles: Bool {
+        guard canAddItems, case .zip = additionCapability, let snapshot else { return false }
+        let paths = selectedPaths()
+        return paths.count >= 2 && paths.allSatisfy { path in
+            path.split(separator: "/").dropLast().joined(separator: "/") == currentPath &&
+            snapshot.entries.first(where: { $0.path == path })?.kind == .file
+        }
+    }
+    @objc func updateSelectedFiles(_ sender: Any?) {
+        guard canUpdateSelectedFiles, let window, window.attachedSheet == nil else { return }
+        let paths = selectedPaths()
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false; panel.canChooseDirectories = true
+        panel.treatsFilePackagesAsDirectories = true; panel.allowsMultipleSelection = false
+        panel.prompt = "Choose Folder"
+        panel.message = "Every selected file must have a regular source file with the same name in this folder. Other source files are ignored."
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let source = panel.url else { return }
+            DispatchQueue.main.async { self?.confirmSelectedFileUpdate(paths, from: source) }
+        }
+    }
+    func confirmSelectedFileUpdate(_ paths: Set<String>, from source: URL) {
+        guard canUpdateSelectedFiles, selectedPaths() == paths, let snapshot, let window,
+              window.attachedSheet == nil else { return }
+        let folder = currentPath
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Update \(paths.count) selected files?"
+        alert.informativeText = "Each selected file’s contents will be replaced by the same-named file in the chosen folder. Archive names stay unchanged. If any source is missing or invalid, no files will be updated."
+        let button = alert.addButton(withTitle: "Update Files")
+        button.hasDestructiveAction = true; button.keyEquivalent = ""
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard response == .alertFirstButtonReturn, let self, !self.sessionEnded,
+                  self.canUpdateSelectedFiles, self.selectedPaths() == paths else { return }
+            let token = self.begin("Updating selected files…")
+            self.worker.async { [self] in
+                let throttle = ProgressThrottle()
+                let result = Result {
+                    try ArchiveZIPUpdater().updateSelectedFiles(paths: paths, from: source, in: snapshot, cancellation: token) { progress in
+                        guard throttle.shouldUpdate() else { return }
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self, self.isBusy else { return }
+                            self.status.stringValue = "\(progress.files) entries · \(ByteCountFormatter.string(fromByteCount: Int64(progress.bytes), countStyle: .file)) processed"
+                        }
+                    }
+                }
+                DispatchQueue.main.async { [self] in
+                    finish()
+                    modificationFeedback(result)
+                    switch result {
+                    case .success(let url):
+                        self.snapshot = nil; self.index = nil; self.zipAdditionAvailable = false
+                        search.stringValue = ""
+                        load(url, browsingFolder: folder, selectingPaths: paths)
+                    case .failure(let error): present(error)
+                    }
                 }
             }
         }
@@ -1077,6 +1141,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         case #selector(openSelectedFile(_:)), #selector(openSelectedArchive(_:)): return !sessionEnded && !isBusy && window?.attachedSheet == nil && selectedRegularFile != nil
         case #selector(showPackageContents(_:)): return !isBusy && selectedPackage != nil
         case #selector(replaceSelected(_:)): return canReplaceFile
+        case #selector(updateSelectedFiles(_:)): return canUpdateSelectedFiles && window?.attachedSheet == nil
         case #selector(replaceSelectedFolder(_:)), #selector(updateSelectedFolder(_:)): return canReplaceFolder && window?.attachedSheet == nil
         case #selector(newFolder(_:)): return canCreateFolder && window?.attachedSheet == nil
         case #selector(renameSelected(_:)): return canRenameItems && window?.attachedSheet == nil && selectedPaths().count == 1

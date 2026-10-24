@@ -21,6 +21,44 @@ class ReplacementTests(unittest.TestCase):
             entry.external_attr = 0o100600 << 16
             z.writestr(entry, payload)
         return LIB.arkiv_zip_prepare_replace(self.t, os.fsencode(content), ordinal, count, name, os.fsencode(self.stage), token, None, None, self.error, 256)
+    def test_selected_updates_preserve_methods_metadata_and_unrelated_raw_records(self):
+        import struct
+        with zipfile.ZipFile(self.path, "w") as z:
+            z.comment = b"archive\x00\xff"
+            for name, method in [("Folder/a", 0), ("Folder/資料 🐘", 8), ("keep", 8)]:
+                e = zipfile.ZipInfo(name, (2020, 3, 4, 5, 6, 8))
+                e.compress_type = method; e.external_attr = 0o100640 << 16
+                e.comment = b"entry comment"; e.extra = b"\x55\x54\x05\x00\x01\x00\x00\x00\x00"
+                z.writestr(e, b"original" * 100)
+        self.before = self.path.read_bytes()
+        with zipfile.ZipFile(self.path) as z:
+            old = z.infolist(); old_central = z.start_dir
+        self.t = LIB.arkiv_zip_begin(os.fsencode(self.path), self.error, 256)
+        self.assertTrue(self.t, self.error.value)
+        incoming = self.root / "incoming.zip"
+        with zipfile.ZipFile(incoming, "w") as z:
+            for name, data in [("a", b"larger" * 1000), ("資料 🐘", b"")]:
+                e = zipfile.ZipInfo(name); e.external_attr = 0o100600 << 16
+                # Exercise Apple's empty Store -> original Deflate normalization.
+                e.compress_type = 0; z.writestr(e, data)
+        LIB.arkiv_zip_prepare_selected.argtypes = [C.c_void_p,C.c_char_p,C.POINTER(C.c_int64),C.c_size_t,C.c_size_t,C.c_char_p,C.c_void_p,C.c_void_p,C.c_void_p,C.c_char_p,C.c_size_t]
+        rc = LIB.arkiv_zip_prepare_selected(self.t,os.fsencode(incoming),(C.c_int64*3)(0,1,-1),3,2,os.fsencode(self.stage),None,None,None,self.error,256)
+        self.assertEqual(rc,0,self.error.value)
+        self.assertEqual(self.path.read_bytes(),self.before)
+        self.assertEqual(self.commit(),0,self.error.value)
+        after = self.path.read_bytes()
+        with zipfile.ZipFile(self.path) as z:
+            self.assertIsNone(z.testzip())
+            self.assertEqual(z.comment,b"archive\x00\xff")
+            self.assertEqual(z.read("Folder/a"),b"larger"*1000)
+            self.assertEqual(z.read("Folder/資料 🐘"),b"")
+            for a,b in zip(old,z.infolist()):
+                for field in ["filename","date_time","compress_type","extra","comment","external_attr","internal_attr"]:
+                    self.assertEqual(getattr(a,field),getattr(b,field),field)
+                self.assertEqual(struct.unpack_from("<H",after,b.header_offset+8)[0],b.compress_type)
+                self.assertEqual(struct.unpack_from("<III",after,b.header_offset+14),(b.CRC,b.compress_size,b.file_size))
+            self.assertEqual(self.before[old[2].header_offset:old_central],after[z.getinfo("keep").header_offset:z.start_dir])
+
     def test_folder_merge_keeps_raw_records_and_matching_metadata(self):
         self.fixture(comment=b"entry comment", method=zipfile.ZIP_STORED)
         content = self.root / "merge.zip"

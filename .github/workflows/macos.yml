@@ -53,7 +53,7 @@ jobs:
       - name: Native Delete confirmation regression
         run: scripts/ci-check.sh delete-confirmation swift test --filter BrowserWindowTests.testDeleteConfirmationCancellationRefreshAndSound -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
       - name: Native ZIP folder editing regressions
-        run: scripts/ci-check.sh folder-edits swift test --filter 'BrowserWindowTests.testFolder(Replacement|Update)' -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
+        run: scripts/ci-check.sh folder-edits swift test --filter 'BrowserWindowTests.test(Folder(Replacement|Update)|SelectedFileUpdate)' -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
       - name: Native Open, Quick Look and nested archive regressions
         run: scripts/ci-check.sh quick-look swift test --filter '(Archive(QuickLook|Open|OpenSession)Tests|NestedArchiveTests)' -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
       - name: Swift tests (native runner architecture)

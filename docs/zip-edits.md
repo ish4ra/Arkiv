@@ -1,6 +1,6 @@
 # Editing writable ZIPs
 
-Open an eligible ZIP and select entries in the browser. **File → Delete…** is also available in the table context menu. This document describes ZIP-only editing; see [7z editing](sevenzip.md) for its separate eligibility rules. General multi-selection update and update-by-date remain deferred.
+Open an eligible ZIP and select entries in the browser. **File → Delete…** is also available in the table context menu. This document describes ZIP-only editing; see [7z editing](sevenzip.md) for its separate eligibility rules. Arbitrary multi-selection mapping and update-by-date remain deferred.
 
 Delete requires a native destructive confirmation. Files, folders and packages
 can be selected together. Folder/package deletion includes all descendants;
@@ -30,7 +30,7 @@ Select exactly one regular file and choose **File → Replace File…** or the
 matching context-menu command. Choose one local regular disk file in the native
 file panel. Its bytes replace the selected entry's contents; the archive path
 and filename stay unchanged, even when the chosen disk file has a different
-name. For one selected directory/package, use the separate Replace Folder or Update Folder commands below. General multi-selection updates remain unavailable.
+name. For one selected directory/package, use the separate Replace Folder or Update Folder commands below. For two or more regular files in one archive folder, use Update Selected Files below.
 
 Replacement uses the same transaction and full verification as other ZIP edits.
 Unrelated entries are not recompressed, and the archive comment is preserved.
@@ -47,7 +47,7 @@ The refreshed browser keeps the replaced entry selected in its original parent.
 
 ## Transaction and preservation
 
-Delete, Rename, Replace File, New Folder, Replace Folder, Update Folder and Add share `ArchiveZIPUpdater` and the same pinned-source,
+Delete, Rename, Replace File, New Folder, Replace Folder, Update Folder, Update Selected Files and Add share `ArchiveZIPUpdater` and the same pinned-source,
 private sibling replacement, full verification and coordinated atomic commit
 architecture. The original ZIP is never edited in place. Stale snapshots and
 changed source/replacement files are rejected before commit. Cancellation or
@@ -178,3 +178,27 @@ an empty nested directory and an archive-only file. Verify replaced bytes, added
 paths and retained archive-only data with Test Archive and extraction. Repeat
 with an empty source, cancel the picker/confirmation, and check that package
 selection works without adding a disk-folder wrapper.
+
+## Update Selected Files
+
+Select two or more regular files in the current directory of an eligible writable
+ZIP, then choose **File → Update Selected Files…** or the table context command.
+Choose one local folder and confirm the displayed file count. Each selected basename
+must have exactly one same-named regular file directly in that folder. Missing files,
+links, directories, case aliases and ambiguous normalized names reject the entire
+operation. Unselected source files are ignored; names and archive paths stay unchanged.
+This does not compare timestamps. Folder/package selections and non-ZIP archives are
+not eligible.
+
+All sources are pinned with no-follow descriptors and revalidated through commit.
+The existing ZIP transaction writes one private replacement, verifies its complete
+contents, rechecks the original and sources, and atomically commits it. Cancel or
+failure before commit leaves the original intact. Success refreshes the current
+folder, reselects the updated files and plays one completion sound.
+
+Each updated file retains its original Store/Deflate method, path, supported extras,
+timestamps, attributes and entry comment. CRC and sizes are rebuilt in both headers;
+compression-option flags follow the new payload. The archive comment is retained.
+Unrelated local records, including compressed data, are copied byte-for-byte; central
+offsets are adjusted. Regression tests compare raw record bytes and metadata and
+independently read/test the resulting ZIP.

@@ -507,6 +507,79 @@ final class BrowserWindowTests: XCTestCase {
     }
 
     @MainActor
+    func testSelectedFileUpdatePickerConfirmationAndReselection() async throws {
+        _ = NSApplication.shared
+        let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let folder = root.appendingPathComponent("Folder"), input = root.appendingPathComponent("input")
+        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        try fm.createDirectory(at: input, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+        for name in ["a.txt", "資料 🐘.txt"] {
+            try Data("old".utf8).write(to: folder.appendingPathComponent(name))
+            try Data(("updated " + name).utf8).write(to: input.appendingPathComponent(name))
+        }
+        let archive = try ArchiveCreator().create(.init(sources: [folder], destination: root, name: "selected"), cancellation: ArchiveCancellation(), progress: { _ in })
+        var sounds = 0
+        let controller = BrowserWindowController(modificationFeedback: { result in
+            ExtractionFeedback.completed(result, play: { sounds += 1 })
+        })
+        defer { controller.close() }
+        func idle() async throws {
+            for _ in 0..<2400 {
+                if !controller.isBusy && controller.window?.attachedSheet == nil { return }
+                try await Task.sleep(nanoseconds: 25_000_000)
+            }
+            XCTFail("Selected-file update did not finish")
+        }
+        let item = NSMenuItem(title: "Update Selected Files…", action: #selector(BrowserWindowController.updateSelectedFiles(_:)), keyEquivalent: "")
+        XCTAssertFalse(controller.validateMenuItem(item))
+        controller.load(archive); try await idle()
+        let table = try XCTUnwrap(descendants(controller.window!.contentView!).compactMap { $0 as? NSTableView }.first)
+        XCTAssertNotNil(table.menu?.items.first { $0.action == item.action })
+        table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        XCTAssertFalse(controller.validateMenuItem(item), "A package/folder is not a regular file selection")
+        controller.activate(row: 0)
+        table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        XCTAssertFalse(controller.validateMenuItem(item), "One file uses Replace File instead")
+        table.selectRowIndexes(IndexSet(integersIn: 0..<2), byExtendingSelection: false)
+        XCTAssertTrue(controller.validateMenuItem(item))
+        controller.updateSelectedFiles(nil)
+        let panel = try XCTUnwrap(controller.window?.attachedSheet as? NSOpenPanel)
+        XCTAssertTrue(panel.canChooseDirectories); XCTAssertFalse(panel.canChooseFiles)
+        XCTAssertFalse(panel.allowsMultipleSelection)
+        panel.cancel(nil); try await idle()
+        let paths: Set<String> = ["Folder/a.txt", "Folder/資料 🐘.txt"]
+        let original = try Data(contentsOf: archive)
+        controller.confirmSelectedFileUpdate(paths, from: input)
+        let cancelSheet = try XCTUnwrap(controller.window?.attachedSheet)
+        let views = descendants(cancelSheet.contentView!)
+        XCTAssertTrue(views.compactMap { $0 as? NSTextField }.contains { $0.stringValue == "Update 2 selected files?" })
+        let update = try XCTUnwrap(views.compactMap { $0 as? NSButton }.first { $0.title == "Update Files" })
+        XCTAssertTrue(update.hasDestructiveAction)
+        XCTAssertFalse(cancelSheet.defaultButtonCell === update.cell, "Updating contents must not be the default action")
+        cancelSheet.cancelOperation(nil); try await idle()
+        XCTAssertEqual(try Data(contentsOf: archive), original); XCTAssertEqual(sounds, 0)
+        controller.confirmSelectedFileUpdate(paths, from: input)
+        let sheet = try XCTUnwrap(controller.window?.attachedSheet)
+        try XCTUnwrap(descendants(sheet.contentView!).compactMap { $0 as? NSButton }.first { $0.title == "Update Files" }).performClick(nil)
+        try await idle()
+        XCTAssertEqual(sounds, 1)
+        XCTAssertEqual(table.selectedRowIndexes, IndexSet(integersIn: 0..<2))
+        XCTAssertTrue(controller.validateMenuItem(item))
+        XCTAssertEqual(controller.dropFolder(proposedRow: -1, operation: .on), "Folder")
+        XCTAssertNotNil(controller.tableView(table, pasteboardWriterForRow: 0))
+        let engine = LibArchiveEngine(), snapshot = try engine.inspect(archive, cancellation: ArchiveCancellation())
+        let output = try engine.extract(snapshot, ids: nil, into: root, cancellation: ArchiveCancellation(), progress: { _ in })
+        for path in paths {
+            XCTAssertEqual(try Data(contentsOf: output.appendingPathComponent(path)), try Data(contentsOf: input.appendingPathComponent(String(path.split(separator: "/").last!))))
+        }
+        let seven = try ArchiveCreator().create(.init(sources: [folder], destination: root, name: "readonly", format: .sevenZip), cancellation: ArchiveCancellation(), progress: { _ in })
+        controller.load(seven); try await idle(); controller.activate(row: 0)
+        table.selectRowIndexes(IndexSet(integersIn: 0..<2), byExtendingSelection: false)
+        XCTAssertFalse(controller.validateMenuItem(item), "7z multi-file update stays disabled")
+    }
+
+    @MainActor
     func testReplacementAvailabilitySameParentReselectionAndOneSound() async throws {
         try await verifyReplacement(encrypted: false)
     }

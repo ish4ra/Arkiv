@@ -11,7 +11,8 @@
 | Add to existing ZIP | Add Files/Add Folder at root; verified atomic rewrite of supported ZIP32; [limits](zip-additions.md) |
 | ZIP Delete / Rename / Replace File / New Folder | Verified transactional edits for eligible ZIP32 archives; [details](zip-edits.md) |
 | ZIP Replace Folder / Update Folder | One selected folder/package in an eligible ZIP: Replace removes old descendants; Update merges matching/new paths and keeps archive-only descendants; native picker, confirmation and atomic verification; [details](zip-edits.md) |
-| General multi-selection update / update-by-date / ZIP AES | Deferred; no enabled UI claims |
+| ZIP Update Selected Files | Two or more regular files in one ZIP folder; strict same-basename local mapping; one verified atomic transaction; [details](zip-edits.md#update-selected-files) |
+| Arbitrary multi-selection mapping / update-by-date / ZIP AES | Deferred; no enabled UI claims |
 | Solid archives / multipart / comments | Deferred compatibility work |
 | Integrity test command | ZIP/7z full-data/CRC checks; TAR structure/readability with explicit checksum warning; native progress/cancellation/password retry |
 | Checksums / split-combine / benchmark / CLI | Deferred |
