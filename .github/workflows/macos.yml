@@ -69,7 +69,9 @@ jobs:
       - name: System Services registration diagnostic (packaged app)
         run: scripts/ci-check.sh services python3 scripts/diagnose-finder-services.py build/Arkiv.app
       - name: Create, mount, and verify development DMG
-        run: scripts/ci-check.sh dmg scripts/build-dmg.sh
+        run: |
+          python3 tests/test_dmg_packaging.py -v
+          scripts/ci-check.sh dmg scripts/build-dmg.sh
       - name: Package ZIP alternative
         run: ditto -c -k --sequesterRsrc --keepParent build/Arkiv.app "build/Arkiv-${ARKIV_ARCH}.zip"
       - name: Extract actual packaged ZIP with Arkiv and verify app

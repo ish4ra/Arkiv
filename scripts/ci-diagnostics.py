@@ -6,6 +6,8 @@ import sys
 text = Path(sys.argv[1]).read_text(errors='replace')
 labels = []
 categories = {
+    'DMG image verification failure': 'hdiutil: verify failed',
+    'DMG corrupt image': 'corrupt image',
     'DMG image creation failure': 'hdiutil: create failed',
     'DMG image attachment failure': 'hdiutil: attach failed',
     'DMG resource busy': 'Resource busy',

@@ -40,7 +40,12 @@ ditto "$app" "$work/source/Arkiv.app"
 ln -s /Applications "$work/source/Applications"
 image="$work/Arkiv.dmg"
 phase='image creation'
-hdiutil create -volname Arkiv -srcfolder "$work/source" -fs HFS+ -format UDZO "$image"
+# Finalize the filesystem before compression. Direct -srcfolder UDZO creation
+# produced images that failed hdiutil verify on the Intel macOS runner.
+raw="$work/Arkiv-rw.dmg"
+hdiutil create -volname Arkiv -srcfolder "$work/source" -fs HFS+ -format UDRW "$raw"
+phase='image compression'
+hdiutil convert "$raw" -format UDZO -o "$image"
 phase='image verification'
 hdiutil verify "$image"
 # Mark cleanup responsibility before attaching, so interrupted attaches are handled.
