@@ -19,7 +19,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           [[ "$JOB_ID" =~ ^[0-9]+$ ]]
-          if ! gh api "repos/$REPOSITORY/actions/jobs/$JOB_ID/logs" > "$RUNNER_TEMP/job.log" 2> "$RUNNER_TEMP/download-error"; then
+          if ! gh api --allow-escape-sequences "repos/$REPOSITORY/actions/jobs/$JOB_ID/logs" > "$RUNNER_TEMP/job.log" 2> "$RUNNER_TEMP/download-error"; then
             python3 - "$RUNNER_TEMP/download-error" <<'PYERROR'
           import re, sys
           from pathlib import Path
