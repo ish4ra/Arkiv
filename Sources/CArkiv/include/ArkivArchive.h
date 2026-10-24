@@ -103,4 +103,13 @@ int arkiv_create_zip_folder(const char *const *, size_t, const char *, const cha
 
 int arkiv_zip_prepare_merge(arkiv_zip_transaction *, const char *, const int64_t *, size_t, const unsigned char *, size_t, const char *, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 
+
+/* Operation-local regular-file source pin; no-follow path revalidation. */
+typedef struct arkiv_file_pin arkiv_file_pin;
+arkiv_file_pin *arkiv_file_pin_begin(const char *);
+int arkiv_file_pin_valid(arkiv_file_pin *);
+void arkiv_file_pin_end(arkiv_file_pin *);
+int arkiv_create_zip_files(const char *const *, size_t, const char *, const char *, const char *, char *, size_t, const int *, arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
+int arkiv_zip_prepare_selected(arkiv_zip_transaction *, const char *, const int64_t *, size_t, size_t, const char *, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
+
 #endif

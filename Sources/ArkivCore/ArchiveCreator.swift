@@ -27,8 +27,12 @@ public struct ArchiveCreator: Sendable {
                        progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         try create(request, archiveFolder: "", cancellation: cancellation, progress: progress)
     }
-    func create(_ request: ArchiveCreationRequest, archiveFolder: String, replacementRoot: String? = nil, omitReplacementRoot: Bool = false, cancellation: ArchiveCancellation,
+    func create(_ request: ArchiveCreationRequest, archiveFolder: String, replacementRoot: String? = nil, omitReplacementRoot: Bool = false, fileMethods: [Int32]? = nil, cancellation: ArchiveCancellation,
                 progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
+        if let fileMethods {
+            guard request.format == .zip, replacementRoot == nil, archiveFolder.isEmpty,
+                  fileMethods.count == request.sources.count else { throw ArchiveFailure.message("Invalid replacement compression plan.") }
+        }
         try validateArchivePassword(request.password)
         if request.format == .zip, request.password != nil {
             throw ArchiveFailure.message("Password protection is available for 7z archives only.")
@@ -97,6 +101,12 @@ public struct ArchiveCreator: Sendable {
             var published = [CChar](repeating: 0, count: 512)
             var error = [CChar](repeating: 0, count: 256)
             let result = pointers.withUnsafeBufferPointer { buffer in
+                if let fileMethods {
+                    return arkiv_create_zip_files(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
+                        filename, &published, published.count, fileMethods,
+                        arkiv_limits(max_entries: 100_000, max_bytes: 20 * 1024 * 1024 * 1024),
+                        cancellation.pointer, callback, context, &error, error.count)
+                }
                 if let replacementRoot {
                     return arkiv_create_zip_folder(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
                         filename, &published, published.count, request.compression == .store ? 0 : 1,

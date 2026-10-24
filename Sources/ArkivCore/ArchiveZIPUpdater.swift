@@ -38,6 +38,38 @@ public struct ArchiveZIPUpdater: Sendable {
         return try update(sources: [], snapshot: snapshot, folder: folder, plan: nil, newFolder: name,
                           cancellation: cancellation, progress: progress)
     }
+    /// Strict same-basename replacements in one archive folder, committed together.
+    @discardableResult
+    public func updateSelectedFiles(paths: Set<String>, from directory: URL, in snapshot: ArchiveSnapshot,
+                                    cancellation: ArchiveCancellation,
+                                    progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
+        try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
+        let entries = snapshot.entries.filter { paths.contains($0.path) }
+        let parents = Set(paths.map { $0.split(separator: "/").dropLast().joined(separator: "/") })
+        guard paths.count >= 2, entries.count == paths.count, parents.count == 1,
+              entries.allSatisfy({ $0.kind == .file }),
+              snapshot.entries.enumerated().allSatisfy({ $0.element.id == Int64($0.offset) }),
+              directory.isFileURL, (directory.host == nil || directory.host == "" || directory.host == "localhost"),
+              directory.query == nil, directory.fragment == nil,
+              try FileManager.default.attributesOfItem(atPath: directory.path)[.type] as? FileAttributeType == .typeDirectory else {
+            throw ArchiveFailure.message("Select at least two regular files in one archive folder and choose a local source folder.")
+        }
+        let candidates = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+        func key(_ name: String) -> String {
+            name.precomposedStringWithCanonicalMapping.folding(options: [.caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+        }
+        let sources = try entries.map { entry -> URL in
+            let name = String(entry.path.split(separator: "/").last!)
+            let matches = candidates.filter { key($0.lastPathComponent) == key(name) }
+            guard matches.count == 1, let source = matches.first, source.lastPathComponent == name,
+                  try FileManager.default.attributesOfItem(atPath: source.path)[.type] as? FileAttributeType == .typeRegular else {
+                throw ArchiveFailure.message("‘\(name)’ needs exactly one regular source file with the same name. No files were updated.")
+            }
+            return source
+        }
+        return try update(sources: sources, snapshot: snapshot, folder: "", plan: nil, selectedReplacements: entries,
+                          cancellation: cancellation, progress: progress)
+    }
     /// Replace one directory subtree without changing its archive path.
     @discardableResult
     public func replaceFolder(path: String, with source: URL, in snapshot: ArchiveSnapshot,
@@ -188,7 +220,7 @@ public struct ArchiveZIPUpdater: Sendable {
         try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
         return try renameItem(path: path, to: name, in: snapshot, seven: true, password: password, cancellation: cancellation, progress: progress)
     }
-    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, newFolder: String? = nil, folderReplacement: String? = nil, folderMerge: Bool = false, seven: Bool = false, password: String? = nil, cancellation: ArchiveCancellation,
+    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, newFolder: String? = nil, folderReplacement: String? = nil, folderMerge: Bool = false, selectedReplacements: [ArchiveEntry]? = nil, seven: Bool = false, password: String? = nil, cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         guard (seven || snapshot.unlocked == nil), snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
@@ -225,11 +257,30 @@ public struct ArchiveZIPUpdater: Sendable {
         }
         for sourceURL in sources {
             let source = canonical(sourceURL)
-            guard replacement != nil || folderReplacement != nil || roots.insert(key(source.lastPathComponent)).inserted else {
+            guard selectedReplacements != nil || replacement != nil || folderReplacement != nil || roots.insert(key(source.lastPathComponent)).inserted else {
                 throw ArchiveFailure.message("An item named ‘\(source.lastPathComponent)’ already exists in the destination archive folder. Rename the source item before adding it.")
             }
             guard canonical(source) != archive, (try? SourceStamp(source).inode) != snapshot.stamp.inode else {
                 throw ArchiveFailure.message("An archive cannot be added to itself.")
+            }
+        }
+        var sourcePins = [OpaquePointer]()
+        defer { sourcePins.forEach { arkiv_file_pin_end($0) } }
+        var fileMethods: [Int32]? = nil
+        if let selectedReplacements {
+            guard !seven, selectedReplacements.count == sources.count else { throw ArchiveFailure.message("Invalid selected-file update.") }
+            fileMethods = try zip(selectedReplacements, sources).map { entry, source in
+                let method = arkiv_zip_replacement_method(transaction, Int(entry.id), snapshot.entries.count, entry.path)
+                guard (method == 0 || method == 8), let pin = arkiv_file_pin_begin(canonical(source).path) else {
+                    throw ArchiveFailure.message("A selected file or source cannot safely be updated.")
+                }
+                sourcePins.append(pin)
+                return method
+            }
+        }
+        func validateSources() throws {
+            guard sourcePins.allSatisfy({ arkiv_file_pin_valid($0) != 0 }) else {
+                throw ArchiveFailure.message("A source file changed during the update. Original archive unchanged.")
             }
         }
         let manager = FileManager.default
@@ -251,7 +302,7 @@ public struct ArchiveZIPUpdater: Sendable {
             compression = method == 0 ? .store : .deflate
         }
         let additions = try (plan == nil || folderReplacement != nil) && renameNames == nil ? ArchiveCreator().create(ArchiveCreationRequest(sources: sources, destination: stage, name: "additions", compression: compression),
-                                                    archiveFolder: folder, replacementRoot: folderReplacement, omitReplacementRoot: folderReplacement.map { path in snapshot.entries.contains { $0.kind == .directory && $0.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) == path } } ?? false, cancellation: cancellation, progress: progress) : nil
+                                                    archiveFolder: folder, replacementRoot: folderReplacement, omitReplacementRoot: folderReplacement.map { path in snapshot.entries.contains { $0.kind == .directory && $0.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) == path } } ?? false, fileMethods: fileMethods, cancellation: cancellation, progress: progress) : nil
         if seven || folderReplacement != nil, let additions {
             // Check every staged descendant, including implicit directories and
             // Unicode/case aliases, before handing the new manifest to 7-Zip.
@@ -266,7 +317,20 @@ public struct ArchiveZIPUpdater: Sendable {
             Unmanaged<ZIPAdditionProgress>.fromOpaque(context).takeUnretainedValue().callback(ArchiveProgress(files: files, bytes: bytes))
         }
         let result: Int32
-        if folderMerge, let additions {
+        if let selectedReplacements, let additions {
+            try validateSources()
+            let incoming = try LibArchiveEngine().inspect(additions, cancellation: cancellation)
+            guard incoming.entries.count == selectedReplacements.count else { throw ArchiveFailure.message("Replacement manifest changed.") }
+            var updates = [Int64](repeating: -1, count: snapshot.entries.count)
+            for entry in selectedReplacements {
+                let name = String(entry.path.split(separator: "/").last!)
+                let matches = incoming.entries.filter { $0.kind == .file && $0.path == name }
+                guard matches.count == 1 else { throw ArchiveFailure.message("Replacement source is missing or ambiguous.") }
+                updates[Int(entry.id)] = matches[0].id
+            }
+            result = arkiv_zip_prepare_selected(transaction, additions.path, updates, updates.count, incoming.entries.count,
+                                                stage.path, cancellation.pointer, callback, retained.toOpaque(), &error, error.count)
+        } else if folderMerge, let additions {
             let incoming = try LibArchiveEngine().inspect(additions, cancellation: cancellation)
             func normalized(_ path: String) -> String { path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) }
             struct Node { let path: String; let directory: Bool; var ordinal: Int? }
@@ -357,15 +421,19 @@ public struct ArchiveZIPUpdater: Sendable {
             if result != 0 { throw ArchiveFailure.message(String(cString: error)) }
         }
         try check(result)
+        try validateSources()
         #if os(macOS)
         var coordinationError: NSError?
         var commitResult: Int32 = 1
+        var sourceError: Error?
         NSFileCoordinator(filePresenter: nil).coordinate(writingItemAt: archive, options: .forReplacing, error: &coordinationError) { coordinated in
             guard canonical(coordinated) == archive else { return }
+            do { try validateSources() } catch { sourceError = error; return }
             commitResult = arkiv_zip_commit(transaction, cancellation.pointer, &error, error.count)
         }
         // Once rename succeeds, late cancellation/coordination errors cannot undo success.
         if commitResult != 0 {
+            if let sourceError { throw sourceError }
             if let coordinationError { throw coordinationError }
             try check(commitResult)
         }
