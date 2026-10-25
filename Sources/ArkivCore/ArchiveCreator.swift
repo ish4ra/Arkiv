@@ -10,10 +10,12 @@ public struct ArchiveCreationRequest: Sendable {
     public let sources: [URL]
     public let destination: URL
     public let name: String
+    public let sevenZipOptions: SevenZipCreationOptions?
     public let preset: CompressionPreset
     public let compression: ZIPCompression
     public init(sources: [URL], destination: URL, name: String, compression: ZIPCompression? = nil,
-                format: ArchiveFormat = .zip, password: String? = nil, encryptFilenames: Bool = true, preset: CompressionPreset? = nil) {
+                format: ArchiveFormat = .zip, password: String? = nil, encryptFilenames: Bool = true, preset: CompressionPreset? = nil, sevenZipOptions: SevenZipCreationOptions? = nil) {
+        self.sevenZipOptions = sevenZipOptions
         self.format = format; self.password = password; self.encryptFilenames = encryptFilenames
         self.sources = sources; self.destination = destination; self.name = name
         self.preset = preset ?? (compression == .store ? .store : .normal)
@@ -33,6 +35,14 @@ public struct ArchiveCreator: Sendable {
     func create(_ request: ArchiveCreationRequest, archiveFolder: String, replacementRoot: String? = nil, omitReplacementRoot: Bool = false, fileMethods: [Int32]? = nil, cancellation: ArchiveCancellation,
                 progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         let backend = try request.preset.backend(for: request.format)
+        guard request.format == .sevenZip || request.sevenZipOptions == nil else {
+            throw ArchiveFailure.message("7z advanced options cannot be used for ZIP creation.")
+        }
+        let advanced: SevenZipCreationOptions.Resolved?
+        if request.format == .sevenZip {
+            let bytes = try SevenZipCreationOptions.inputSize(sources:request.sources,cancellation:cancellation)
+            advanced = try (request.sevenZipOptions ?? .init()).resolve(preset:request.preset,inputBytes:bytes)
+        } else { advanced = nil }
         guard (request.compression == .store) == (request.preset == .store) else {
             throw ArchiveFailure.message("Conflicting compression method and preset.")
         }
@@ -131,6 +141,13 @@ public struct ArchiveCreator: Sendable {
                         filename, &published, published.count, request.compression == .store ? 0 : 1,
                         arkiv_limits(max_entries: 100_000, max_bytes: 20 * 1024 * 1024 * 1024),
                         cancellation.pointer, callback, context, &error, error.count, archiveFolder)
+                }
+                if let advanced {
+                    return arkiv_create_archive_advanced(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
+                        filename, &published, published.count, 1,
+                        arkiv_limits(max_entries: 100_000, max_bytes: 20 * 1024 * 1024 * 1024),
+                        cancellation.pointer, callback, context, &error, error.count,
+                        1, request.password, request.encryptFilenames ? 1 : 0, backend.level, advanced.dictionaryBytes, advanced.threads)
                 }
                 return arkiv_create_archive_preset(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
                     filename, &published, published.count, request.compression == .store ? 0 : 1,

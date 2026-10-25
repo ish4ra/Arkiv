@@ -6,9 +6,51 @@ import ArkivCore
 final class CompressionPresetUITests: XCTestCase {
     private func views(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(views) }
     @MainActor
-    func testAvailablePresetsDefaultsFormatSwitchAndSubmission() throws {
+    func testAdvancedDisclosureUnsafeCombinationAndSubmission() async throws {
         _ = NSApplication.shared
-        let source = URL(fileURLWithPath:"/tmp/preset-source.txt")
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data("source".utf8).write(to:file)
+        defer { try? FileManager.default.removeItem(at:file) }
+        let sheet = CreateArchiveSheet(sources:[file],encrypted:false)
+        defer { sheet.close() }
+        let root = try XCTUnwrap(sheet.window?.contentView)
+        let format = try XCTUnwrap(views(root).compactMap { $0 as? NSPopUpButton }.first { $0.itemTitles.contains("ZIP (.zip)") })
+        let create = try XCTUnwrap(views(root).compactMap { $0 as? NSButton }.first { $0.title == "Create" })
+        XCTAssertTrue(create.isEnabled,"ZIP has no advanced preflight")
+        format.selectItem(at:1); XCTAssertTrue(format.sendAction(format.action,to:format.target))
+        for _ in 0..<400 where !create.isEnabled { try await Task.sleep(nanoseconds:25_000_000) }
+        XCTAssertTrue(create.isEnabled)
+        let disclosure = try XCTUnwrap(views(root).compactMap { $0 as? NSButton }.first { $0.bezelStyle == .disclosure })
+        XCTAssertEqual(disclosure.state,.off)
+        disclosure.performClick(nil)
+        let dictionary = try XCTUnwrap(views(root).compactMap { $0 as? NSPopUpButton }.first { $0.itemTitles.contains("64 MiB") })
+        let threads = try XCTUnwrap(views(root).compactMap { $0 as? NSPopUpButton }.first { $0.itemTitles.contains("1") })
+        XCTAssertEqual(dictionary.titleOfSelectedItem,"Auto"); XCTAssertEqual(threads.titleOfSelectedItem,"Auto")
+        XCTAssertFalse(dictionary.isHiddenOrHasHiddenAncestor)
+        XCTAssertTrue(views(root).compactMap { $0 as? NSTextField }.contains { $0.stringValue.hasPrefix("Approximate compression memory:") })
+        dictionary.selectItem(withTitle:"64 MiB"); XCTAssertTrue(dictionary.sendAction(dictionary.action,to:dictionary.target))
+        XCTAssertFalse(create.isEnabled)
+        XCTAssertTrue(views(root).compactMap { $0 as? NSTextField }.contains { $0.stringValue.contains("exceeds Arkiv’s 2 GiB") })
+        threads.selectItem(withTitle:"1"); XCTAssertTrue(threads.sendAction(threads.action,to:threads.target))
+        XCTAssertTrue(create.isEnabled)
+        format.selectItem(at:0); XCTAssertTrue(format.sendAction(format.action,to:format.target))
+        XCTAssertTrue(disclosure.isHiddenOrHasHiddenAncestor)
+        XCTAssertTrue(create.isEnabled)
+        format.selectItem(at:1); XCTAssertTrue(format.sendAction(format.action,to:format.target))
+        var submitted = false
+        sheet.complete = { destination, _, preset, format, _, _, options in
+            submitted = true; XCTAssertNotNil(destination); XCTAssertEqual(preset,.normal); XCTAssertEqual(format,.sevenZip)
+            XCTAssertEqual(options,SevenZipCreationOptions(dictionaryBytes:64*1024*1024,threads:1))
+        }
+        create.performClick(nil)
+        XCTAssertTrue(submitted)
+    }
+    @MainActor
+    func testAvailablePresetsDefaultsFormatSwitchAndSubmission() async throws {
+        _ = NSApplication.shared
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".txt")
+        try Data("input".utf8).write(to:source)
+        defer { try? FileManager.default.removeItem(at:source) }
         for wanted: ArchiveFormat in [.zip,.sevenZip] {
             for preset in CompressionPreset.available(for:wanted) {
                 let sheet = CreateArchiveSheet(sources:[source],encrypted:false)
@@ -23,13 +65,17 @@ final class CompressionPresetUITests: XCTestCase {
                 XCTAssertEqual(compression.itemTitles,CompressionPreset.available(for:wanted).map(\.title))
                 XCTAssertEqual(compression.titleOfSelectedItem,"Normal")
                 compression.selectItem(withTitle:preset.title)
+                let create = try XCTUnwrap(all.compactMap { $0 as? NSButton }.first { $0.title == "Create" })
+                for _ in 0..<400 where !create.isEnabled { try await Task.sleep(nanoseconds:25_000_000) }
+                XCTAssertTrue(create.isEnabled)
                 var submitted = false
-                sheet.complete = { destination, _, selected, format, password, _ in
+                sheet.complete = { destination, _, selected, format, password, _, options in
                     submitted = true
                     XCTAssertNotNil(destination)
                     XCTAssertEqual(selected,preset)
                     XCTAssertEqual(format,wanted)
                     XCTAssertNil(password)
+                    XCTAssertEqual(options,wanted == .sevenZip ? SevenZipCreationOptions() : nil)
                 }
                 try XCTUnwrap(all.compactMap { $0 as? NSButton }.first { $0.title == "Create" }).performClick(nil)
                 XCTAssertTrue(submitted)

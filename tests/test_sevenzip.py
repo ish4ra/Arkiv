@@ -50,6 +50,22 @@ def stored_many(entries):
 
 
 class SevenZipTests(unittest.TestCase):
+    def test_advanced_creation_enforces_memory_before_encoding(self):
+        fn = lib.arkiv_seven_encode_advanced
+        fn.argtypes = [C.c_int,C.c_int,C.c_char_p,C.c_int,C.c_void_p,C.c_void_p,C.c_void_p,C.c_void_p,C.c_uint,C.c_uint,C.c_uint]
+        memory = lib.arkiv_seven_creation_memory
+        memory.argtypes = [C.c_uint,C.c_uint32,C.c_uint,C.c_uint64]
+        memory.restype = C.c_uint64
+        self.assertEqual(memory(5,0,2,32*1024*1024),1664*1024*1024)
+        self.assertGreater(memory(7,0,2,32*1024*1024+1),2*1024**3)
+        with tempfile.TemporaryFile() as source, tempfile.TemporaryFile() as output:
+            with zipfile.ZipFile(source,'w') as z: z.writestr('file',b'data')
+            source.flush()
+            for dictionary, threads in [(64*1024*1024,2),(3*1024*1024,1),(1024*1024,5)]:
+                source.seek(0)
+                self.assertNotEqual(fn(source.fileno(),output.fileno(),None,0,None,None,None,None,5,dictionary,threads),0)
+                self.assertEqual(output.seek(0,2),0,'Unsafe configuration must not write an output header')
+
     def decode(self, data, password=None, cancel=None):
         with tempfile.TemporaryFile() as source, tempfile.TemporaryFile() as output:
             source.write(data); source.flush()

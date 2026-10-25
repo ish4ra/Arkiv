@@ -20,6 +20,19 @@
 #endif
 using NWindows::NCOM::CPropVariant;
 static const uint64_t Budget = uint64_t(20)*1024*1024*1024;
+// Conservative creation estimate: match finders, windows, LZMA2 block buffers,
+// per-thread overhead and a fixed reserve. Does not describe exact process RSS.
+extern "C" uint64_t arkiv_seven_creation_memory(unsigned level,uint32_t dictionary,unsigned threads,uint64_t inputBytes) {
+ if((level!=1&&level!=3&&level!=5&&level!=7&&level!=9)||threads<1||threads>4)return 0;
+ if(dictionary && (dictionary<(1u<<20)||dictionary>(64u<<20)||(dictionary&(dictionary-1))))return 0;
+ if(inputBytes!=UINT64_MAX&&inputBytes>Budget)return 0;
+ uint64_t d=dictionary;
+ if(!d) {
+  d=uint64_t(1)<<(level<=4?level*2+16:level+20);
+  if(inputBytes!=UINT64_MAX){uint64_t bound=4096;while(bound<inputBytes&&bound<d)bound<<=1;d=std::min(d,bound);}
+ }
+ return (uint64_t(64)<<20)+threads*(24*d+(uint64_t(32)<<20));
+}
 struct State {
  State(const char*p,arkiv_seven_cancel c,void*x):password(p),cancel(c),context(x){}
  const char *password; arkiv_seven_cancel cancel; void *context; bool asked=false; int error=0; bool testing=false; uint64_t files=0; uint64_t maxEntries=100000,maxBytes=Budget;
@@ -233,7 +246,7 @@ static bool path_key(std::string &name) {
 #endif
  return true;
 }
-static int encode(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,int original,const unsigned char*keep=nullptr,size_t keepCount=0,const char*const*oldnames=nullptr,const char*const*newnames=nullptr,size_t replacement=SIZE_MAX,bool encryptedEdit=false,unsigned level=5){
+static int encode(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,int original,const unsigned char*keep=nullptr,size_t keepCount=0,const char*const*oldnames=nullptr,const char*const*newnames=nullptr,size_t replacement=SIZE_MAX,bool encryptedEdit=false,unsigned level=5,unsigned dictionary=0,unsigned threads=2){
  if(level!=1&&level!=3&&level!=5&&level!=7&&level!=9)return 1;
  State s{password,cancel,context};s.progress=progress;s.progressContext=progressContext;try{
  if(s.stopped())return 2;
@@ -288,8 +301,15 @@ static int encode(int input,int output,const char*password,int headers,arkiv_sev
  if(result!=ARCHIVE_EOF||fflush(tmp))return 1;
  }
  if(replacement!=SIZE_MAX&&(replaced==UInt32(-1)||cb->items.size()!=1||cb->items[0].dir))return 1;
- const wchar_t*names[]={L"0",L"x",L"s",L"mt",L"he"};CPropVariant values[5];values[0]=L"LZMA2";values[1]=UInt32(level);values[2]=false;values[3]=UInt32(2);values[4]=bool(password&&headers);
- HRESULT h=static_cast<ISetProperties*>(raw)->SetProperties(names,values,5);if(h!=S_OK)return 1;CMyComPtr<IOutStream>out=new Out(output,&s);h=handler->UpdateItems(out,cb->retained.size()+(replacement==SIZE_MAX?cb->items.size():0),cb);return s.result(h);
+ if(original<0) {
+  uint64_t bytes=0;for(const auto &item:cb->items)bytes+=item.size;
+  uint64_t memory=arkiv_seven_creation_memory(level,dictionary,threads,bytes);
+  if(!memory||memory>(uint64_t(2)<<30))return 1;
+ }
+ const wchar_t*names[]={L"0",L"x",L"s",L"mt",L"he",L"0d"};CPropVariant values[6];values[0]=L"LZMA2";values[1]=UInt32(level);values[2]=false;values[3]=UInt32(threads);values[4]=bool(password&&headers);// Numeric 0d is log2(bytes) in PROPVARIANT_to_DictSize, not a byte count.
+ unsigned dictionaryLog=0;for(unsigned d=dictionary;d>1;d>>=1)dictionaryLog++;
+ values[5]=UInt32(dictionaryLog);
+ HRESULT h=static_cast<ISetProperties*>(raw)->SetProperties(names,values,dictionary?6:5);if(h!=S_OK)return 1;CMyComPtr<IOutStream>out=new Out(output,&s);h=handler->UpdateItems(out,cb->retained.size()+(replacement==SIZE_MAX?cb->items.size():0),cb);return s.result(h);
  }catch(...){return s.stopped()?2:1;}}
 
 extern "C" const char *arkiv_seven_library_path(){Dl_info info;return dladdr((void*)&arkiv_seven_library_path,&info)&&info.dli_fname?info.dli_fname:"";}
@@ -297,6 +317,9 @@ extern "C" const char *arkiv_seven_library_path(){Dl_info info;return dladdr((vo
 /* Reuse official decoding and CRC checks with a bounded discard stream. No plaintext spool. */
 extern "C" int arkiv_seven_test(int input,const char*password,uint64_t maxEntries,uint64_t maxBytes,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext){State s{password,cancel,context};s.testing=true;s.maxEntries=std::min<uint64_t>(100000,maxEntries);s.maxBytes=std::min(Budget,maxBytes);s.progress=progress;s.progressContext=progressContext;try{return decode(input,-1,s);}catch(...){return s.stopped()?2:6;}}
 
+extern "C" int arkiv_seven_encode_advanced(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,unsigned level,unsigned dictionary,unsigned threads) {
+ return encode(input,output,password,headers,cancel,context,progress,progressContext,-1,nullptr,0,nullptr,nullptr,SIZE_MAX,false,level,dictionary,threads);
+}
 extern "C" int arkiv_seven_encode_level(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,unsigned level) {
  return encode(input,output,password,headers,cancel,context,progress,progressContext,-1,nullptr,0,nullptr,nullptr,SIZE_MAX,false,level);
 }

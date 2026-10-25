@@ -14,22 +14,22 @@ final class ArchiveCreationController {
         if let setup { setup.window?.makeKeyAndOrderFront(nil); return }
         let sheet = CreateArchiveSheet(sources: sources, encrypted: encrypted)
         setup = sheet
-        sheet.complete = { [weak self] destination, name, preset, format, password, encryptFilenames in
+        sheet.complete = { [weak self] destination, name, preset, format, password, encryptFilenames, options in
             guard let self else { return }
             self.setup = nil
             guard let destination else { return }
-            do { try self.compress(sources, destination: destination, name: name, format: format, password: password, encryptFilenames: encryptFilenames, preset: preset) }
+            do { try self.compress(sources, destination: destination, name: name, format: format, password: password, encryptFilenames: encryptFilenames, preset: preset, sevenZipOptions: options) }
             catch { NSAlert(error: error).runModal() }
         }
         sheet.present(parent: parent)
     }
 
-    func compress(_ sources: [URL], destination: URL? = nil, name: String? = nil, compression: ZIPCompression? = nil, format: ArchiveFormat = .zip, password: String? = nil, encryptFilenames: Bool = true, preset: CompressionPreset? = nil) throws {
+    func compress(_ sources: [URL], destination: URL? = nil, name: String? = nil, compression: ZIPCompression? = nil, format: ArchiveFormat = .zip, password: String? = nil, encryptFilenames: Bool = true, preset: CompressionPreset? = nil, sevenZipOptions: SevenZipCreationOptions? = nil) throws {
         guard !isBusy else { throw ArchiveFailure.message("An archive is already being created. Wait or cancel it first.") }
         guard let first = sources.first else { throw ArchiveFailure.message("Select files or folders to compress.") }
         let destination = destination ?? first.deletingLastPathComponent()
         let name = name ?? CreationHandoff.baseName(for: sources)
-        let request = ArchiveCreationRequest(sources: sources, destination: destination, name: name, compression: compression, format: format, password: password, encryptFilenames: encryptFilenames, preset: preset)
+        let request = ArchiveCreationRequest(sources: sources, destination: destination, name: name, compression: compression, format: format, password: password, encryptFilenames: encryptFilenames, preset: preset, sevenZipOptions: sevenZipOptions)
         isBusy = true
         let operation = FinderOperationWindow(archive: destination.appendingPathComponent(name + (format == .sevenZip ? ".7z" : ".zip")), verb: "Compressing")
         self.operation = operation
@@ -69,7 +69,23 @@ private final class CreationProgressThrottle: @unchecked Sendable {
 }
 
 final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
-    var complete: ((URL?, String, CompressionPreset, ArchiveFormat, String?, Bool) -> Void)?
+    var complete: ((URL?, String, CompressionPreset, ArchiveFormat, String?, Bool, SevenZipCreationOptions?) -> Void)?
+    private let sources: [URL]
+    private let advancedToggle = NSButton()
+    private let dictionary = NSPopUpButton()
+    private let threads = NSPopUpButton()
+    private let memory = NSTextField(wrappingLabelWithString: "")
+    private let advanced = NSStackView()
+    private let advancedFields = NSStackView()
+    private let createButton = NSButton(title: "Create", target: nil, action: nil)
+    private let sizeCancellation = ArchiveCancellation()
+    private var sizeStarted = false
+    private var inputSize: Result<UInt64, Error>?
+    private var selectedPreset: CompressionPreset { CompressionPreset.available(for:selectedFormat)[compression.indexOfSelectedItem] }
+    private var selectedOptions: SevenZipCreationOptions {
+        SevenZipCreationOptions(dictionaryBytes:dictionary.indexOfSelectedItem == 0 ? nil : SevenZipCreationOptions.supportedDictionaryBytes[dictionary.indexOfSelectedItem-1],
+                                threads:threads.indexOfSelectedItem == 0 ? nil : Int(threads.titleOfSelectedItem ?? ""))
+    }
     private let name = NSTextField(string: "")
     private let location = NSTextField(labelWithString: "")
     private let compression = NSPopUpButton()
@@ -83,6 +99,7 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
     private var finished = false
 
     init(sources: [URL], encrypted: Bool) {
+        self.sources = sources
         destination = sources.first?.deletingLastPathComponent() ?? FileManager.default.homeDirectoryForCurrentUser
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 510, height: 340),
                             styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -94,6 +111,24 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
         location.stringValue = destination.path; location.lineBreakMode = .byTruncatingMiddle
         location.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         compression.setAccessibilityLabel("Compression")
+        compression.target = self; compression.action = #selector(updateAdvanced)
+        dictionary.addItems(withTitles:["Auto"] + SevenZipCreationOptions.supportedDictionaryBytes.map { "\($0 / 1024 / 1024) MiB" })
+        threads.addItems(withTitles:["Auto"] + SevenZipCreationOptions.supportedThreads().map(String.init))
+        dictionary.setAccessibilityLabel("Dictionary size"); threads.setAccessibilityLabel("Compression threads")
+        dictionary.target = self; dictionary.action = #selector(updateAdvanced)
+        threads.target = self; threads.action = #selector(updateAdvanced)
+        threads.toolTip = "Auto retains the existing two-thread budget. The encoder may use fewer threads for small input."
+        advancedToggle.setButtonType(.onOff); advancedToggle.bezelStyle = .disclosure
+        advancedToggle.title = ""; advancedToggle.setAccessibilityLabel("Advanced compression")
+        advancedToggle.target = self; advancedToggle.action = #selector(updateAdvanced)
+        let disclosure = NSStackView(views:[advancedToggle,NSTextField(labelWithString:"Advanced")]); disclosure.spacing = 6
+        let advancedGrid = NSGridView(views:[[NSTextField(labelWithString:"Dictionary:"),dictionary],[NSTextField(labelWithString:"Threads:"),threads]])
+        advancedGrid.rowSpacing = 8; advancedGrid.columnSpacing = 12
+        advancedFields.addArrangedSubview(advancedGrid)
+        memory.font = .systemFont(ofSize:11); memory.textColor = .secondaryLabelColor
+        advanced.orientation = .vertical; advanced.alignment = .leading; advanced.spacing = 8
+        let advancedViews: [NSView] = [disclosure,advancedFields,memory]
+        advancedViews.forEach { advanced.addArrangedSubview($0) }
         format.addItems(withTitles: ["ZIP (.zip)", "7z (.7z)"])
         format.setAccessibilityLabel("Archive format")
         format.target = self; format.action = #selector(changeFormat)
@@ -115,11 +150,11 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
         ])
         grid.rowSpacing = 12; grid.columnSpacing = 12
         let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelCreate)); cancel.keyEquivalent = "\u{1b}"
-        let create = NSButton(title: "Create", target: self, action: #selector(createArchive)); create.keyEquivalent = "\r"
-        let buttons = NSStackView(views: [cancel, create]); buttons.spacing = 8
+        createButton.target = self; createButton.action = #selector(createArchive); createButton.keyEquivalent = "\r"
+        let buttons = NSStackView(views: [cancel, createButton]); buttons.spacing = 8
         let hint = NSTextField(wrappingLabelWithString: "Existing files are never replaced. A numbered name is used if needed.")
         hint.font = .systemFont(ofSize: 11); hint.textColor = .secondaryLabelColor
-        let content = NSStackView(views: [grid, hint, buttons]); content.orientation = .vertical
+        let content = NSStackView(views: [grid, advanced, hint, buttons]); content.orientation = .vertical
         content.alignment = .trailing; content.spacing = 16
         content.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         panel.contentView = content
@@ -148,11 +183,44 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
         encryptionNote.isHidden = selectedFormat == .sevenZip
         if selectedFormat == .zip { encryption.state = .off; passwords.clear() }
         changeEncryption()
+        updateAdvanced()
     }
     @objc private func changeEncryption() {
         let enabled = selectedFormat == .sevenZip && encryption.state == .on
         passwords.isHidden = !enabled; filenames.isHidden = !enabled
         if !enabled { passwords.clear() }
+        window?.contentView?.layoutSubtreeIfNeeded()
+        if let content = window?.contentView { window?.setContentSize(content.fittingSize) }
+    }
+    @objc private func updateAdvanced() {
+        advanced.isHidden = selectedFormat != .sevenZip
+        advancedFields.isHidden = advancedToggle.state != .on
+        createButton.isEnabled = true
+        if selectedFormat == .sevenZip {
+            if !sizeStarted {
+                sizeStarted = true
+                let inputs = sources, token = sizeCancellation
+                DispatchQueue.global(qos:.userInitiated).async { [weak self] in
+                    let result = Result { try SevenZipCreationOptions.inputSize(sources:inputs,cancellation:token) }
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, !self.finished else { return }
+                        self.inputSize = result; self.updateAdvanced()
+                    }
+                }
+            }
+            if let inputSize {
+                do {
+                    let resolved = try selectedOptions.resolve(preset:selectedPreset,inputBytes:inputSize.get())
+                    memory.stringValue = "Approximate compression memory: " + ByteCountFormatter.string(fromByteCount:Int64(resolved.estimatedMemoryBytes),countStyle:.memory) + " · 2 GiB ceiling. Rechecked before creation."
+                } catch {
+                    memory.stringValue = error.localizedDescription
+                    createButton.isEnabled = false
+                }
+            } else {
+                memory.stringValue = "Estimating compression memory…"
+                createButton.isEnabled = false
+            }
+        }
         window?.contentView?.layoutSubtreeIfNeeded()
         if let content = window?.contentView { window?.setContentSize(content.fittingSize) }
     }
@@ -162,6 +230,7 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
         if panel.runModal() == .OK, let url = panel.url { destination = url; location.stringValue = url.path }
     }
     @objc private func createArchive() {
+        guard createButton.isEnabled else { return }
         var value = name.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.lowercased().hasSuffix(".zip") { value = String(value.dropLast(4)) }
         else if value.lowercased().hasSuffix(".7z") { value = String(value.dropLast(3)) }
@@ -178,8 +247,10 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
     private func finish(_ destination: URL?, _ name: String, _ preset: CompressionPreset, password: String? = nil) {
         guard !finished else { return }; finished = true
         if let window, let parent = window.sheetParent { parent.endSheet(window) }
+        sizeCancellation.cancel()
         passwords.clear()
-        close(); complete?(destination, name, preset, selectedFormat, password, filenames.state == .on)
+        close(); complete?(destination, name, preset, selectedFormat, password, filenames.state == .on, selectedFormat == .sevenZip ? selectedOptions : nil)
     }
+    deinit { sizeCancellation.cancel() }
     func windowShouldClose(_ sender: NSWindow) -> Bool { cancelCreate(); return false }
 }
