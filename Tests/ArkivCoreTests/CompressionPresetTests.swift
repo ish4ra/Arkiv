@@ -50,6 +50,13 @@ final class CompressionPresetTests: XCTestCase {
                     }
                     let snapshot = try engine.inspect(archive,cancellation:ArchiveCancellation(),password:password)
                     XCTAssertEqual(try engine.test(archive,cancellation:ArchiveCancellation(),password:password).state,.ok)
+                    if format == .sevenZip {
+                        let policy = try SevenZipPolicyInspector().inspect(snapshot,password:password,cancellation:ArchiveCancellation())
+                        XCTAssertEqual(policy.dataEncrypted,password != nil)
+                        XCTAssertEqual(policy.headersEncrypted,mode == 2)
+                        XCTAssertTrue(policy.supportedLayout)
+                        XCTAssertTrue(policy.allDataVerified)
+                    }
                     let output = try engine.extract(snapshot,ids:nil,into:root,cancellation:ArchiveCancellation(),progress:{ _ in })
                     XCTAssertEqual(try Data(contentsOf:output.appendingPathComponent("資料 🐘/file.txt")),content)
                     XCTAssertEqual(try Data(contentsOf:output.appendingPathComponent("資料 🐘/zero")),Data())

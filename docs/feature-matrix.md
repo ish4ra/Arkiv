@@ -8,6 +8,7 @@
 | macOS application validation | Native compilation, tests, arm64 app/icon packaging and signature verification passed macOS CI; interactive validation outstanding |
 | Create ZIP | Store/Deflate, native creation setup, direct Finder multi-selection compression; [details](creation.md) |
 | Create/read 7z / AES-256 / filename encryption | LZMA2, content/header encryption, native password prompt/retry; [backend and limits](sevenzip.md) |
+| Compression presets | ZIP Store/Fastest/Fast/Normal/Maximum; 7z Fastest/Fast/Normal/Maximum/Ultra; [mappings and limits](compression-presets.md) |
 | Add to existing ZIP | Add Files/Add Folder at root; verified atomic rewrite of supported ZIP32; [limits](zip-additions.md) |
 | ZIP Delete / Rename / Replace File / New Folder | Verified transactional edits for eligible ZIP32 archives; [details](zip-edits.md) |
 | ZIP Replace Folder / Update Folder | One selected folder/package in an eligible ZIP: Replace removes old descendants; Update merges matching/new paths and keeps archive-only descendants; native picker, confirmation and atomic verification; [details](zip-edits.md) |

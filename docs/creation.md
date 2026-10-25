@@ -14,7 +14,7 @@ The menu for normal items offers:
 
 - **Add to Archive…** — native setup sheet (or standalone native panel when no
   browser is open), with selected items, name, destination, ZIP/7z format and
-  Store/Deflate (ZIP) or LZMA2 Normal (7z) compression. Destination selection uses the native folder chooser.
+  ZIP Store/Deflate presets or 7z LZMA2 presets, both defaulting to Normal. See [preset mappings and resource limits](compression-presets.md). Destination selection uses the native folder chooser.
 - **Compress to “Name.zip”** — direct creation beside the selection.
 - **Compress to “Name.7z”** — direct LZMA2 creation beside the selection.
 - **Compress with Password…** — opens setup with 7z/AES-256 selected, Password,
