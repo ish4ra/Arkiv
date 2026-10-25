@@ -6,6 +6,13 @@ private final class ZIPAdditionProgress {
     init(_ callback: @escaping @Sendable (ArchiveProgress) -> Void) { self.callback = callback }
 }
 
+public enum ZIPSelectedUpdatePolicy: Sendable { case replaceAll, replaceOlder }
+public struct ZIPSelectedUpdateResult: Sendable {
+    public let url: URL
+    public let updatedPaths: Set<String>
+    public let skippedCount: Int
+}
+
 /// Adds, deletes, renames or replaces items without recompressing unrelated entry data.
 /// ZIP64, encrypted, multipart, and ambiguous metadata/layouts remain read-only.
 public struct ArchiveZIPUpdater: Sendable {
@@ -43,7 +50,16 @@ public struct ArchiveZIPUpdater: Sendable {
     public func updateSelectedFiles(paths: Set<String>, from directory: URL, in snapshot: ArchiveSnapshot,
                                     cancellation: ArchiveCancellation,
                                     progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> URL {
+        try updateSelectedFilesReport(paths: paths, from: directory, in: snapshot,
+                                      cancellation: cancellation, progress: progress).url
+    }
+    public func updateSelectedFilesReport(paths: Set<String>, from directory: URL, in snapshot: ArchiveSnapshot,
+                                         policy: ZIPSelectedUpdatePolicy = .replaceAll, dosTimeZone: TimeZone? = nil,
+                                         cancellation: ArchiveCancellation,
+                                         progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> ZIPSelectedUpdateResult {
+        if cancellation.isCancelled { throw ArchiveFailure.cancelled }
         try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
+        guard canAdd(to: snapshot) else { throw ArchiveFailure.message("This ZIP cannot safely be updated. Reopen it if it changed.") }
         let entries = snapshot.entries.filter { paths.contains($0.path) }
         let parents = Set(paths.map { $0.split(separator: "/").dropLast().joined(separator: "/") })
         guard paths.count >= 2, entries.count == paths.count, parents.count == 1,
@@ -67,8 +83,43 @@ public struct ArchiveZIPUpdater: Sendable {
             }
             return source
         }
-        return try update(sources: sources, snapshot: snapshot, folder: "", plan: nil, selectedReplacements: entries,
-                          cancellation: cancellation, progress: progress)
+        if policy == .replaceAll {
+            let url = try update(sources: sources, snapshot: snapshot, folder: "", plan: nil, selectedReplacements: entries,
+                                 cancellation: cancellation, progress: progress)
+            return ZIPSelectedUpdateResult(url: url, updatedPaths: paths, skippedCount: 0)
+        }
+        // Keep the archive and every matched source pinned across the policy decision
+        // and transaction. A stale decision must not authorize different source bytes.
+        let original = try ZIPUpdateSource(snapshot.url)
+        let pins = try sources.map { try ZIPUpdateSource($0) }
+        var qualifiedEntries = [ArchiveEntry](), qualifiedSources = [URL]()
+        for (i, entry) in entries.enumerated() {
+            if cancellation.isCancelled { throw ArchiveFailure.cancelled }
+            guard canonical(sources[i]) != canonical(snapshot.url),
+                  try SourceStamp(sources[i]).inode != snapshot.stamp.inode else {
+                throw ArchiveFailure.message("An archive cannot be used as its own replacement source.")
+            }
+            let time = ZIPMetadataReader().modificationTime(for: entry.path, in: snapshot, dosTimeZone: dosTimeZone)
+            switch ZIPReplaceOlderPolicy.decide(archive: time, localModificationTime: pins[i].modificationTime, localIsRegularFile: true) {
+            case .replace: qualifiedEntries.append(entry); qualifiedSources.append(sources[i])
+            case .keep: break
+            case .ineligible:
+                throw ArchiveFailure.message("‘\(entry.path)’ has no reliable modification time for Replace Older. DOS times require a known origin time zone. No files were updated; use Replace All to replace explicitly.")
+            }
+        }
+        func revalidate() throws {
+            if cancellation.isCancelled { throw ArchiveFailure.cancelled }
+            try original.revalidate()
+            try pins.forEach { try $0.revalidate() }
+        }
+        try revalidate()
+        guard !qualifiedEntries.isEmpty else {
+            return ZIPSelectedUpdateResult(url: snapshot.url, updatedPaths: [], skippedCount: entries.count)
+        }
+        let url = try update(sources: qualifiedSources, snapshot: snapshot, folder: "", plan: nil,
+                             selectedReplacements: qualifiedEntries, validateAdditionalSources: revalidate,
+                             cancellation: cancellation, progress: progress)
+        return ZIPSelectedUpdateResult(url: url, updatedPaths: Set(qualifiedEntries.map(\.path)), skippedCount: entries.count - qualifiedEntries.count)
     }
     /// Replace one directory subtree without changing its archive path.
     @discardableResult
@@ -220,7 +271,7 @@ public struct ArchiveZIPUpdater: Sendable {
         try ArchiveAdditionUpdater.validateSevenPaths(snapshot)
         return try renameItem(path: path, to: name, in: snapshot, seven: true, password: password, cancellation: cancellation, progress: progress)
     }
-    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, newFolder: String? = nil, folderReplacement: String? = nil, folderMerge: Bool = false, selectedReplacements: [ArchiveEntry]? = nil, seven: Bool = false, password: String? = nil, cancellation: ArchiveCancellation,
+    private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, newFolder: String? = nil, folderReplacement: String? = nil, folderMerge: Bool = false, selectedReplacements: [ArchiveEntry]? = nil, validateAdditionalSources: () throws -> Void = {}, seven: Bool = false, password: String? = nil, cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         guard (seven || snapshot.unlocked == nil), snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
@@ -279,6 +330,7 @@ public struct ArchiveZIPUpdater: Sendable {
             }
         }
         func validateSources() throws {
+            try validateAdditionalSources()
             guard sourcePins.allSatisfy({ arkiv_file_pin_valid($0) != 0 }) else {
                 throw ArchiveFailure.message("A source file changed during the update. Original archive unchanged.")
             }

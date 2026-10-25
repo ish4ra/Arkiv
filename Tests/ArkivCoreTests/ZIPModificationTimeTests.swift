@@ -102,6 +102,47 @@ final class ZIPModificationTimeTests: XCTestCase {
         }
         XCTAssertEqual(ZIPReplaceOlderPolicy.decide(archive:nil,localModificationTime:Date(),localIsRegularFile:true),.ineligible)
     }
+    func testSelectedOlderDOSBoundaryAndAmbiguityAbort() throws {
+        try fixture { archive, original in
+            let fm = FileManager.default, root = archive.deletingLastPathComponent()
+            let extra = root.appendingPathComponent("other.txt")
+            try Data("old".utf8).write(to:extra)
+            try ArchiveZIPUpdater().add(sources:[extra],to:original,cancellation:ArchiveCancellation())
+            let snapshot = try LibArchiveEngine().inspect(archive,cancellation:ArchiveCancellation())
+            let folder = root.appendingPathComponent("input")
+            try fm.createDirectory(at:folder,withIntermediateDirectories:false)
+            let selected: Set<String> = ["資料 🐘.txt","other.txt"]
+            let dosTime = try XCTUnwrap(ZIPMetadataReader().modificationTime(for:"資料 🐘.txt",in:snapshot,dosTimeZone:utc))
+            for name in selected { try Data("new".utf8).write(to:folder.appendingPathComponent(name)) }
+            let otherTime = try XCTUnwrap(ZIPMetadataReader().modificationTime(for:"other.txt",in:snapshot))
+            try fm.setAttributes([.modificationDate:otherTime.date.addingTimeInterval(-1)],ofItemAtPath:folder.appendingPathComponent("other.txt").path)
+            let before = try Data(contentsOf:archive)
+            for delta in [0.0,1.999,2.0] {
+                try fm.setAttributes([.modificationDate:dosTime.date.addingTimeInterval(delta)],ofItemAtPath:folder.appendingPathComponent("資料 🐘.txt").path)
+                let result = try ArchiveZIPUpdater().updateSelectedFilesReport(paths:selected,from:folder,in:snapshot,policy:.replaceOlder,dosTimeZone:utc,cancellation:ArchiveCancellation())
+                if delta < 2 { XCTAssertTrue(result.updatedPaths.isEmpty); XCTAssertEqual(try Data(contentsOf:archive),before) }
+                else { XCTAssertEqual(result.updatedPaths,["資料 🐘.txt"]) }
+            }
+        }
+        for extras in [[], [UInt8](ut(100)+ut(101))] {
+            try fixture(local:extras,central:extras,time:0) { archive, original in
+                let fm = FileManager.default, root = archive.deletingLastPathComponent()
+                let other = root.appendingPathComponent("other.txt")
+                try Data("old".utf8).write(to:other)
+                try ArchiveZIPUpdater().add(sources:[other],to:original,cancellation:ArchiveCancellation())
+                let snapshot = try LibArchiveEngine().inspect(archive,cancellation:ArchiveCancellation())
+                let input = root.appendingPathComponent("input")
+                try fm.createDirectory(at:input,withIntermediateDirectories:false)
+                for name in ["資料 🐘.txt","other.txt"] {
+                    try Data("new".utf8).write(to:input.appendingPathComponent(name))
+                    try fm.setAttributes([.modificationDate:Date(timeIntervalSince1970:2000000000)],ofItemAtPath:input.appendingPathComponent(name).path)
+                }
+                let before = try Data(contentsOf:archive)
+                XCTAssertThrowsError(try ArchiveZIPUpdater().updateSelectedFilesReport(paths:["資料 🐘.txt","other.txt"],from:input,in:snapshot,policy:.replaceOlder,cancellation:ArchiveCancellation()))
+                XCTAssertEqual(try Data(contentsOf:archive),before)
+            }
+        }
+    }
     func testCreatorRoundTripStaleArchiveAndSourceRevalidation() throws {
         #if os(Linux)
         setlocale(LC_CTYPE, "C.UTF-8")

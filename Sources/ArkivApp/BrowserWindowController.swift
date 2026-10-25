@@ -508,18 +508,24 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Update \(paths.count) selected files?"
-        alert.informativeText = "Each selected file’s contents will be replaced by the same-named file in the chosen folder. Archive names stay unchanged. If any source is missing or invalid, no files will be updated."
+        alert.informativeText = "Match each file by name. Replace All replaces every match; Replace Older replaces only definitively newer sources. Missing sources or unreliable timestamps stop the whole update. Archive names stay unchanged."
+        let policyPicker = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 280, height: 28), pullsDown: false)
+        policyPicker.addItems(withTitles: ["Replace All", "Replace Older"])
+        policyPicker.setAccessibilityLabel("Update policy")
+        policyPicker.toolTip = "Replace Older skips equal or older sources and stops if an archive timestamp is unreliable."
+        alert.accessoryView = policyPicker
         let button = alert.addButton(withTitle: "Update Files")
         button.hasDestructiveAction = true; button.keyEquivalent = ""
         alert.addButton(withTitle: "Cancel")
         alert.beginSheetModal(for: window) { [weak self] response in
             guard response == .alertFirstButtonReturn, let self, !self.sessionEnded,
                   self.canUpdateSelectedFiles, self.selectedPaths() == paths else { return }
+            let policy: ZIPSelectedUpdatePolicy = policyPicker.indexOfSelectedItem == 1 ? .replaceOlder : .replaceAll
             let token = self.begin("Updating selected files…")
             self.worker.async { [self] in
                 let throttle = ProgressThrottle()
                 let result = Result {
-                    try ArchiveZIPUpdater().updateSelectedFiles(paths: paths, from: source, in: snapshot, cancellation: token) { progress in
+                    try ArchiveZIPUpdater().updateSelectedFilesReport(paths: paths, from: source, in: snapshot, policy: policy, cancellation: token) { progress in
                         guard throttle.shouldUpdate() else { return }
                         DispatchQueue.main.async { [weak self] in
                             guard let self, self.isBusy else { return }
@@ -529,12 +535,16 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                 }
                 DispatchQueue.main.async { [self] in
                     self.finish()
-                    self.modificationFeedback(result)
                     switch result {
-                    case .success(let url):
+                    case .success(let report):
+                        guard !report.updatedPaths.isEmpty else {
+                            self.status.stringValue = "No selected files were newer. Archive unchanged."
+                            return
+                        }
+                        self.modificationFeedback(.success(report.url))
                         self.snapshot = nil; self.index = nil; self.zipAdditionAvailable = false
                         self.search.stringValue = ""
-                        self.load(url, browsingFolder: folder, selectingPaths: paths)
+                        self.load(report.url, browsingFolder: folder, selectingPaths: paths)
                     case .failure(let error): self.present(error)
                     }
                 }

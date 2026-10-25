@@ -1350,7 +1350,7 @@ int arkiv_zip_prepare(arkiv_zip_transaction *t,const char *addition,const char *
     return zip_prepare(t,addition,NULL,NULL,NULL,0,SIZE_MAX,NULL,stage,token,callback,context,error,cap,NULL,NULL,0,0);
 }
 int arkiv_zip_prepare_selected(arkiv_zip_transaction *t,const char *addition,const int64_t *updates,size_t count,size_t incoming_count,const char *stage,arkiv_cancel *token,arkiv_progress_callback callback,void *context,char *error,size_t cap) {
- if(!updates||incoming_count<2)return fail(error,cap,"Choose at least two replacement files.");
+ if(!updates||incoming_count<1)return fail(error,cap,"Choose at least one qualifying replacement file.");
  unsigned char *keep=malloc(count?count:1),*append=calloc(incoming_count,1);
  if(!keep||!append){free(keep);free(append);return 1;}memset(keep,1,count);
  size_t selected=0;for(size_t i=0;i<count;i++)if(updates[i]>=0)selected++;
