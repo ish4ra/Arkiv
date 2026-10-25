@@ -508,7 +508,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Update \(paths.count) selected files?"
-        alert.informativeText = "Match each file by name. Replace All replaces every match; Replace Older replaces only definitively newer sources. Missing sources or unreliable timestamps stop the whole update. Archive names stay unchanged."
+        alert.informativeText = "Match each file by name. Replace All replaces every match; Replace Older replaces only definitively newer sources. Missing or invalid sources stop the whole update. Replace Older also stops on unreliable timestamps. Archive names stay unchanged."
         let policyPicker = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 280, height: 28), pullsDown: false)
         policyPicker.addItems(withTitles: ["Replace All", "Replace Older"])
         policyPicker.setAccessibilityLabel("Update policy")
@@ -545,7 +545,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                         self.snapshot = nil; self.index = nil; self.zipAdditionAvailable = false
                         self.search.stringValue = ""
                         self.load(report.url, browsingFolder: folder, selectingPaths: paths)
-                    case .failure(let error): self.present(error)
+                    case .failure(let error):
+                        self.modificationFeedback(.failure(error))
+                        self.present(error)
                     }
                 }
             }

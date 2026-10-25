@@ -203,12 +203,12 @@ Unrelated local records, including compressed data, are copied byte-for-byte; ce
 offsets are adjusted. Regression tests compare raw record bytes and metadata and
 independently read/test the resulting ZIP.
 
-## Replace Older foundation (no command enabled)
+## Replace Older policy
 
 `ZIPMetadataReader.modificationTime(for:in:dosTimeZone:)` exposes an optional
 canonical time for a regular entry in an eligible writable ZIP. It reads the pinned
 original headers, not an extracted file's timestamp, and rejects stale snapshots.
-Existing browsing, editing and menus do not consume this policy yet.
+Update Selected Files offers **Replace All** (the default) and **Replace Older** in its confirmation sheet. Other edit commands do not consume this policy.
 
 - Valid Info-ZIP `UT` (0x5455) modification seconds take priority, in UTC, with
   one-second precision. Either header may supply it; if both do, they must agree.
@@ -227,13 +227,30 @@ Existing browsing, editing and menus do not consume this policy yet.
 `[date, date + precision)`. Replace only when a matched regular local file's mtime
 is at or beyond that interval's upper boundary. Equal/effectively equal and older
 local times return Keep; missing/ambiguous archive time, missing/nonfinite local
-time or a non-regular source return Ineligible. No date-based edit occurs yet.
+time or a non-regular source return Ineligible. Replace Older treats any ineligible match as an error and aborts the entire operation.
 
 `ZIPUpdateSource` retains a no-follow descriptor and operation-local mtime. Its
 `revalidate()` checks path and descriptor identity, size, nanosecond mtime and ctime.
-A future Replace Older transaction must retain it and revalidate all sources and the
-original archive immediately before coordinated atomic commit. A policy decision is
-not an authorization to reuse a stale source. Existing edit transactions are unchanged.
+Replace Older retains these pins and revalidates all matched sources and the original archive before the existing coordinated atomic commit. A policy decision is not authorization to reuse stale source bytes.
 
 References: [PKWARE ZIP APPNOTE](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT)
 and [libarchive ZIP extra-field reader](https://github.com/libarchive/libarchive/blob/master/libarchive/archive_read_support_format_zip.c).
+
+
+Replace Older validates every selected match before filtering, then updates all
+qualifying files together through the existing Update Selected Files transaction.
+Even one qualifying file is supported; the original selection still requires at
+least two regular files. Skipped entries and unrelated records stay raw/unrecompressed.
+Names, supported ZIP metadata, Store/Deflate methods and the archive comment remain
+preserved, including the existing archive mtimes. No timestamps are rewritten by
+this policy, and no unselected local files are added.
+
+When nothing is newer, no replacement ZIP is created or committed. The selection
+stays intact and the status bar says **No selected files were newer. Archive unchanged.**
+No completion sound plays for this no-op. Successful replacements refresh the same
+folder, retain the selection and play one completion sound.
+
+The UI does not infer a DOS origin time zone or offer a zone override in this phase.
+DOS-only entries therefore fail safely in Replace Older; use explicit Replace All.
+The core accepts an explicit known zone for callers and tests, with two-second
+boundary coverage. There is no folder, 7z, or extraction-conflict Replace Older mode.

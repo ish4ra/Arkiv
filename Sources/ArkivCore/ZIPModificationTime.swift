@@ -29,7 +29,7 @@ public struct ZIPModificationTime: Equatable, Sendable {
 
 public enum ZIPReplaceOlderPolicy {
     public enum Decision: Equatable, Sendable { case replace, keep, ineligible }
-    /// A decision is advisory only. A future transaction must revalidate the pinned
+    /// A decision is advisory only. A transaction must revalidate the pinned
     /// local source and archive immediately before commit, even after `.replace`.
     public static func decide(archive: ZIPModificationTime?, localModificationTime: Date?,
                               localIsRegularFile: Bool) -> Decision {
@@ -64,7 +64,7 @@ public struct ZIPMetadataReader: Sendable {
     }
 }
 
-/// Operation-local source identity/time for future update-by-date preparation.
+/// Operation-local source identity/time for update-by-date preparation.
 /// Retains a no-follow regular-file descriptor, never a persisted authorization.
 public final class ZIPUpdateSource {
     private let pin: OpaquePointer
