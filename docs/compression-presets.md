@@ -3,7 +3,8 @@
 Create Archive / Add to Archive offers presets for the selected format. ZIP remains
 the default format. Both formats default to Normal, including direct Finder Compress
 to ZIP / 7z. Changing format resets the selector to Normal. No persistent preference
-or advanced dictionary/thread/solid controls are introduced.
+is stored. 7z offers optional [dictionary/thread controls](sevenzip-advanced.md);
+solid controls remain unavailable.
 
 | Preset | ZIP | 7z |
 | --- | --- | --- |
@@ -19,7 +20,8 @@ Conflicting legacy Store/Deflate arguments and presets fail before output creati
 The C bridge validates numeric levels too. ZIP uses libarchive's `zip:compression`
 and `zip:compression-level` options; an unsupported option/error aborts creation.
 7z sets the official bundled 7-Zip encoder's `0=LZMA2` and `x` level explicitly.
-It retains existing non-solid, two-thread behavior and AES-256/header encryption.
+It retains non-solid behavior and AES-256/header encryption. Auto threads remains
+two; explicit 7z creation overrides are described in the advanced-controls guide.
 The compatibility bridge and all existing editing operations retain their prior
 Normal encoding policy. There is no method or format substitution on an error.
 
@@ -31,8 +33,8 @@ Limits:
   use the requested Store or Deflate method.
 - 7-Zip derives internal dictionary/match-finder settings from its upstream level
   and input size. Higher presets, especially Ultra, can need substantially more RAM
-  and time. Arkiv does not expose custom dictionary sizes or raise existing decoder
-  resource limits (256 MiB memory setting, existing entry/byte limits). An output
+  and time. Arkiv enforces a conservative 2 GiB creation-memory estimate and does not
+  raise existing decoder resource limits (256 MiB memory setting, existing entry/byte limits). An output
   exceeding verification/resource limits fails safely and is not published; Arkiv
   does not lower the requested preset as a fallback.
 - The existing creation pipeline stages selected input as a private ZIP, then uses
