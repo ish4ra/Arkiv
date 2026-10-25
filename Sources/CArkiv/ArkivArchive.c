@@ -1042,6 +1042,68 @@ int arkiv_zip_replacement_method(arkiv_zip_transaction *t, size_t ordinal, size_
     }
     return -1;
 }
+/* Conservative time interpretation, separate from editing eligibility. A bad/unknown
+   time does not change existing editing behavior. UT is signed Unix seconds; do not
+   guess post-2038 unsigned interpretations. NTFS timestamps are deferred here. */
+static int zip_ut_time(int fd,uint64_t start,size_t length,int central,int *present,uint32_t *mtime) {
+    unsigned char extra[65535];size_t q=0;*present=0;
+    if(length>sizeof(extra)||pread(fd,extra,length,start)!=(ssize_t)length)return 0;
+    while(q<length) {
+        if(length-q<4)return 0;
+        unsigned tag=integrity_u16(extra+q),n=integrity_u16(extra+q+2);q+=4;
+        if(n>length-q)return 0;
+        if(tag==0x000a)return 0; /* Never silently discard a competing NTFS time. */
+        if(tag==0x5455) {
+            if(*present||n<5)return 0;
+            unsigned flags=extra[q];
+            if((flags&~7)||!(flags&1))return 0;
+            unsigned expected=1+4*((flags&1)!=0)+4*((flags&2)!=0)+4*((flags&4)!=0);
+            if(central?n!=5:n!=expected)return 0;
+            *mtime=integrity_u32(extra+q+1);
+            if(*mtime>INT32_MAX)return 0;
+            *present=1;
+        }
+        q+=n;
+    }
+    return 1;
+}
+/* 1: UTC Unix seconds, 2: packed DOS date/time, 0: unknown/ambiguous. */
+int arkiv_zip_modification_time(arkiv_zip_transaction *t,size_t ordinal,size_t count,const char *name,int64_t *value) {
+    if(!value||arkiv_zip_replacement_method(t,ordinal,count,name)<0)return 0;
+    struct stat held,current;
+    if(fstat(t->source,&held)||fstatat(t->parent,t->name,&current,AT_SYMLINK_NOFOLLOW)||
+       !create_same_stat(&held,&t->stamp)||!create_same_stat(&current,&t->stamp))return 0;
+    uint64_t cursor=t->zip.offset;
+    for(size_t i=0;i<count;i++) {
+        unsigned char h[46],l[30];
+        if(pread(t->source,h,46,cursor)!=46)return 0;
+        unsigned n=integrity_u16(h+28);
+        if(i==ordinal) {
+            uint64_t off=integrity_u32(h+42);
+            if(pread(t->source,l,30,off)!=30||memcmp(h+12,l+10,4))return 0;
+            int cp=0,lp=0;uint32_t ct=0,lt=0;
+            if(!zip_ut_time(t->source,cursor+46+n,integrity_u16(h+30),1,&cp,&ct)||
+               !zip_ut_time(t->source,off+30+n,integrity_u16(l+28),0,&lp,&lt)||
+               (cp&&lp&&ct!=lt))return 0;
+            int kind=(cp||lp)?1:2;
+            *value=kind==1?(cp?ct:lt):integrity_u32(h+12);
+            if(fstat(t->source,&held)||fstatat(t->parent,t->name,&current,AT_SYMLINK_NOFOLLOW)||
+               !create_same_stat(&held,&t->stamp)||!create_same_stat(&current,&t->stamp))return 0;
+            return kind;
+        }
+        cursor+=46+n+integrity_u16(h+30)+integrity_u16(h+32);
+    }
+    return 0;
+}
+int arkiv_file_pin_mtime(arkiv_file_pin *p,int64_t *seconds,int32_t *nanoseconds) {
+    if(!seconds||!nanoseconds||!arkiv_file_pin_valid(p))return 0;
+#ifdef __APPLE__
+    *seconds=p->stamp.st_mtimespec.tv_sec;*nanoseconds=p->stamp.st_mtimespec.tv_nsec;
+#else
+    *seconds=p->stamp.st_mtim.tv_sec;*nanoseconds=p->stamp.st_mtim.tv_nsec;
+#endif
+    return 1;
+}
 /* Read one newly encoded regular-file payload; metadata comes from the old record. */
 static int zip_update_content(int fd,uint64_t central,unsigned char *h,unsigned char *l,uint64_t *start) {
     if(pread(fd,h,46,central)!=46||memcmp(h,"PK\001\002",4)||

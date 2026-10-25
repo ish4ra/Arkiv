@@ -112,4 +112,7 @@ void arkiv_file_pin_end(arkiv_file_pin *);
 int arkiv_create_zip_files(const char *const *, size_t, const char *, const char *, const char *, char *, size_t, const int *, arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 int arkiv_zip_prepare_selected(arkiv_zip_transaction *, const char *, const int64_t *, size_t, size_t, const char *, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 
+int arkiv_zip_modification_time(arkiv_zip_transaction *, size_t, size_t, const char *, int64_t *);
+int arkiv_file_pin_mtime(arkiv_file_pin *, int64_t *, int32_t *);
+
 #endif

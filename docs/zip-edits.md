@@ -202,3 +202,38 @@ compression-option flags follow the new payload. The archive comment is retained
 Unrelated local records, including compressed data, are copied byte-for-byte; central
 offsets are adjusted. Regression tests compare raw record bytes and metadata and
 independently read/test the resulting ZIP.
+
+## Replace Older foundation (no command enabled)
+
+`ZIPMetadataReader.modificationTime(for:in:dosTimeZone:)` exposes an optional
+canonical time for a regular entry in an eligible writable ZIP. It reads the pinned
+original headers, not an extracted file's timestamp, and rejects stale snapshots.
+Existing browsing, editing and menus do not consume this policy yet.
+
+- Valid Info-ZIP `UT` (0x5455) modification seconds take priority, in UTC, with
+  one-second precision. Either header may supply it; if both do, they must agree.
+  Duplicate fields, malformed sizes/flags and conflicting times are ineligible.
+  This phase accepts the unambiguous nonnegative signed-32-bit range (1970 through
+  2038); it does not guess signed/pre-epoch versus unsigned post-2038 meanings.
+- Without extended time, matching local/central DOS date/time can be decoded with
+  two-second precision **only when the caller supplies a known origin time zone**.
+  ZIP does not record that zone; the current computer's zone is not assumed.
+  Invalid/zero dates, invalid clock fields, DST gaps and repeated hours are rejected.
+- NTFS timestamp extras remain unsupported by this conservative policy, even when
+  UT is also present. They are not silently ignored or reinterpreted. Other ZIP
+  layouts/metadata outside the existing writable ZIP policy remain ineligible.
+
+`ZIPReplaceOlderPolicy.decide` is pure: a canonical archive time represents
+`[date, date + precision)`. Replace only when a matched regular local file's mtime
+is at or beyond that interval's upper boundary. Equal/effectively equal and older
+local times return Keep; missing/ambiguous archive time, missing/nonfinite local
+time or a non-regular source return Ineligible. No date-based edit occurs yet.
+
+`ZIPUpdateSource` retains a no-follow descriptor and operation-local mtime. Its
+`revalidate()` checks path and descriptor identity, size, nanosecond mtime and ctime.
+A future Replace Older transaction must retain it and revalidate all sources and the
+original archive immediately before coordinated atomic commit. A policy decision is
+not an authorization to reuse a stale source. Existing edit transactions are unchanged.
+
+References: [PKWARE ZIP APPNOTE](https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT)
+and [libarchive ZIP extra-field reader](https://github.com/libarchive/libarchive/blob/master/libarchive/archive_read_support_format_zip.c).
