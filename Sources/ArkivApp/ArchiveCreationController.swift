@@ -14,22 +14,22 @@ final class ArchiveCreationController {
         if let setup { setup.window?.makeKeyAndOrderFront(nil); return }
         let sheet = CreateArchiveSheet(sources: sources, encrypted: encrypted)
         setup = sheet
-        sheet.complete = { [weak self] destination, name, compression, format, password, encryptFilenames in
+        sheet.complete = { [weak self] destination, name, preset, format, password, encryptFilenames in
             guard let self else { return }
             self.setup = nil
             guard let destination else { return }
-            do { try self.compress(sources, destination: destination, name: name, compression: compression, format: format, password: password, encryptFilenames: encryptFilenames) }
+            do { try self.compress(sources, destination: destination, name: name, format: format, password: password, encryptFilenames: encryptFilenames, preset: preset) }
             catch { NSAlert(error: error).runModal() }
         }
         sheet.present(parent: parent)
     }
 
-    func compress(_ sources: [URL], destination: URL? = nil, name: String? = nil, compression: ZIPCompression = .deflate, format: ArchiveFormat = .zip, password: String? = nil, encryptFilenames: Bool = true) throws {
+    func compress(_ sources: [URL], destination: URL? = nil, name: String? = nil, compression: ZIPCompression? = nil, format: ArchiveFormat = .zip, password: String? = nil, encryptFilenames: Bool = true, preset: CompressionPreset? = nil) throws {
         guard !isBusy else { throw ArchiveFailure.message("An archive is already being created. Wait or cancel it first.") }
         guard let first = sources.first else { throw ArchiveFailure.message("Select files or folders to compress.") }
         let destination = destination ?? first.deletingLastPathComponent()
         let name = name ?? CreationHandoff.baseName(for: sources)
-        let request = ArchiveCreationRequest(sources: sources, destination: destination, name: name, compression: compression, format: format, password: password, encryptFilenames: encryptFilenames)
+        let request = ArchiveCreationRequest(sources: sources, destination: destination, name: name, compression: compression, format: format, password: password, encryptFilenames: encryptFilenames, preset: preset)
         isBusy = true
         let operation = FinderOperationWindow(archive: destination.appendingPathComponent(name + (format == .sevenZip ? ".7z" : ".zip")), verb: "Compressing")
         self.operation = operation
@@ -68,8 +68,8 @@ private final class CreationProgressThrottle: @unchecked Sendable {
     }
 }
 
-private final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
-    var complete: ((URL?, String, ZIPCompression, ArchiveFormat, String?, Bool) -> Void)?
+final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
+    var complete: ((URL?, String, CompressionPreset, ArchiveFormat, String?, Bool) -> Void)?
     private let name = NSTextField(string: "")
     private let location = NSTextField(labelWithString: "")
     private let compression = NSPopUpButton()
@@ -93,7 +93,6 @@ private final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
         name.setAccessibilityLabel("Archive name")
         location.stringValue = destination.path; location.lineBreakMode = .byTruncatingMiddle
         location.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        compression.addItems(withTitles: ["Deflate — Normal", "Store — No compression"])
         compression.setAccessibilityLabel("Compression")
         format.addItems(withTitles: ["ZIP (.zip)", "7z (.7z)"])
         format.setAccessibilityLabel("Archive format")
@@ -141,7 +140,10 @@ private final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
     }
     @objc private func changeFormat() {
         compression.removeAllItems()
-        compression.addItems(withTitles: selectedFormat == .sevenZip ? ["LZMA2 — Normal"] : ["Deflate — Normal", "Store — No compression"])
+        let presets = CompressionPreset.available(for: selectedFormat)
+        compression.addItems(withTitles: presets.map(\.title))
+        compression.selectItem(at: presets.firstIndex(of: .normal)!)
+        compression.toolTip = selectedFormat == .sevenZip ? "LZMA2 compression. Higher presets may need substantially more memory and time." : "Store uses no compression; other presets use Deflate."
         encryption.isEnabled = selectedFormat == .sevenZip
         encryptionNote.isHidden = selectedFormat == .sevenZip
         if selectedFormat == .zip { encryption.state = .off; passwords.clear() }
@@ -170,14 +172,14 @@ private final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
         do {
             password = encryption.state == .on ? try CreationPasswordPolicy.validate(passwords.value, confirmation: passwords.confirmedValue) : nil
         } catch { NSAlert(error: error).runModal(); return }
-        finish(destination, value, compression.indexOfSelectedItem == 1 ? .store : .deflate, password: password)
+        finish(destination, value, CompressionPreset.available(for: selectedFormat)[compression.indexOfSelectedItem], password: password)
     }
-    @objc private func cancelCreate() { finish(nil, "", .deflate) }
-    private func finish(_ destination: URL?, _ name: String, _ compression: ZIPCompression, password: String? = nil) {
+    @objc private func cancelCreate() { finish(nil, "", .normal) }
+    private func finish(_ destination: URL?, _ name: String, _ preset: CompressionPreset, password: String? = nil) {
         guard !finished else { return }; finished = true
         if let window, let parent = window.sheetParent { parent.endSheet(window) }
         passwords.clear()
-        close(); complete?(destination, name, compression, selectedFormat, password, filenames.state == .on)
+        close(); complete?(destination, name, preset, selectedFormat, password, filenames.state == .on)
     }
     func windowShouldClose(_ sender: NSWindow) -> Bool { cancelCreate(); return false }
 }

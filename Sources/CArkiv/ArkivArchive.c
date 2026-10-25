@@ -614,7 +614,10 @@ static int seven_cancel(void *token) { return cancelled(token); }
 static int create_archive(const char *const *sources, size_t count, const char *parent,
                      const char *stage, const char *name, char *published_name, size_t published_capacity, int compression, arkiv_limits limits,
                      arkiv_cancel *token, arkiv_progress_callback progress, void *context,
-                     char *error, size_t capacity, int seven, const char *password, int headers, const char *prefix, const char *root, int omit_root, const int *methods) {
+                     char *error, size_t capacity, int seven, const char *password, int headers, const char *prefix, const char *root, int omit_root, const int *methods, int level) {
+    if (seven ? (compression != 1 || (level!=1&&level!=3&&level!=5&&level!=7&&level!=9)) :
+        (compression==0 ? level!=0 : compression!=1 || (level!=1&&level!=3&&level!=6&&level!=9)))
+        return fail(error, capacity, "Unsupported compression method or level.");
     if (omit_root && !root) return fail(error, capacity, "Invalid replacement root.");
     if (root && (count != 1 || seven || !safe_path(root))) return fail(error, capacity, "Invalid replacement folder.");
     if (prefix && *prefix && !safe_path(prefix)) return fail(error, capacity, "Invalid archive folder.");
@@ -636,9 +639,11 @@ static int create_archive(const char *const *sources, size_t count, const char *
     output = openat(stagefd, "archive.zip", O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
     if (output < 0) goto done;
     writer = archive_write_new();
+    char zipLevel[2] = { (char)('0' + (seven ? 6 : level)), 0 };
     if (!writer || archive_write_set_format_zip(writer) != ARCHIVE_OK ||
         archive_write_set_format_option(writer, "zip", "compression", compression ? "deflate" : "store") != ARCHIVE_OK ||
         archive_write_set_format_option(writer, "zip", "hdrcharset", "UTF-8") != ARCHIVE_OK ||
+        archive_write_set_format_option(writer, "zip", "compression-level", zipLevel) != ARCHIVE_OK ||
         archive_write_open_fd(writer, output) != ARCHIVE_OK) goto done;
     struct stat stage_stat;
     if (fstat(stagefd, &stage_stat)) goto done;
@@ -688,7 +693,7 @@ static int create_archive(const char *const *sources, size_t count, const char *
         sevenfd = openat(stagefd, "archive.7z", O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
         checkfd = openat(stagefd, "verify.zip", O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
         if (sevenfd < 0 || checkfd < 0) goto done;
-        status = arkiv_seven_encode(output, sevenfd, password, headers, seven_cancel, token, progress, context);
+        status = arkiv_seven_encode_level(output, sevenfd, password, headers, seven_cancel, token, progress, context, level);
         if (status) goto done;
         status = 1;
         if (fsync(sevenfd)) goto done;
@@ -722,7 +727,7 @@ int arkiv_create_zip_files(const char *const *sources, size_t count, const char 
  const char *name, char *published, size_t published_capacity, const int *methods, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity) {
  if (!methods) return fail(error,capacity,"Missing per-file compression methods.");
- return create_archive(sources,count,parent,stage,name,published,published_capacity,1,limits,token,progress,context,error,capacity,0,NULL,0,"",NULL,0,methods);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,1,limits,token,progress,context,error,capacity,0,NULL,0,"",NULL,0,methods,6);
 }
 /* Retain each source descriptor and compare full identity/timestamps until commit. */
 struct arkiv_file_pin { int fd; char *path; struct stat stamp; };
@@ -744,23 +749,29 @@ void arkiv_file_pin_end(arkiv_file_pin *p){if(p){close(p->fd);free(p->path);free
 int arkiv_create_zip_folder(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity, const char *root, int omit_root) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,"",root,omit_root,NULL);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,"",root,omit_root,NULL,compression?6:0);
 }
 int arkiv_create_zip_at(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity, const char *prefix) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,prefix,NULL,0,NULL);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,prefix,NULL,0,NULL,compression?6:0);
+}
+int arkiv_create_archive_preset(const char *const *sources, size_t count, const char *parent, const char *stage,
+ const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
+ arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity,
+ int seven, const char *password, int headers, int level) {
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers,"",NULL,0,NULL,level);
 }
 int arkiv_create_archive(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity,
  int seven, const char *password, int headers) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers,"",NULL,0,NULL);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers,"",NULL,0,NULL,seven?5:(compression?6:0));
 }
 int arkiv_create_zip(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,"",NULL,0,NULL);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,"",NULL,0,NULL,compression?6:0);
 }
 int arkiv_is_seven(const char *path) {
  int fd=create_open(path); if(fd<0)return 0;unsigned char b[6];ssize_t n=read(fd,b,6);close(fd);

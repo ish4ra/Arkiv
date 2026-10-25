@@ -233,7 +233,9 @@ static bool path_key(std::string &name) {
 #endif
  return true;
 }
-static int encode(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,int original,const unsigned char*keep=nullptr,size_t keepCount=0,const char*const*oldnames=nullptr,const char*const*newnames=nullptr,size_t replacement=SIZE_MAX,bool encryptedEdit=false){State s{password,cancel,context};s.progress=progress;s.progressContext=progressContext;try{
+static int encode(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,int original,const unsigned char*keep=nullptr,size_t keepCount=0,const char*const*oldnames=nullptr,const char*const*newnames=nullptr,size_t replacement=SIZE_MAX,bool encryptedEdit=false,unsigned level=5){
+ if(level!=1&&level!=3&&level!=5&&level!=7&&level!=9)return 1;
+ State s{password,cancel,context};s.progress=progress;s.progressContext=progressContext;try{
  if(s.stopped())return 2;
  if(encryptedEdit&&(!password||((keep!=nullptr)+(newnames!=nullptr)+(input>=0)!=1)||(replacement!=SIZE_MAX&&(input<0||!oldnames||replacement>=keepCount))))return 1;
  auto raw=new NArchive::N7z::CHandler;CMyComPtr<IOutArchive> handler=raw;
@@ -286,7 +288,7 @@ static int encode(int input,int output,const char*password,int headers,arkiv_sev
  if(result!=ARCHIVE_EOF||fflush(tmp))return 1;
  }
  if(replacement!=SIZE_MAX&&(replaced==UInt32(-1)||cb->items.size()!=1||cb->items[0].dir))return 1;
- const wchar_t*names[]={L"0",L"x",L"s",L"mt",L"he"};CPropVariant values[5];values[0]=L"LZMA2";values[1]=UInt32(5);values[2]=false;values[3]=UInt32(2);values[4]=bool(password&&headers);
+ const wchar_t*names[]={L"0",L"x",L"s",L"mt",L"he"};CPropVariant values[5];values[0]=L"LZMA2";values[1]=UInt32(level);values[2]=false;values[3]=UInt32(2);values[4]=bool(password&&headers);
  HRESULT h=static_cast<ISetProperties*>(raw)->SetProperties(names,values,5);if(h!=S_OK)return 1;CMyComPtr<IOutStream>out=new Out(output,&s);h=handler->UpdateItems(out,cb->retained.size()+(replacement==SIZE_MAX?cb->items.size():0),cb);return s.result(h);
  }catch(...){return s.stopped()?2:1;}}
 
@@ -295,6 +297,9 @@ extern "C" const char *arkiv_seven_library_path(){Dl_info info;return dladdr((vo
 /* Reuse official decoding and CRC checks with a bounded discard stream. No plaintext spool. */
 extern "C" int arkiv_seven_test(int input,const char*password,uint64_t maxEntries,uint64_t maxBytes,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext){State s{password,cancel,context};s.testing=true;s.maxEntries=std::min<uint64_t>(100000,maxEntries);s.maxBytes=std::min(Budget,maxBytes);s.progress=progress;s.progressContext=progressContext;try{return decode(input,-1,s);}catch(...){return s.stopped()?2:6;}}
 
+extern "C" int arkiv_seven_encode_level(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,unsigned level) {
+ return encode(input,output,password,headers,cancel,context,progress,progressContext,-1,nullptr,0,nullptr,nullptr,SIZE_MAX,false,level);
+}
 extern "C" int arkiv_seven_encode(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext) {
  return encode(input,output,password,headers,cancel,context,progress,progressContext,-1);
 }

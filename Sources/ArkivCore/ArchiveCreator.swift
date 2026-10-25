@@ -10,11 +10,14 @@ public struct ArchiveCreationRequest: Sendable {
     public let sources: [URL]
     public let destination: URL
     public let name: String
+    public let preset: CompressionPreset
     public let compression: ZIPCompression
-    public init(sources: [URL], destination: URL, name: String, compression: ZIPCompression = .deflate,
-                format: ArchiveFormat = .zip, password: String? = nil, encryptFilenames: Bool = true) {
+    public init(sources: [URL], destination: URL, name: String, compression: ZIPCompression? = nil,
+                format: ArchiveFormat = .zip, password: String? = nil, encryptFilenames: Bool = true, preset: CompressionPreset? = nil) {
         self.format = format; self.password = password; self.encryptFilenames = encryptFilenames
-        self.sources = sources; self.destination = destination; self.name = name; self.compression = compression
+        self.sources = sources; self.destination = destination; self.name = name
+        self.preset = preset ?? (compression == .store ? .store : .normal)
+        self.compression = compression ?? (preset == .store ? .store : .deflate)
     }
 }
 private final class CreationProgress {
@@ -29,6 +32,16 @@ public struct ArchiveCreator: Sendable {
     }
     func create(_ request: ArchiveCreationRequest, archiveFolder: String, replacementRoot: String? = nil, omitReplacementRoot: Bool = false, fileMethods: [Int32]? = nil, cancellation: ArchiveCancellation,
                 progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
+        let backend = try request.preset.backend(for: request.format)
+        guard (request.compression == .store) == (request.preset == .store) else {
+            throw ArchiveFailure.message("Conflicting compression method and preset.")
+        }
+        // Internal ZIP edit staging APIs retain their existing Normal/Store policy.
+        if !archiveFolder.isEmpty || replacementRoot != nil || fileMethods != nil {
+            guard request.format == .zip, request.preset == .normal || request.preset == .store else {
+                throw ArchiveFailure.message("Creation presets are not supported for archive edit staging.")
+            }
+        }
         if let fileMethods {
             guard request.format == .zip, replacementRoot == nil, archiveFolder.isEmpty,
                   fileMethods.count == request.sources.count else { throw ArchiveFailure.message("Invalid replacement compression plan.") }
@@ -119,11 +132,11 @@ public struct ArchiveCreator: Sendable {
                         arkiv_limits(max_entries: 100_000, max_bytes: 20 * 1024 * 1024 * 1024),
                         cancellation.pointer, callback, context, &error, error.count, archiveFolder)
                 }
-                return arkiv_create_archive(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
+                return arkiv_create_archive_preset(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
                     filename, &published, published.count, request.compression == .store ? 0 : 1,
                     arkiv_limits(max_entries: 100_000, max_bytes: 20 * 1024 * 1024 * 1024),
                     cancellation.pointer, callback, context, &error, error.count,
-                    request.format == .sevenZip ? 1 : 0, request.password, request.encryptFilenames ? 1 : 0)
+                    request.format == .sevenZip ? 1 : 0, request.password, request.encryptFilenames ? 1 : 0, backend.level)
             }
             if result == 0 { return destination.appendingPathComponent(String(cString: published)) }
             if result == 3 { throw ArchiveFailure.message("No unused archive name was available.") }
