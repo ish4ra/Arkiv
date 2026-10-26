@@ -143,11 +143,11 @@ public struct ArchiveCreator: Sendable {
                         cancellation.pointer, callback, context, &error, error.count, archiveFolder)
                 }
                 if let advanced {
-                    return arkiv_create_archive_advanced(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
+                    return arkiv_create_archive_solid(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
                         filename, &published, published.count, 1,
                         arkiv_limits(max_entries: 100_000, max_bytes: 20 * 1024 * 1024 * 1024),
                         cancellation.pointer, callback, context, &error, error.count,
-                        1, request.password, request.encryptFilenames ? 1 : 0, backend.level, advanced.dictionaryBytes, advanced.threads)
+                        1, request.password, request.encryptFilenames ? 1 : 0, backend.level, advanced.dictionaryBytes, advanced.threads, advanced.solid.enabled ? 1 : 0, advanced.solid.blockBytes ?? 0)
                 }
                 return arkiv_create_archive_preset(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
                     filename, &published, published.count, request.compression == .store ? 0 : 1,

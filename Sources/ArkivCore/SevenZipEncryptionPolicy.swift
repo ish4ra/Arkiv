@@ -3,13 +3,18 @@ import CArkiv
 
 /// Read-only assessment, not an editing permission or reusable password token.
 public struct SevenZipEncryptionPolicy: Equatable, Sendable {
+    public let isSolid: Bool
     public let dataEncrypted: Bool
     public let headersEncrypted: Bool
     public let mixedEncryption: Bool
     public let supportedLayout: Bool
     public let allDataVerified: Bool
+    init(isSolid: Bool = false, dataEncrypted: Bool, headersEncrypted: Bool, mixedEncryption: Bool, supportedLayout: Bool, allDataVerified: Bool) {
+        self.isSolid = isSolid; self.dataEncrypted = dataEncrypted; self.headersEncrypted = headersEncrypted
+        self.mixedEncryption = mixedEncryption; self.supportedLayout = supportedLayout; self.allDataVerified = allDataVerified
+    }
     public var eligibleForFutureEncryptedModification: Bool {
-        (dataEncrypted || headersEncrypted) && !mixedEncryption && supportedLayout && allDataVerified
+        (dataEncrypted || headersEncrypted) && !isSolid && !mixedEncryption && supportedLayout && allDataVerified
     }
     /// Eligibility is only a hint: Each edit revalidates the original with a fresh password.
     public var eligibleForEncryptedDeletion: Bool { eligibleForFutureEncryptedModification }
@@ -60,7 +65,7 @@ public struct SevenZipPolicyInspector: Sendable {
         default: throw ArchiveFailure.message("Cannot safely verify the original 7z encryption policy.")
         }
         let pathsSupported = (try? ArchiveAdditionUpdater.validateSevenPaths(snapshot)) != nil
-        return SevenZipEncryptionPolicy(dataEncrypted: flags & 1 != 0, headersEncrypted: flags & 2 != 0,
+        return SevenZipEncryptionPolicy(isSolid: flags & 32 != 0, dataEncrypted: flags & 1 != 0, headersEncrypted: flags & 2 != 0,
                                         mixedEncryption: flags & 4 != 0,
                                         supportedLayout: flags & 8 != 0 && pathsSupported,
                                         allDataVerified: flags & 16 != 0)

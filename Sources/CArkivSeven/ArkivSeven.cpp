@@ -33,6 +33,13 @@ extern "C" uint64_t arkiv_seven_creation_memory(unsigned level,uint32_t dictiona
  }
  return (uint64_t(64)<<20)+threads*(24*d+(uint64_t(32)<<20));
 }
+// Solid blocks stream through the encoder; they are not held whole in RAM.
+// Reserve another 16 MiB for grouping/bookkeeping within the existing entry cap.
+extern "C" uint64_t arkiv_seven_solid_memory(unsigned level,uint32_t dictionary,unsigned threads,uint64_t inputBytes,int solid,uint64_t block) {
+ if((solid!=0&&solid!=1)||(!solid&&block)||(block&&block!=(16ull<<20)&&block!=(64ull<<20)&&block!=(256ull<<20)&&block!=(1ull<<30)))return 0;
+ uint64_t memory=arkiv_seven_creation_memory(level,dictionary,threads,inputBytes);
+ return memory ? memory+(solid?(16ull<<20):0) : 0;
+}
 struct State {
  State(const char*p,arkiv_seven_cancel c,void*x):password(p),cancel(c),context(x){}
  const char *password; arkiv_seven_cancel cancel; void *context; bool asked=false; int error=0; bool testing=false; uint64_t files=0; uint64_t maxEntries=100000,maxBytes=Budget;
@@ -202,6 +209,8 @@ extern "C" int arkiv_seven_policy(int input,const char *password,uint32_t *flags
   UInt32 count=0;if(handler->GetNumberOfItems(&count)!=S_OK||count>100000)return 1;
   bool encrypted=false,plain=false;
   CPropVariant p;
+  if(handler->GetArchiveProperty(kpidSolid,&p)!=S_OK||p.vt!=VT_BOOL)return 1;
+  if(p.boolVal)*flags|=32;
   for(UInt32 i=0;i<count;i++) {
    if(s.stopped())return 2;
    p.Clear();if(handler->GetProperty(i,kpidSize,&p)!=S_OK)return 1;
@@ -246,7 +255,7 @@ static bool path_key(std::string &name) {
 #endif
  return true;
 }
-static int encode(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,int original,const unsigned char*keep=nullptr,size_t keepCount=0,const char*const*oldnames=nullptr,const char*const*newnames=nullptr,size_t replacement=SIZE_MAX,bool encryptedEdit=false,unsigned level=5,unsigned dictionary=0,unsigned threads=2){
+static int encode(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,int original,const unsigned char*keep=nullptr,size_t keepCount=0,const char*const*oldnames=nullptr,const char*const*newnames=nullptr,size_t replacement=SIZE_MAX,bool encryptedEdit=false,unsigned level=5,unsigned dictionary=0,unsigned threads=2,int solid=0,uint64_t block=0){
  if(level!=1&&level!=3&&level!=5&&level!=7&&level!=9)return 1;
  State s{password,cancel,context};s.progress=progress;s.progressContext=progressContext;try{
  if(s.stopped())return 2;
@@ -303,10 +312,10 @@ static int encode(int input,int output,const char*password,int headers,arkiv_sev
  if(replacement!=SIZE_MAX&&(replaced==UInt32(-1)||cb->items.size()!=1||cb->items[0].dir))return 1;
  if(original<0) {
   uint64_t bytes=0;for(const auto &item:cb->items)bytes+=item.size;
-  uint64_t memory=arkiv_seven_creation_memory(level,dictionary,threads,bytes);
+  uint64_t memory=arkiv_seven_solid_memory(level,dictionary,threads,bytes,solid,block);
   if(!memory||memory>(uint64_t(2)<<30))return 1;
  }
- const wchar_t*names[]={L"0",L"x",L"s",L"mt",L"he",L"0d"};CPropVariant values[6];values[0]=L"LZMA2";values[1]=UInt32(level);values[2]=false;values[3]=UInt32(threads);values[4]=bool(password&&headers);// Numeric 0d is log2(bytes) in PROPVARIANT_to_DictSize, not a byte count.
+ const wchar_t*names[]={L"0",L"x",L"s",L"mt",L"he",L"0d"};CPropVariant values[6];values[0]=L"LZMA2";values[1]=UInt32(level);values[2]=bool(solid);if(solid&&block){std::wstring b=std::to_wstring(block>>20)+L"m";values[2]=b.c_str();}values[3]=UInt32(threads);values[4]=bool(password&&headers);// Numeric 0d is log2(bytes) in PROPVARIANT_to_DictSize, not a byte count.
  unsigned dictionaryLog=0;for(unsigned d=dictionary;d>1;d>>=1)dictionaryLog++;
  values[5]=UInt32(dictionaryLog);
  HRESULT h=static_cast<ISetProperties*>(raw)->SetProperties(names,values,dictionary?6:5);if(h!=S_OK)return 1;CMyComPtr<IOutStream>out=new Out(output,&s);h=handler->UpdateItems(out,cb->retained.size()+(replacement==SIZE_MAX?cb->items.size():0),cb);return s.result(h);
@@ -317,6 +326,9 @@ extern "C" const char *arkiv_seven_library_path(){Dl_info info;return dladdr((vo
 /* Reuse official decoding and CRC checks with a bounded discard stream. No plaintext spool. */
 extern "C" int arkiv_seven_test(int input,const char*password,uint64_t maxEntries,uint64_t maxBytes,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext){State s{password,cancel,context};s.testing=true;s.maxEntries=std::min<uint64_t>(100000,maxEntries);s.maxBytes=std::min(Budget,maxBytes);s.progress=progress;s.progressContext=progressContext;try{return decode(input,-1,s);}catch(...){return s.stopped()?2:6;}}
 
+extern "C" int arkiv_seven_encode_solid(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,unsigned level,unsigned dictionary,unsigned threads,int solid,uint64_t block) {
+ return encode(input,output,password,headers,cancel,context,progress,progressContext,-1,nullptr,0,nullptr,nullptr,SIZE_MAX,false,level,dictionary,threads,solid,block);
+}
 extern "C" int arkiv_seven_encode_advanced(int input,int output,const char*password,int headers,arkiv_seven_cancel cancel,void*context,arkiv_seven_progress progress,void*progressContext,unsigned level,unsigned dictionary,unsigned threads) {
  return encode(input,output,password,headers,cancel,context,progress,progressContext,-1,nullptr,0,nullptr,nullptr,SIZE_MAX,false,level,dictionary,threads);
 }

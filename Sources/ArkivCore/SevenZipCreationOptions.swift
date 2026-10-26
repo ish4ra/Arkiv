@@ -1,11 +1,21 @@
 import Foundation
 import CArkiv
 
+/// Only creation policy. Actual solid archives remain read-only for modification.
+public enum SevenZipSolidPolicy: Equatable, Sendable {
+    case off
+    case on(blockBytes: UInt64? = nil)
+    public static let supportedBlockBytes: [UInt64] = [16,64,256,1024].map { $0 * 1024 * 1024 }
+    public var enabled: Bool { if case .on = self { return true }; return false }
+    public var blockBytes: UInt64? { if case .on(let bytes) = self { return bytes }; return nil }
+}
+
 public struct SevenZipCreationOptions: Equatable, Sendable {
     public let dictionaryBytes: UInt64?
     public let threads: Int?
-    public init(dictionaryBytes: UInt64? = nil, threads: Int? = nil) {
-        self.dictionaryBytes = dictionaryBytes; self.threads = threads
+    public let solid: SevenZipSolidPolicy
+    public init(dictionaryBytes: UInt64? = nil, threads: Int? = nil, solid: SevenZipSolidPolicy = .off) {
+        self.dictionaryBytes = dictionaryBytes; self.threads = threads; self.solid = solid
     }
     public static let supportedDictionaryBytes: [UInt64] = [1,2,4,8,16,32,64].map { $0 * 1024 * 1024 }
     public static let memoryCeiling: UInt64 = 2 * 1024 * 1024 * 1024
@@ -16,6 +26,7 @@ public struct SevenZipCreationOptions: Equatable, Sendable {
         /// Zero leaves the upstream preset-derived dictionary unset (Auto).
         public let dictionaryBytes: UInt32
         public let threads: UInt32
+        public let solid: SevenZipSolidPolicy
         public let estimatedMemoryBytes: UInt64
     }
     public func resolve(preset: CompressionPreset, inputBytes: UInt64? = nil,
@@ -27,12 +38,15 @@ public struct SevenZipCreationOptions: Equatable, Sendable {
             throw ArchiveFailure.message("Unsupported 7z dictionary or thread count.")
         }
         let dictionary = UInt32(dictionaryBytes ?? 0)
-        let memory = arkiv_seven_creation_memory(UInt32(backend.level),dictionary,UInt32(count),inputBytes ?? UInt64.max)
+        guard solid.blockBytes == nil || SevenZipSolidPolicy.supportedBlockBytes.contains(solid.blockBytes!) else {
+            throw ArchiveFailure.message("Unsupported 7z solid block size.")
+        }
+        let memory = arkiv_seven_solid_memory(UInt32(backend.level),dictionary,UInt32(count),inputBytes ?? UInt64.max,solid.enabled ? 1 : 0,solid.blockBytes ?? 0)
         guard memory > 0 else { throw ArchiveFailure.message("Cannot estimate this 7z configuration safely.") }
         guard memory <= Self.memoryCeiling else {
             throw ArchiveFailure.message("Approximate compression memory exceeds Arkiv’s 2 GiB ceiling. Choose a smaller dictionary or fewer threads.")
         }
-        return Resolved(dictionaryBytes:dictionary,threads:UInt32(count),estimatedMemoryBytes:memory)
+        return Resolved(dictionaryBytes:dictionary,threads:UInt32(count),solid:solid,estimatedMemoryBytes:memory)
     }
     /// Metadata-only estimate. Creation repeats this check against the staged bytes
     /// in the backend, so changed inputs cannot bypass the memory ceiling.

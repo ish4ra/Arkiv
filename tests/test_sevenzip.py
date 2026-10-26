@@ -50,6 +50,27 @@ def stored_many(entries):
 
 
 class SevenZipTests(unittest.TestCase):
+    def test_solid_creation_contract(self):
+        self.assertTrue(hasattr(lib, 'arkiv_seven_encode_solid'), 'Creation needs an explicit validated solid policy')
+        fn = lib.arkiv_seven_encode_solid
+        fn.argtypes = [C.c_int,C.c_int,C.c_char_p,C.c_int,C.c_void_p,C.c_void_p,C.c_void_p,C.c_void_p,C.c_uint,C.c_uint,C.c_uint,C.c_int,C.c_uint64]
+        memory = lib.arkiv_seven_solid_memory
+        memory.argtypes = [C.c_uint,C.c_uint32,C.c_uint,C.c_uint64,C.c_int,C.c_uint64]
+        memory.restype = C.c_uint64
+        self.assertEqual(memory(5,0,2,4096,0,16<<20),0)
+        self.assertEqual(memory(5,0,2,4096,1,17<<20),0)
+        self.assertEqual(memory(5,0,2,4096,2,0),0)
+        self.assertGreater(memory(5,0,2,4096,1,0),memory(5,0,2,4096,0,0))
+        with tempfile.TemporaryFile() as source, tempfile.TemporaryFile() as output:
+            with zipfile.ZipFile(source,'w') as z:
+                z.writestr('first',b'data'*10000)
+                z.writestr('second',b'data'*10000)
+            source.flush()
+            for solid, block in [(0,16<<20),(1,17<<20),(2,0)]:
+                source.seek(0)
+                self.assertNotEqual(fn(source.fileno(),output.fileno(),None,0,None,None,None,None,5,0,2,solid,block),0)
+                self.assertEqual(output.seek(0,2),0)
+
     def test_advanced_creation_enforces_memory_before_encoding(self):
         fn = lib.arkiv_seven_encode_advanced
         fn.argtypes = [C.c_int,C.c_int,C.c_char_p,C.c_int,C.c_void_p,C.c_void_p,C.c_void_p,C.c_void_p,C.c_uint,C.c_uint,C.c_uint]

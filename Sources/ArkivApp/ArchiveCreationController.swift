@@ -74,6 +74,8 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
     private let advancedToggle = NSButton()
     private let dictionary = NSPopUpButton()
     private let threads = NSPopUpButton()
+    private let solid = NSPopUpButton()
+    private let solidBlock = NSPopUpButton()
     private let memory = NSTextField(wrappingLabelWithString: "")
     private let advanced = NSStackView()
     private let advancedFields = NSStackView()
@@ -84,7 +86,8 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
     private var selectedPreset: CompressionPreset { CompressionPreset.available(for:selectedFormat)[compression.indexOfSelectedItem] }
     private var selectedOptions: SevenZipCreationOptions {
         SevenZipCreationOptions(dictionaryBytes:dictionary.indexOfSelectedItem == 0 ? nil : SevenZipCreationOptions.supportedDictionaryBytes[dictionary.indexOfSelectedItem-1],
-                                threads:threads.indexOfSelectedItem == 0 ? nil : Int(threads.titleOfSelectedItem ?? ""))
+                                threads:threads.indexOfSelectedItem == 0 ? nil : Int(threads.titleOfSelectedItem ?? ""),
+                                solid:solid.indexOfSelectedItem == 0 ? .off : .on(blockBytes:solidBlock.indexOfSelectedItem == 0 ? nil : SevenZipSolidPolicy.supportedBlockBytes[solidBlock.indexOfSelectedItem-1]))
     }
     private let name = NSTextField(string: "")
     private let location = NSTextField(labelWithString: "")
@@ -117,12 +120,18 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
         dictionary.setAccessibilityLabel("Dictionary size"); threads.setAccessibilityLabel("Compression threads")
         dictionary.target = self; dictionary.action = #selector(updateAdvanced)
         threads.target = self; threads.action = #selector(updateAdvanced)
+        solid.addItems(withTitles:["Off", "On"])
+        solidBlock.addItems(withTitles:["Auto"] + SevenZipSolidPolicy.supportedBlockBytes.map { "\($0 / 1024 / 1024) MiB block" })
+        solid.setAccessibilityLabel("Solid compression"); solidBlock.setAccessibilityLabel("Solid block size")
+        solid.target = self; solid.action = #selector(updateAdvanced)
+        solidBlock.target = self; solidBlock.action = #selector(updateAdvanced)
+        solidBlock.toolTip = "Upstream grouping limit. One larger file can occupy a block alone. Solid archives cannot be edited in Arkiv."
         threads.toolTip = "Auto retains the existing two-thread budget. The encoder may use fewer threads for small input."
         advancedToggle.setButtonType(.onOff); advancedToggle.bezelStyle = .disclosure
         advancedToggle.title = ""; advancedToggle.setAccessibilityLabel("Advanced compression")
         advancedToggle.target = self; advancedToggle.action = #selector(updateAdvanced)
         let disclosure = NSStackView(views:[advancedToggle,NSTextField(labelWithString:"Advanced")]); disclosure.spacing = 6
-        let advancedGrid = NSGridView(views:[[NSTextField(labelWithString:"Dictionary:"),dictionary],[NSTextField(labelWithString:"Threads:"),threads]])
+        let advancedGrid = NSGridView(views:[[NSTextField(labelWithString:"Dictionary:"),dictionary],[NSTextField(labelWithString:"Threads:"),threads],[NSTextField(labelWithString:"Solid:"),solid],[NSTextField(labelWithString:"Solid block:"),solidBlock]])
         advancedGrid.rowSpacing = 8; advancedGrid.columnSpacing = 12
         advancedFields.addArrangedSubview(advancedGrid)
         memory.font = .systemFont(ofSize:11); memory.textColor = .secondaryLabelColor
@@ -193,6 +202,7 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
         if let content = window?.contentView { window?.setContentSize(content.fittingSize) }
     }
     @objc private func updateAdvanced() {
+        solidBlock.isEnabled = solid.indexOfSelectedItem == 1
         advanced.isHidden = selectedFormat != .sevenZip
         advancedFields.isHidden = advancedToggle.state != .on
         createButton.isEnabled = true
