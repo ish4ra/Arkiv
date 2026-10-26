@@ -18,6 +18,34 @@ final class SevenZipSolidCreationTests: XCTestCase {
         XCTAssertThrowsError(try SevenZipCreationOptions(solid:.on()).resolve(preset:.ultra,inputBytes:64<<20))
         XCTAssertNoThrow(try SevenZipCreationOptions(dictionaryBytes:64<<20,threads:1,solid:.on()).resolve(preset:.ultra))
     }
+    func testExplicitBlockBoundaryAndCancelledUnsafeCreation() throws {
+        let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try fm.createDirectory(at:root,withIntermediateDirectories:true)
+        defer { try? fm.removeItem(at:root) }
+        let sources = [root.appendingPathComponent("one"),root.appendingPathComponent("two")]
+        let bytes = Data(repeating:90,count:9<<20)
+        for source in sources { try bytes.write(to:source) }
+        let engine = LibArchiveEngine()
+        // The pair fits in 64 MiB but not 16 MiB. This proves the explicit upstream
+        // property changes block grouping, rather than merely toggling solid on.
+        for block: UInt64 in [16<<20,64<<20] {
+            let request = ArchiveCreationRequest(sources:sources,destination:root,name:"blocks",format:.sevenZip,preset:.fastest,sevenZipOptions:.init(dictionaryBytes:1<<20,threads:2,solid:.on(blockBytes:block)))
+            let archive = try ArchiveCreator().create(request,cancellation:ArchiveCancellation(),progress:{ _ in })
+            let snapshot = try engine.inspect(archive,cancellation:ArchiveCancellation())
+            let policy = try SevenZipPolicyInspector().inspect(snapshot,password:nil,cancellation:ArchiveCancellation())
+            XCTAssertEqual(policy.isSolid,block == 64<<20)
+            XCTAssertEqual(try engine.test(archive,cancellation:ArchiveCancellation()).state,.ok)
+            let output = try engine.extract(snapshot,ids:nil,into:root,cancellation:ArchiveCancellation(),progress:{ _ in })
+            for name in ["one","two"] { XCTAssertEqual(try Data(contentsOf:output.appendingPathComponent(name)),bytes) }
+        }
+        let before = try fm.contentsOfDirectory(atPath:root.path).sorted()
+        for options in [SevenZipCreationOptions(solid:.on(blockBytes:17<<20)),.init(dictionaryBytes:64<<20,threads:2,solid:.on())] {
+            XCTAssertThrowsError(try ArchiveCreator().create(.init(sources:sources,destination:root,name:"unsafe",format:.sevenZip,sevenZipOptions:options),cancellation:ArchiveCancellation(),progress:{ _ in }))
+        }
+        let token = ArchiveCancellation(); token.cancel()
+        XCTAssertThrowsError(try ArchiveCreator().create(.init(sources:sources,destination:root,name:"cancel",format:.sevenZip,sevenZipOptions:.init(solid:.on())),cancellation:token,progress:{ _ in }))
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath:root.path).sorted(),before)
+    }
     func testSolidRoundTripsAndEditingRemainsReadOnly() throws {
         #if os(Linux)
         setlocale(LC_CTYPE,"C.UTF-8")

@@ -4,7 +4,7 @@ Create Archive / Add to Archive offers presets for the selected format. ZIP rema
 the default format. Both formats default to Normal, including direct Finder Compress
 to ZIP / 7z. Changing format resets the selector to Normal. No persistent preference
 is stored. 7z offers optional [dictionary/thread controls](sevenzip-advanced.md);
-solid controls remain unavailable.
+solid/block controls are available for new 7z creation only.
 
 | Preset | ZIP | 7z |
 | --- | --- | --- |
@@ -20,7 +20,7 @@ Conflicting legacy Store/Deflate arguments and presets fail before output creati
 The C bridge validates numeric levels too. ZIP uses libarchive's `zip:compression`
 and `zip:compression-level` options; an unsupported option/error aborts creation.
 7z sets the official bundled 7-Zip encoder's `0=LZMA2` and `x` level explicitly.
-It retains non-solid behavior and AES-256/header encryption. Auto threads remains
+It defaults to non-solid behavior and retains AES-256/header encryption. Auto threads remains
 two; explicit 7z creation overrides are described in the advanced-controls guide.
 The compatibility bridge and all existing editing operations retain their prior
 Normal encoding policy. There is no method or format substitution on an error.

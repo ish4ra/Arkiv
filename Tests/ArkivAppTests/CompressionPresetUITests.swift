@@ -6,6 +6,39 @@ import ArkivCore
 final class CompressionPresetUITests: XCTestCase {
     private func views(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(views) }
     @MainActor
+    func testSolidControlsDefaultDependencyAndSubmission() async throws {
+        _ = NSApplication.shared
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data("input".utf8).write(to:file)
+        defer { try? FileManager.default.removeItem(at:file) }
+        let sheet = CreateArchiveSheet(sources:[file],encrypted:false)
+        defer { sheet.close() }
+        let root = try XCTUnwrap(sheet.window?.contentView)
+        let popups = views(root).compactMap { $0 as? NSPopUpButton }
+        let format = try XCTUnwrap(popups.first { $0.itemTitles.contains("ZIP (.zip)") })
+        let solid = try XCTUnwrap(popups.first { $0.itemTitles == ["Off","On"] })
+        let block = try XCTUnwrap(popups.first { $0.itemTitles.contains("16 MiB block") })
+        XCTAssertTrue(solid.isHiddenOrHasHiddenAncestor)
+        XCTAssertEqual(solid.titleOfSelectedItem,"Off"); XCTAssertFalse(block.isEnabled)
+        format.selectItem(at:1); XCTAssertTrue(format.sendAction(format.action,to:format.target))
+        let create = try XCTUnwrap(views(root).compactMap { $0 as? NSButton }.first { $0.title == "Create" })
+        for _ in 0..<400 where !create.isEnabled { try await Task.sleep(nanoseconds:25_000_000) }
+        try XCTUnwrap(views(root).compactMap { $0 as? NSButton }.first { $0.bezelStyle == .disclosure }).performClick(nil)
+        XCTAssertFalse(solid.isHiddenOrHasHiddenAncestor)
+        solid.selectItem(withTitle:"On"); XCTAssertTrue(solid.sendAction(solid.action,to:solid.target))
+        XCTAssertTrue(block.isEnabled); XCTAssertEqual(block.titleOfSelectedItem,"Auto")
+        block.selectItem(withTitle:"64 MiB block"); XCTAssertTrue(block.sendAction(block.action,to:block.target))
+        solid.selectItem(withTitle:"Off"); XCTAssertTrue(solid.sendAction(solid.action,to:solid.target))
+        XCTAssertFalse(block.isEnabled); XCTAssertTrue(create.isEnabled)
+        solid.selectItem(withTitle:"On"); XCTAssertTrue(solid.sendAction(solid.action,to:solid.target))
+        var submitted = false
+        sheet.complete = { _, _, _, format, _, _, options in
+            submitted = true; XCTAssertEqual(format,.sevenZip)
+            XCTAssertEqual(options?.solid,.on(blockBytes:64<<20))
+        }
+        create.performClick(nil); XCTAssertTrue(submitted)
+    }
+    @MainActor
     func testAdvancedDisclosureUnsafeCombinationAndSubmission() async throws {
         _ = NSApplication.shared
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
