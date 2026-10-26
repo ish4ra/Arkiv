@@ -108,9 +108,12 @@ final class ArchiveDragSessionTests: XCTestCase {
         let session = try ArchiveDragSession(snapshot: snapshot, paths: ["ordinary.txt", "alias"])
         session.idleTimeout = 0.02
         _ = try session.write(item: session.items.first { $0.path == "ordinary.txt" }!, to: parent.appendingPathComponent("first"))
-        let expired = expectation(description: "idle staging expires")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.15) { expired.fulfill() }
-        wait(for: [expired], timeout: 2)
+        // A timer on another queue does not prove the utility-queue cleanup ran,
+        // especially during parallel compression tests. Await the actual effect.
+        let expired = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            (try? self.manager.contentsOfDirectory(atPath: parent.path)) == ["first"]
+        }, object: nil)
+        wait(for: [expired], timeout: 3)
         XCTAssertEqual(try manager.contentsOfDirectory(atPath: parent.path), ["first"])
         XCTAssertThrowsError(try session.write(item: session.items.first { $0.path == "alias" }!, to: parent.appendingPathComponent("late")))
     }
