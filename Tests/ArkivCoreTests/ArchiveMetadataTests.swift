@@ -15,10 +15,19 @@ final class ArchiveMetadataTests: XCTestCase {
         let a = root.appendingPathComponent("資料.txt"), b = root.appendingPathComponent("second")
         try Data(repeating:65,count:10000).write(to:a); try Data(repeating:66,count:20000).write(to:b)
         for format: ArchiveFormat in [.zip,.sevenZip] {
-            for mode in 0..<(format == .zip ? 1 : 4) {
+            for mode in 0..<(format == .zip ? 2 : 4) {
                 let password = mode > 1 ? "test secret" : nil
-                let archive = try ArchiveCreator().create(.init(sources:[a,b],destination:root,name:"meta",format:format,password:password,encryptFilenames:mode==3,sevenZipOptions:format == .sevenZip ? .init(solid:mode==0 ? .off : .on()) : nil),cancellation:ArchiveCancellation(),progress:{ _ in })
+                let archive = try ArchiveCreator().create(.init(sources:[a,b],destination:root,name:"meta",format:format,password:password,encryptFilenames:mode==3,preset:format == .zip && mode == 1 ? .store : .normal,sevenZipOptions:format == .sevenZip ? .init(solid:mode==0 ? .off : .on()) : nil),cancellation:ArchiveCancellation(),progress:{ _ in })
                 let snapshot = try LibArchiveEngine().inspect(archive,cancellation:ArchiveCancellation(),password:password)
+                for entry in snapshot.entries where entry.kind == .file {
+                    if format == .zip { XCTAssertNotNil(entry.metadata.modificationTime) }
+                    else { XCTAssertNil(entry.metadata.modificationTime,"Current 7z creator does not write item mtimes; never use spool times") }
+                    XCTAssertNotNil(entry.metadata.compressionMethod)
+                    XCTAssertEqual(entry.metadata.encrypted,password != nil)
+                    if format == .sevenZip && mode != 0 { XCTAssertNil(entry.metadata.packedSize) }
+                    else { XCTAssertNotNil(entry.metadata.packedSize) }
+                    if format == .zip { XCTAssertEqual(entry.metadata.compressionMethod,mode == 1 ? "Store" : "Deflate") }
+                }
                 let m = try XCTUnwrap(snapshot.metadata)
                 XCTAssertEqual(m.url,archive); XCTAssertEqual(m.physicalSize,UInt64(try Data(contentsOf:archive).count))
                 XCTAssertEqual(m.fileCount,2); XCTAssertEqual(m.folderCount,0); XCTAssertEqual(m.unpackedSize,30000)

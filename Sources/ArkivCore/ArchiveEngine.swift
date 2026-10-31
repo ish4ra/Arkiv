@@ -76,6 +76,19 @@ public protocol ArchiveEngine: Sendable {
 private final class EntryCollector {
     var entries: [ArchiveEntry] = []
 }
+private final class EntryMetadataCollector {
+    var values: [String: ArchiveEntryMetadata] = [:]
+}
+private let collectEntryMetadata: arkiv_metadata_callback = { context,path,packed,time,method,encrypted in
+    guard let context, let path, let name = String(validatingUTF8:path) else { return }
+    let collector = Unmanaged<EntryMetadataCollector>.fromOpaque(context).takeUnretainedValue()
+    let key = name.trimmingCharacters(in:CharacterSet(charactersIn:"/"))
+    let old = collector.values[key] ?? .init()
+    collector.values[key] = .init(packedSize:packed >= 0 ? UInt64(packed) : old.packedSize,
+        modificationTime:time.isFinite ? Date(timeIntervalSince1970:time) : old.modificationTime,
+        compressionMethod:method.flatMap { String(validatingUTF8:$0) } ?? old.compressionMethod,
+        encrypted:encrypted >= 0 ? encrypted != 0 : old.encrypted)
+}
 public struct ArchiveExtractionWarning: Equatable, Sendable {
     public let path: String
     public let reason: String
@@ -144,6 +157,22 @@ public struct LibArchiveEngine: ArchiveEngine {
         }, context, &error, error.count, &detectedFormat, detectedFormat.count)
         try check(result, error)
         guard try SourceStamp(url) == stamp else { throw ArchiveFailure.message("Archive changed while reading. Reopen it.") }
+        let evidence = EntryMetadataCollector()
+        let metadataContext = Unmanaged.passUnretained(evidence).toOpaque()
+        var metadataResult: Int32
+        if unlocked != nil {
+            let handle = try FileHandle(forReadingFrom:url); defer { try? handle.close() }
+            metadataResult = arkiv_seven_entries(handle.fileDescriptor,password,collectEntryMetadata,metadataContext)
+        } else { metadataResult = arkiv_entry_metadata(url.path,collectEntryMetadata,metadataContext) }
+        if metadataResult == 0 {
+            let counts = Dictionary(grouping:collector.entries,by:{ $0.path.trimmingCharacters(in:CharacterSet(charactersIn:"/")) }).mapValues(\.count)
+            collector.entries = collector.entries.map { entry in
+                let key = entry.path.trimmingCharacters(in:CharacterSet(charactersIn:"/"))
+                let raw = counts[key] == 1 ? (evidence.values[key] ?? .init()) : .init()
+                let metadata = entry.kind == .file ? raw : ArchiveEntryMetadata(modificationTime:raw.modificationTime)
+                return ArchiveEntry(id:entry.id,path:entry.path,size:entry.size,kind:entry.kind,metadata:metadata)
+            }
+        }
         var snapshot = ArchiveSnapshot(url: url, entries: collector.entries, stamp: stamp, unlocked: unlocked)
         if unlocked != nil, password != nil {
             // Non-secret UI eligibility only. Every edit still asks for a fresh
@@ -185,7 +214,7 @@ public struct LibArchiveEngine: ArchiveEngine {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
         }
         let fresh = try inspect(snapshot.backingURL, cancellation: cancellation)
-        guard fresh.entries == snapshot.entries else {
+        guard fresh.entries.map({ ArchiveEntry(id:$0.id,path:$0.path,size:$0.size,kind:$0.kind) }) == snapshot.entries.map({ ArchiveEntry(id:$0.id,path:$0.path,size:$0.size,kind:$0.kind) }) else {
             throw ArchiveFailure.message("Archive contents changed. Reopen it.")
         }
         let manager = FileManager.default

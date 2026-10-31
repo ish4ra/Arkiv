@@ -1494,3 +1494,30 @@ int arkiv_zip_commit(arkiv_zip_transaction *t,arkiv_cancel *token,char *error,si
     if(renameat(t->stage,"replacement.zip",t->parent,t->name))return fail(error,cap,"Cannot atomically replace the archive. Original archive unchanged.");
     return 0;
 }
+
+/* Header evidence only. ZIP packed/method fields use the existing conservative
+   validated ZIP32 envelope; unsupported layouts keep those fields unknown. */
+int arkiv_entry_metadata(const char *path, arkiv_metadata_callback cb, void *ctx) {
+ struct archive *a=reader(path);if(!a)return 1;struct archive_entry *e;unsigned count=0;int r;
+ while((r=archive_read_next_header(a,&e))==ARCHIVE_OK && count++<100000) {
+ const char *name=archive_entry_pathname_utf8(e);if(!name||!safe_path(name))break;
+ double t=archive_entry_mtime_is_set(e)?(double)archive_entry_mtime(e)+(double)archive_entry_mtime_nsec(e)/1e9:__builtin_nan("");
+ cb(ctx,name,-1,t,NULL,-1);
+ if(archive_read_data_skip(a)!=ARCHIVE_OK)break;
+ }
+ archive_read_free(a);if(r!=ARCHIVE_EOF)return 1;
+ int fd=create_open(path);if(fd<0)return 1;struct zip_envelope z;
+ if(zip_envelope(fd,&z)) {
+ uint64_t cursor=z.offset;
+ for(unsigned i=0;i<z.count;i++) {
+ unsigned char h[46];if(pread(fd,h,46,cursor)!=46)break;
+ unsigned n=integrity_u16(h+28);char *name=calloc(n+1,1);if(!name)break;
+ if(pread(fd,name,n,cursor+46)==n && !memchr(name,0,n)) {
+ int ascii=1;for(unsigned k=0;k<n;k++)if((unsigned char)name[k]>=128)ascii=0;
+ if(ascii||(integrity_u16(h+8)&0x800))cb(ctx,name,integrity_u32(h+20),__builtin_nan(""),integrity_u16(h+10)==0?"Store":"Deflate",0);
+ }
+ free(name);cursor+=46+n+integrity_u16(h+30)+integrity_u16(h+32);
+ }
+ }
+ close(fd);return 0;
+}

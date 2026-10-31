@@ -52,11 +52,34 @@ public enum BrowserPresentation {
         }
         return total
     }
+    public static func metadataText(_ row: BrowserRow, column: String) -> String {
+        switch column {
+        case "packed": return row.metadata.packedSize.map { ByteCountFormatter.string(fromByteCount:Int64(clamping:$0),countStyle:.file) } ?? ""
+        case "ratio": return row.ratio.map { String(format:"%.1f%%",$0*100) } ?? ""
+        case "modified": return row.metadata.modificationTime.map { DateFormatter.localizedString(from:$0,dateStyle:.medium,timeStyle:.short) } ?? ""
+        case "method": return row.metadata.compressionMethod ?? ""
+        case "encrypted": return row.metadata.encrypted.map { $0 ? "Yes" : "No" } ?? ""
+        default: return ""
+        }
+    }
+    private static func optionalCompare<T: Comparable>(_ a:T?, _ b:T?) -> ComparisonResult {
+        switch (a,b) {
+        case (nil,nil): return .orderedSame
+        case (nil,_): return .orderedAscending
+        case (_,nil): return .orderedDescending
+        case (.some(let a),.some(let b)): return a == b ? .orderedSame : a < b ? .orderedAscending : .orderedDescending
+        }
+    }
     public static func sorted(_ rows: [BrowserRow], by key: String, ascending: Bool) -> [BrowserRow] {
         rows.sorted { lhs, rhs in
-            if key == "name", lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }
+            if ["name","packed","ratio","modified","method","encrypted"].contains(key), lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }
             var comparison: ComparisonResult
             switch key {
+            case "packed": comparison = optionalCompare(lhs.metadata.packedSize,rhs.metadata.packedSize)
+            case "ratio": comparison = optionalCompare(lhs.ratio,rhs.ratio)
+            case "modified": comparison = optionalCompare(lhs.metadata.modificationTime,rhs.metadata.modificationTime)
+            case "method": comparison = optionalCompare(lhs.metadata.compressionMethod,rhs.metadata.compressionMethod)
+            case "encrypted": comparison = optionalCompare(lhs.metadata.encrypted.map { $0 ? 1 : 0 },rhs.metadata.encrypted.map { $0 ? 1 : 0 })
             case "size":
                 let left = lhs.size ?? -1, right = rhs.size ?? -1
                 comparison = left == right ? .orderedSame : left < right ? .orderedAscending : .orderedDescending

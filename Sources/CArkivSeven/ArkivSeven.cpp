@@ -410,3 +410,22 @@ extern "C" int arkiv_seven_replace(int original,int content,const char*const*old
  if(!oldnames||count>100000||replacement>=count)return 1;
  return encode(content,output,nullptr,0,cancel,context,progress,progressContext,original,nullptr,size_t(count),oldnames,nullptr,size_t(replacement));
 }
+
+extern "C" int arkiv_seven_entries(int fd,const char *password,arkiv_metadata_callback cb,void *ctx) {
+ State state{password,nullptr,nullptr};try {
+ CMyComPtr<IInArchive> h=new NArchive::N7z::CHandler;CMyComPtr<IInStream> in=new In(fd,&state);CMyComPtr<IArchiveOpenCallback> open=new Open(&state);
+ if(h->Open(in,nullptr,open)!=S_OK)return 1;
+ CPropVariant p;if(h->GetArchiveProperty(kpidSolid,&p)!=S_OK||p.vt!=VT_BOOL)return 1;bool solid=p.boolVal!=0;
+ UInt32 count=0;if(h->GetNumberOfItems(&count)!=S_OK||count>100000)return 1;
+ for(UInt32 i=0;i<count;i++) {
+ p.Clear();if(h->GetProperty(i,kpidPath,&p)!=S_OK||p.vt!=VT_BSTR)return 1;AString path;ConvertUnicodeToUTF8(UString(p.bstrVal),path);
+ int64_t packed=-1;double time=__builtin_nan("");int encrypted=-1;AString method;
+ p.Clear();if(!solid&&h->GetProperty(i,kpidPackSize,&p)==S_OK&&p.vt==VT_UI8&&p.uhVal.QuadPart<=INT64_MAX)packed=p.uhVal.QuadPart;
+ p.Clear();if(h->GetProperty(i,kpidMTime,&p)==S_OK&&p.vt==VT_FILETIME){uint64_t ticks=((uint64_t)p.filetime.dwHighDateTime<<32)|p.filetime.dwLowDateTime;time=(double)ticks/10000000.0-11644473600.0;}
+ p.Clear();if(h->GetProperty(i,kpidEncrypted,&p)==S_OK&&p.vt==VT_BOOL)encrypted=p.boolVal!=0;
+ p.Clear();if(h->GetProperty(i,kpidMethod,&p)==S_OK&&p.vt==VT_BSTR)ConvertUnicodeToUTF8(UString(p.bstrVal),method);
+ cb(ctx,path.Ptr(),packed,time,method.IsEmpty()?nullptr:method.Ptr(),encrypted);
+ }
+ return 0;
+ }catch(...){return 1;}
+}

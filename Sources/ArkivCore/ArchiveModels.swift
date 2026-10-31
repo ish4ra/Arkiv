@@ -19,6 +19,8 @@ public struct BrowserRow: Sendable {
     public let name: String
     public let size: Int64?
     public let isDirectory: Bool
+    public var metadata: ArchiveEntryMetadata = .init()
+    public var ratio: Double? { metadata.ratio(unpackedSize:size ?? -1,kind:isDirectory ? .directory : .file) }
 }
 public struct ArchiveIndex: Sendable {
     private let entries: [ArchiveEntry]
@@ -33,9 +35,9 @@ public struct ArchiveIndex: Sendable {
                 guard !parts.isEmpty else { break }
                 let path = parts.prefix(end).joined(separator: "/")
                 let directory = end < parts.count || entry.kind == .directory
-                if rows[path] == nil || !directory {
+                if rows[path] == nil || !directory || end == parts.count {
                     rows[path] = BrowserRow(path: path, name: parts[end - 1],
-                        size: directory ? nil : entry.size, isDirectory: directory)
+                        size: directory ? nil : entry.size, isDirectory: directory, metadata:end == parts.count ? entry.metadata : .init())
                 }
             }
         }

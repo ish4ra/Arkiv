@@ -30,8 +30,8 @@ final class ArchiveCellView: NSTableCellView {
         super.init(frame: .zero)
         identifier = NSUserInterfaceItemIdentifier(column)
         label.lineBreakMode = .byTruncatingMiddle
-        label.font = column == "size" ? .monospacedDigitSystemFont(ofSize: 12, weight: .regular) : .systemFont(ofSize: 13)
-        label.alignment = column == "size" ? .right : .left
+        label.font = ["size","packed","ratio"].contains(column) ? .monospacedDigitSystemFont(ofSize: 12, weight: .regular) : .systemFont(ofSize: 13)
+        label.alignment = ["size","packed","ratio"].contains(column) ? .right : .left
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label); textField = label
         var constraints = [label.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -54,6 +54,7 @@ final class ArchiveCellView: NSTableCellView {
     func configure(_ row: BrowserRow, column: String, searching: Bool) {
         switch column {
         case "size": label.stringValue = row.size.flatMap { $0 >= 0 ? ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) : nil } ?? "—"
+        case "packed", "ratio", "modified", "method", "encrypted": label.stringValue = BrowserPresentation.metadataText(row,column:column)
         case "type": label.stringValue = BrowserPresentation.packageKind(row) ?? (row.isDirectory ? "Folder" : "File")
         default:
             label.stringValue = searching ? row.path : row.name
