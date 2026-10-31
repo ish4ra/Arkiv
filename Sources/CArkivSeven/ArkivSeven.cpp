@@ -1,3 +1,4 @@
+#include <set>
 #include "ArkivSeven.h"
 #include "CPP/Common/MyInitGuid.h"
 #include "CPP/Common/MyCom.h"
@@ -193,6 +194,29 @@ static int appendable(int input,State &s,IInArchive *handler,UInt32 &count,uint6
   }else if(p.vt!=VT_EMPTY)return 1;
  }
  return 0;
+}
+// Header-only inspector: never decodes payload or retains the borrowed password.
+extern "C" int arkiv_seven_metadata(int fd,const char *password,uint32_t *flags,char *methods,size_t capacity) {
+ if(!flags||!methods||!capacity)return 1;*flags=0;methods[0]=0;
+ State s{password,nullptr,nullptr};try {
+ CMyComPtr<IInArchive> h=new NArchive::N7z::CHandler;
+ CMyComPtr<IInStream> in=new In(fd,&s);CMyComPtr<IArchiveOpenCallback> cb=new Open(&s);
+ HRESULT result=h->Open(in,nullptr,cb);if(result!=S_OK)return s.result(result);
+ if(s.asked)*flags|=2;
+ CPropVariant p;if(h->GetArchiveProperty(kpidSolid,&p)!=S_OK||p.vt!=VT_BOOL)return 1;
+ if(p.boolVal)*flags|=32;
+ UInt32 count=0;if(h->GetNumberOfItems(&count)!=S_OK||count>100000)return 1;
+ std::set<std::string> names;
+ for(UInt32 i=0;i<count;i++) {
+ p.Clear();if(h->GetProperty(i,kpidEncrypted,&p)!=S_OK)return 1;
+ if(p.vt==VT_BOOL&&p.boolVal)*flags|=1;else if(p.vt!=VT_EMPTY&&p.vt!=VT_BOOL)return 1;
+ p.Clear();if(h->GetProperty(i,kpidMethod,&p)!=S_OK)return 1;
+ if(p.vt==VT_BSTR){AString a;ConvertUnicodeToUTF8(UString(p.bstrVal),a);if(a.Len())names.insert(a.Ptr());}
+ }
+ std::string summary;for(const auto &name:names){if(!summary.empty())summary+=", ";summary+=name;}
+ if(summary.size()<capacity)memcpy(methods,summary.c_str(),summary.size()+1);
+ return 0;
+ }catch(...){return 1;}
 }
 // Read-only foundation. A successful inspection never grants write capability.
 // Open requests a password only for an encrypted encoded header; per-item

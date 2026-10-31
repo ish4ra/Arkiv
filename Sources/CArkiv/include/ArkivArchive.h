@@ -17,6 +17,7 @@ typedef int (*arkiv_entry_callback)(void *, int64_t, const char *, int64_t, int)
 typedef void (*arkiv_warning_callback)(void *, const char *, const char *);
 typedef void (*arkiv_progress_callback)(void *, uint64_t, uint64_t);
 /* Return 0 success, 1 error, 2 cancellation. Error buffer never contains archive data. */
+int arkiv_list_metadata(const char *, arkiv_limits, arkiv_cancel *, arkiv_entry_callback, void *, char *, size_t, char *, size_t);
 int arkiv_list(const char *, arkiv_limits, arkiv_cancel *, arkiv_entry_callback, void *, char *, size_t);
 /* Root must be a private, caller-owned directory. Never overwrites. IDs are sorted, unique archive ordinals;
    NULL IDs means all entries. Symlinks are preserved without traversal; hardlinks target only extracted regular files.
@@ -123,4 +124,5 @@ int arkiv_create_archive_advanced(const char *const *, size_t, const char *, con
 uint64_t arkiv_seven_solid_memory(unsigned, uint32_t, unsigned, uint64_t, int, uint64_t);
 int arkiv_create_archive_solid(const char *const *, size_t, const char *, const char *, const char *, char *, size_t, int,
  arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t, int, const char *, int, int, uint32_t, unsigned, int, uint64_t);
+int arkiv_seven_metadata(int, const char *, uint32_t *, char *, size_t);
 #endif

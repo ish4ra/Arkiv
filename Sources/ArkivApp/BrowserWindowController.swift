@@ -1091,12 +1091,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         guard !isBusy, let path = forward.popLast() else { return }
         back.append(currentPath); currentPath = path; search.stringValue = ""; reload(preservingSelection: false)
     }
+    private var archiveInspector: ArchiveInspector?
     @objc func showInfo(_ sender: Any?) {
-        guard let snapshot, let window else { return }
-        let alert = NSAlert()
-        alert.messageText = snapshot.url.lastPathComponent
-        alert.informativeText = "\(snapshot.entries.count) entries\nBackend: \(LibArchiveEngine.version)\n\nExtraction limit: 100,000 entries / 20 GiB. ZIP and 7z creation are available from File → Create Archive. 7z supports AES-256. Add Files/Add Folder, Delete, Rename, and Replace File are available for supported writable ZIPs. Other modification is unavailable."
-        alert.beginSheetModal(for: window)
+        guard let metadata = snapshot?.metadata, let window, window.attachedSheet == nil else { return }
+        let inspector = ArchiveInspector(metadata:metadata)
+        archiveInspector = inspector
+        if let panel = inspector.window {
+            window.beginSheet(panel) { [weak self] _ in self?.archiveInspector = nil }
+        }
     }
     @objc func copyPath(_ sender: Any?) {
         NSPasteboard.general.clearContents()

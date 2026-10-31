@@ -29,6 +29,7 @@ public struct ArchiveSnapshot: Sendable {
     let stamp: SourceStamp
     let unlocked: UnlockedArchive?
     public internal(set) var sevenEncryptionPolicy: SevenZipEncryptionPolicy? = nil
+    public internal(set) var metadata: ArchiveMetadata? = nil
     var sourceLease: ArchiveOpenedFileLease? = nil
     var backingURL: URL { unlocked?.url ?? url }
     public var index: ArchiveIndex { ArchiveIndex(entries: entries) }
@@ -133,13 +134,14 @@ public struct LibArchiveEngine: ArchiveEngine {
         let collector = EntryCollector()
         let context = Unmanaged.passUnretained(collector).toOpaque()
         var error = [CChar](repeating: 0, count: 256)
-        let result = arkiv_list(backing.path, limits, cancellation.pointer, { context, id, path, size, kind in
+        var detectedFormat = [CChar](repeating:0,count:128)
+        let result = arkiv_list_metadata(backing.path, limits, cancellation.pointer, { context, id, path, size, kind in
             guard let context, let path, let name = String(validatingUTF8: path) else { return 1 }
             let collector = Unmanaged<EntryCollector>.fromOpaque(context).takeUnretainedValue()
             collector.entries.append(ArchiveEntry(id: id, path: name, size: size,
                 kind: kind == 1 ? .file : kind == 2 ? .directory : kind == 3 ? .symbolicLink : kind == 4 ? .hardLink : .unsupported))
             return 0
-        }, context, &error, error.count)
+        }, context, &error, error.count, &detectedFormat, detectedFormat.count)
         try check(result, error)
         guard try SourceStamp(url) == stamp else { throw ArchiveFailure.message("Archive changed while reading. Reopen it.") }
         var snapshot = ArchiveSnapshot(url: url, entries: collector.entries, stamp: stamp, unlocked: unlocked)
@@ -150,6 +152,23 @@ public struct LibArchiveEngine: ArchiveEngine {
             if cancellation.isCancelled { throw ArchiveFailure.cancelled }
             guard try SourceStamp(url) == stamp else { throw ArchiveFailure.message("Archive changed while inspecting encryption policy.") }
         }
+        var methods: String?, solid: Bool?, dataEncrypted: Bool?, headersEncrypted: Bool?
+        if unlocked != nil {
+            let handle = try FileHandle(forReadingFrom:url)
+            defer { try? handle.close() }
+            var flags: UInt32 = 0
+            var summary = [CChar](repeating:0,count:2048)
+            if arkiv_seven_metadata(handle.fileDescriptor,password,&flags,&summary,summary.count) == 0 {
+                let text = String(cString:summary); methods = text.isEmpty ? nil : text
+                solid = flags & 32 != 0; dataEncrypted = flags & 1 != 0; headersEncrypted = flags & 2 != 0
+            }
+        }
+        let formatName = String(cString:detectedFormat)
+        snapshot.metadata = ArchiveMetadata(url:url,physicalSize:stamp.size,entries:collector.entries,
+            format:unlocked != nil ? "7z" : (formatName.isEmpty ? nil : formatName),methods:methods,
+            solid:solid,dataEncrypted:dataEncrypted,headersEncrypted:headersEncrypted)
+        if cancellation.isCancelled { throw ArchiveFailure.cancelled }
+        guard try SourceStamp(url) == stamp else { throw ArchiveFailure.message("Archive changed while reading metadata. Reopen it.") }
         return snapshot
     }
     public func extract(_ snapshot: ArchiveSnapshot, ids: [Int64]?, into parent: URL,

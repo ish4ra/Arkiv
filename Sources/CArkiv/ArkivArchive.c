@@ -78,8 +78,8 @@ static int entry_kind(struct archive_entry *e) {
     if (archive_entry_filetype(e) == AE_IFDIR) return 2;
     return 0;
 }
-int arkiv_list(const char *path, arkiv_limits limits, arkiv_cancel *token,
-              arkiv_entry_callback callback, void *context, char *error, size_t capacity) {
+int arkiv_list_metadata(const char *path, arkiv_limits limits, arkiv_cancel *token,
+              arkiv_entry_callback callback, void *context, char *error, size_t capacity, char *format, size_t format_capacity) {
     if (cancelled(token)) return 2;
     struct archive *a = reader(path);
     if (!a) return fail(error, capacity, "Cannot read archive: unsupported, encrypted, corrupt, or inaccessible.");
@@ -99,8 +99,13 @@ int arkiv_list(const char *path, arkiv_limits limits, arkiv_cancel *token,
     }
     if (!result && cancelled(token)) result = 2;
     if (!result && status != ARCHIVE_EOF) result = fail(error, capacity, "Archive header is damaged or unsupported.");
+    if (!result && format && format_capacity) snprintf(format,format_capacity,"%s",archive_format_name(a)?archive_format_name(a):"");
     archive_read_free(a);
     return result;
+}
+
+int arkiv_list(const char *path, arkiv_limits limits, arkiv_cancel *token, arkiv_entry_callback callback, void *context, char *error, size_t capacity) {
+ return arkiv_list_metadata(path,limits,token,callback,context,error,capacity,NULL,0);
 }
 
 /* Walk from an already-open root, refusing symlinks at EVERY component.
