@@ -6,8 +6,12 @@ public struct ArchiveEntry: Equatable, Sendable {
     public let path: String
     public let size: Int64
     public let kind: Kind
+    public let metadata: ArchiveEntryMetadata
     public init(id: Int64, path: String, size: Int64, kind: Kind) {
-        self.id = id; self.path = path; self.size = size; self.kind = kind
+        self.init(id:id,path:path,size:size,kind:kind,metadata:.init())
+    }
+    public init(id: Int64, path: String, size: Int64, kind: Kind, metadata: ArchiveEntryMetadata) {
+        self.id = id; self.path = path; self.size = size; self.kind = kind; self.metadata = metadata
     }
 }
 public struct BrowserRow: Sendable {
