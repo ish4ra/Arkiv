@@ -27,6 +27,7 @@
 | Nested archives | Single regular entry opens in a new window after content inspection; [details](nested-archives.md) |
 | Icon / document icons | Original procedural app icon generated and packaged in macOS CI, visual validation pending; document family deferred |
 | Advanced columns | Packed Size, Ratio, Modified, Method, Encrypted, stored CRC32 and Attributes implemented; unknown evidence stays blank |
-| Recents / Settings | Deferred |
+| Open Recent | Native AppKit recent-document storage and File menu; successful normal archives only; nested/private temporary archives excluded |
+| Settings | Deferred |
 
 See `archive-formats.md` for the narrower per-format evidence. This is an early development foundation, not a production-ready archive manager or completion of Priority A.

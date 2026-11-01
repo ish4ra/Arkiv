@@ -152,7 +152,7 @@ Planned work that is **not** in current builds:
 - **Formats:** TAR creation, compressed TAR (`.tar.gz`, `.tar.bz2`, `.tar.xz`), broader RAR5 and RAR4 verification, multipart archives
 - **Archive work:** encrypted ZIP after interoperability testing, general multi-selection and update-by-date operations, editing more formats, archive comments
 - **Tools:** checksums, split/combine, benchmark, a command-line companion
-- **App:** Settings, Open Recent, more columns and an archive inspector, a Quick Look extension for archives in Finder
+- **App:** Settings and a Quick Look extension for archives in Finder. Open Recent, advanced browser columns and Archive Info are implemented; see [Open Recent](docs/open-recent.md).
 - **Distribution:** Developer ID signing and notarization, the final app icon and archive document icons
 
 The full plan is in [`ARKIV_SPEC.md`](ARKIV_SPEC.md) and its current status in the [feature matrix](docs/feature-matrix.md).

@@ -6,15 +6,18 @@ import ArkivCore
 import ArkivPresentation
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let recents: RecentArchives
     private let updates: UpdateController
     private let launchArguments: [String]
     private let presentFinderSetup: (() -> Void)?
     override convenience init() {
         self.init(updates: UpdateController(), launchArguments: CommandLine.arguments)
     }
-    init(updates: UpdateController, launchArguments: [String], presentFinderSetup: (() -> Void)? = nil) {
+    init(updates: UpdateController, launchArguments: [String], presentFinderSetup: (() -> Void)? = nil, recents: RecentArchives = RecentArchives()) {
+        self.recents = recents
         self.updates = updates; self.launchArguments = launchArguments; self.presentFinderSetup = presentFinderSetup
         super.init()
+        recents.open = { [weak self] url in self?.open(url) }
     }
     private let finderDeliveryDiagnostic = FinderDeliveryDiagnostic.fromArguments()
     private lazy var finderSetup = FinderSetupWindowController()
@@ -62,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func makeWindow() -> BrowserWindowController {
         let controller = BrowserWindowController()
         windows.append(controller)
+        controller.onAcceptedArchive = { [weak self] url,nested in self?.recents.accepted(url,nested:nested) }
         controller.onClose = { [weak self, weak controller] in
             self?.windows.removeAll { $0 === controller }
         }
@@ -95,6 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         beginInteractiveSession()
         if controller.archiveURL == nil { controller.load(url) }
+        else if let accepted = controller.recentArchiveURL { recents.accepted(accepted) }
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
@@ -160,7 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do { try finderServices.perform(FinderRequest(action: .test, urls: [url])) }
         catch { NSAlert(error: error).runModal() }
     }
-    private func buildMenus() {
+    func buildMenus() {
         let main = NSMenu()
         let application = NSMenu()
         application.addItem(withTitle: "About Arkiv", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
@@ -177,6 +182,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let new = file.addItem(withTitle: "New Window", action: #selector(newWindow(_:)), keyEquivalent: "n"); new.target = self
         let create = file.addItem(withTitle: "Create Archive…", action: #selector(createArchive(_:)), keyEquivalent: "N"); create.target = self
         let open = file.addItem(withTitle: "Open Archive…", action: #selector(openArchive(_:)), keyEquivalent: "o"); open.target = self
+        let recent = file.addItem(withTitle:"Open Recent",action:nil,keyEquivalent:"")
+        recent.submenu = recents.menu
         file.addItem(.separator())
         file.addItem(withTitle: "Replace File…", action: #selector(BrowserWindowController.replaceSelected(_:)), keyEquivalent: "")
         file.addItem(withTitle: "Replace Folder…", action: #selector(BrowserWindowController.replaceSelectedFolder(_:)), keyEquivalent: "")

@@ -6,6 +6,8 @@ import ArkivPresentation
 final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, NSToolbarDelegate, NSMenuItemValidation, NSToolbarItemValidation {
     var onClose: (() -> Void)?
+    var recentArchiveURL: URL? { !isBusy && archiveSource == nil ? snapshot?.url : nil }
+    var onAcceptedArchive: ((URL, Bool) -> Void)?
     var onOpen: (() -> Void)?
     var onOpenNestedArchive: ((ArchiveSnapshot, ArchiveOpenedFileLease) -> Void)?
     private var archiveSource: ArchiveOpenedFileLease?
@@ -267,6 +269,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                 self.finish()
                 switch result {
                 case .success(let value):
+                    if !token.isCancelled { self.onAcceptedArchive?(url,source != nil) }
                     self.snapshot = value; self.index = value.index; self.zipAdditionAvailable = capability == .zip; self.additionCapability = capability
                     self.currentPath = value.index.row(at: browsingFolder)?.isDirectory == true ? browsingFolder : ""; self.back = []; self.forward = []
                     self.window?.title = url.lastPathComponent

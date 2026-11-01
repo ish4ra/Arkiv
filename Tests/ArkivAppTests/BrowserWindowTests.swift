@@ -39,7 +39,7 @@ final class BrowserWindowTests: XCTestCase {
     func testExplicitNewWindowRetainsIndependentWindows() async {
         await MainActor.run {
             _ = NSApplication.shared
-            let delegate = AppDelegate()
+            let delegate = AppDelegate(updates:UpdateController(),launchArguments:[],recents:RecentArchives(urls:{[]},note:{_ in},clear:{}))
             let before = Set(NSApp.windows.map(ObjectIdentifier.init))
             delegate.newWindow(nil)
             delegate.newWindow(nil)
@@ -57,7 +57,7 @@ final class BrowserWindowTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let archive = root.appendingPathComponent("fixture.zip")
         try Data(base64Encoded: "UEsDBBQAAAAAAIBRR12GphA2BQAAAAUAAAAQAAAAZm9sZGVyL2hlbGxvLnR4dGhlbGxvUEsDBBQAAAAAAIBRR10gNVjZBQAAAAUAAAAJAAAAb3RoZXIudHh0b3RoZXJQSwECFAMUAAAAAACAUUddhqYQNgUAAAAFAAAAEAAAAAAAAAAAAAAAgAEAAAAAZm9sZGVyL2hlbGxvLnR4dFBLAQIUAxQAAAAAAIBRR10gNVjZBQAAAAUAAAAJAAAAAAAAAAAAAACAATMAAABvdGhlci50eHRQSwUGAAAAAAIAAgB1AAAAXwAAAAAA")!.write(to: archive)
-        let delegate = AppDelegate()
+        let delegate = AppDelegate(updates:UpdateController(),launchArguments:[],recents:RecentArchives(urls:{[]},note:{_ in},clear:{}))
         let before = Set(NSApp.windows.map(ObjectIdentifier.init))
         delegate.newWindow(nil)
         let window = try XCTUnwrap(NSApp.windows.first { !before.contains(ObjectIdentifier($0)) && $0.windowController is BrowserWindowController })
