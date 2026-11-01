@@ -54,7 +54,7 @@ final class ArchiveCellView: NSTableCellView {
     func configure(_ row: BrowserRow, column: String, searching: Bool) {
         switch column {
         case "size": label.stringValue = row.size.flatMap { $0 >= 0 ? ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) : nil } ?? "—"
-        case "packed", "ratio", "modified", "method", "encrypted": label.stringValue = BrowserPresentation.metadataText(row,column:column)
+        case "packed", "ratio", "modified", "method", "encrypted", "crc", "attributes": label.stringValue = BrowserPresentation.metadataText(row,column:column)
         case "type": label.stringValue = BrowserPresentation.packageKind(row) ?? (row.isDirectory ? "Folder" : "File")
         default:
             label.stringValue = searching ? row.path : row.name

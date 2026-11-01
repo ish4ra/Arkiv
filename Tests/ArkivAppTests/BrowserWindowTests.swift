@@ -21,7 +21,7 @@ final class BrowserWindowTests: XCTestCase {
             XCTAssertTrue(table.isHiddenOrHasHiddenAncestor)
             XCTAssertFalse(table.usesAlternatingRowBackgroundColors)
             XCTAssertTrue(table.allowsMultipleSelection)
-            XCTAssertEqual(table.tableColumns.map(\.title), ["Name", "Size", "Kind", "Packed Size", "Ratio", "Modified", "Method", "Encrypted"])
+            XCTAssertEqual(table.tableColumns.map(\.title), ["Name", "Size", "Kind", "Packed Size", "Ratio", "Modified", "Method", "Encrypted", "CRC", "Attributes"])
             XCTAssertTrue(views.contains { ($0 as? NSImageView)?.image === NSApp.applicationIconImage })
             let button = views.compactMap { $0 as? NSButton }.first { $0.title == "Open Archive…" }!
             XCTAssertFalse(button.isHiddenOrHasHiddenAncestor)

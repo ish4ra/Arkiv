@@ -5,7 +5,7 @@ import ArkivCore
 final class AdvancedColumnsTests: XCTestCase {
     @MainActor func testCellsRenderUnknownBlankAndAlignNumbers() {
         let row = ArchiveIndex(entries:[.init(id:0,path:"file",size:100,kind:.file)]).children(of:"")[0]
-        for key in ["packed","ratio","modified","method","encrypted"] {
+        for key in ["packed","ratio","modified","method","encrypted","crc","attributes"] {
             let cell = ArchiveCellView(column:key)
             cell.configure(row,column:key,searching:false)
             XCTAssertEqual(cell.textField?.stringValue,"")

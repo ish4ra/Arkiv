@@ -1502,7 +1502,7 @@ int arkiv_entry_metadata(const char *path, arkiv_metadata_callback cb, void *ctx
  while((r=archive_read_next_header(a,&e))==ARCHIVE_OK && count++<100000) {
  const char *name=archive_entry_pathname_utf8(e);if(!name||!safe_path(name))break;
  double t=archive_entry_mtime_is_set(e)?(double)archive_entry_mtime(e)+(double)archive_entry_mtime_nsec(e)/1e9:__builtin_nan("");
- cb(ctx,name,-1,t,NULL,-1);
+ cb(ctx,name,-1,t,NULL,-1,-1,(archive_format(a)&ARCHIVE_FORMAT_BASE_MASK)==ARCHIVE_FORMAT_TAR ? (int64_t)archive_entry_mode(e) : -1,-1);
  if(archive_read_data_skip(a)!=ARCHIVE_OK)break;
  }
  archive_read_free(a);if(r!=ARCHIVE_EOF)return 1;
@@ -1514,7 +1514,7 @@ int arkiv_entry_metadata(const char *path, arkiv_metadata_callback cb, void *ctx
  unsigned n=integrity_u16(h+28);char *name=calloc(n+1,1);if(!name)break;
  if(pread(fd,name,n,cursor+46)==n && !memchr(name,0,n)) {
  int ascii=1;for(unsigned k=0;k<n;k++)if((unsigned char)name[k]>=128)ascii=0;
- if(ascii||(integrity_u16(h+8)&0x800))cb(ctx,name,integrity_u32(h+20),__builtin_nan(""),integrity_u16(h+10)==0?"Store":"Deflate",0);
+ if(ascii||(integrity_u16(h+8)&0x800))cb(ctx,name,integrity_u32(h+20),__builtin_nan(""),integrity_u16(h+10)==0?"Store":"Deflate",0,integrity_u32(h+16),h[5]==3 ? (int64_t)(integrity_u32(h+38)>>16) : -1,integrity_u32(h+38)&0xffff);
  }
  free(name);cursor+=46+n+integrity_u16(h+30)+integrity_u16(h+32);
  }

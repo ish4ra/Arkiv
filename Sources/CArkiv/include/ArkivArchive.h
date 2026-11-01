@@ -125,7 +125,7 @@ uint64_t arkiv_seven_solid_memory(unsigned, uint32_t, unsigned, uint64_t, int, u
 int arkiv_create_archive_solid(const char *const *, size_t, const char *, const char *, const char *, char *, size_t, int,
  arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t, int, const char *, int, int, uint32_t, unsigned, int, uint64_t);
 int arkiv_seven_metadata(int, const char *, uint32_t *, char *, size_t);
-typedef void (*arkiv_metadata_callback)(void *, const char *, int64_t, double, const char *, int);
+typedef void (*arkiv_metadata_callback)(void *, const char *, int64_t, double, const char *, int, int64_t, int64_t, int64_t);
 int arkiv_entry_metadata(const char *, arkiv_metadata_callback, void *);
 int arkiv_seven_entries(int, const char *, arkiv_metadata_callback, void *);
 #endif

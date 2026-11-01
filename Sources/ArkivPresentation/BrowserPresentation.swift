@@ -52,8 +52,20 @@ public enum BrowserPresentation {
         }
         return total
     }
+    private static func attributes(_ m: ArchiveEntryMetadata) -> String {
+        guard let mode = m.posixMode else { return m.storedAttributes.map { String(format:"0x%04X",$0) } ?? "" }
+        var chars = Array("---------")
+        let letters = Array("rwxrwxrwx")
+        for i in 0..<9 where mode & (1 << (8-i)) != 0 { chars[i] = letters[i] }
+        for (bit,index,yes,no) in [(UInt32(0o4000),2,Character("s"),Character("S")),(0o2000,5,"s","S"),(0o1000,8,"t","T")] where mode & bit != 0 {
+            chars[index] = chars[index] == "x" ? yes : no
+        }
+        return String(chars)
+    }
     public static func metadataText(_ row: BrowserRow, column: String) -> String {
         switch column {
+        case "crc": return row.metadata.crc32.map { String(format:"%08X",$0) } ?? ""
+        case "attributes": return attributes(row.metadata)
         case "packed": return row.metadata.packedSize.map { ByteCountFormatter.string(fromByteCount:Int64(clamping:$0),countStyle:.file) } ?? ""
         case "ratio": return row.ratio.map { String(format:"%.1f%%",$0*100) } ?? ""
         case "modified": return row.metadata.modificationTime.map { DateFormatter.localizedString(from:$0,dateStyle:.medium,timeStyle:.short) } ?? ""
@@ -72,9 +84,13 @@ public enum BrowserPresentation {
     }
     public static func sorted(_ rows: [BrowserRow], by key: String, ascending: Bool) -> [BrowserRow] {
         rows.sorted { lhs, rhs in
-            if ["name","packed","ratio","modified","method","encrypted"].contains(key), lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }
+            if ["name","packed","ratio","modified","method","encrypted","crc","attributes"].contains(key), lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }
             var comparison: ComparisonResult
             switch key {
+            case "crc": comparison = optionalCompare(lhs.metadata.crc32,rhs.metadata.crc32)
+            case "attributes":
+                comparison = optionalCompare(lhs.metadata.posixMode,rhs.metadata.posixMode)
+                if comparison == .orderedSame { comparison = optionalCompare(lhs.metadata.storedAttributes,rhs.metadata.storedAttributes) }
             case "packed": comparison = optionalCompare(lhs.metadata.packedSize,rhs.metadata.packedSize)
             case "ratio": comparison = optionalCompare(lhs.ratio,rhs.ratio)
             case "modified": comparison = optionalCompare(lhs.metadata.modificationTime,rhs.metadata.modificationTime)

@@ -20,7 +20,7 @@ __attribute__((visibility("default"))) int arkiv_seven_test(int, const char *, u
 __attribute__((visibility("default"))) uint64_t arkiv_seven_solid_memory(unsigned, uint32_t, unsigned, uint64_t, int, uint64_t);
 __attribute__((visibility("default"))) int arkiv_seven_encode_solid(int, int, const char *, int, arkiv_seven_cancel, void *, arkiv_seven_progress, void *, unsigned, unsigned, unsigned, int, uint64_t);
 __attribute__((visibility("default"))) int arkiv_seven_metadata(int, const char *, uint32_t *, char *, size_t);
-typedef void (*arkiv_metadata_callback)(void *, const char *, int64_t, double, const char *, int);
+typedef void (*arkiv_metadata_callback)(void *, const char *, int64_t, double, const char *, int, int64_t, int64_t, int64_t);
 __attribute__((visibility("default"))) int arkiv_seven_entries(int, const char *, arkiv_metadata_callback, void *);
 /* Policy bits: 1 data encryption, 2 header encryption, 4 mixed encrypted/plain
    data, 8 supported future layout, 16 all data verified with supplied password, 32 solid.

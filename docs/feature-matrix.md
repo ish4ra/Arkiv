@@ -26,6 +26,7 @@
 | Quick Look | Native single regular-file preview using the existing owned Open-file session; Space or Quick Look menu |
 | Nested archives | Single regular entry opens in a new window after content inspection; [details](nested-archives.md) |
 | Icon / document icons | Original procedural app icon generated and packaged in macOS CI, visual validation pending; document family deferred |
-| Recents / Settings / advanced columns / metadata preservation | Deferred |
+| Advanced columns | Packed Size, Ratio, Modified, Method, Encrypted, stored CRC32 and Attributes implemented; unknown evidence stays blank |
+| Recents / Settings | Deferred |
 
 See `archive-formats.md` for the narrower per-format evidence. This is an early development foundation, not a production-ready archive manager or completion of Priority A.

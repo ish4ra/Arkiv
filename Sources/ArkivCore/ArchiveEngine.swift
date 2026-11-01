@@ -79,7 +79,7 @@ private final class EntryCollector {
 private final class EntryMetadataCollector {
     var values: [String: ArchiveEntryMetadata] = [:]
 }
-private let collectEntryMetadata: arkiv_metadata_callback = { context,path,packed,time,method,encrypted in
+private let collectEntryMetadata: arkiv_metadata_callback = { context,path,packed,time,method,encrypted,crc,mode,attrs in
     guard let context, let path, let name = String(validatingUTF8:path) else { return }
     let collector = Unmanaged<EntryMetadataCollector>.fromOpaque(context).takeUnretainedValue()
     let key = name.trimmingCharacters(in:CharacterSet(charactersIn:"/"))
@@ -87,7 +87,8 @@ private let collectEntryMetadata: arkiv_metadata_callback = { context,path,packe
     collector.values[key] = .init(packedSize:packed >= 0 ? UInt64(packed) : old.packedSize,
         modificationTime:time.isFinite ? Date(timeIntervalSince1970:time) : old.modificationTime,
         compressionMethod:method.flatMap { String(validatingUTF8:$0) } ?? old.compressionMethod,
-        encrypted:encrypted >= 0 ? encrypted != 0 : old.encrypted)
+        encrypted:encrypted >= 0 ? encrypted != 0 : old.encrypted,
+        crc32:crc >= 0 ? UInt32(crc) : old.crc32, posixMode:mode >= 0 ? UInt32(mode) : old.posixMode, storedAttributes:attrs >= 0 ? UInt32(attrs) : old.storedAttributes)
 }
 public struct ArchiveExtractionWarning: Equatable, Sendable {
     public let path: String
@@ -169,7 +170,7 @@ public struct LibArchiveEngine: ArchiveEngine {
             collector.entries = collector.entries.map { entry in
                 let key = entry.path.trimmingCharacters(in:CharacterSet(charactersIn:"/"))
                 let raw = counts[key] == 1 ? (evidence.values[key] ?? .init()) : .init()
-                let metadata = entry.kind == .file ? raw : ArchiveEntryMetadata(modificationTime:raw.modificationTime)
+                let metadata = entry.kind == .file ? raw : ArchiveEntryMetadata(modificationTime:raw.modificationTime,posixMode:raw.posixMode,storedAttributes:raw.storedAttributes)
                 return ArchiveEntry(id:entry.id,path:entry.path,size:entry.size,kind:entry.kind,metadata:metadata)
             }
         }

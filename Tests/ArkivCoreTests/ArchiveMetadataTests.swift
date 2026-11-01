@@ -23,6 +23,7 @@ final class ArchiveMetadataTests: XCTestCase {
                     if format == .zip { XCTAssertNotNil(entry.metadata.modificationTime) }
                     else { XCTAssertNil(entry.metadata.modificationTime,"Current 7z creator does not write item mtimes; never use spool times") }
                     XCTAssertNotNil(entry.metadata.compressionMethod)
+                    XCTAssertNotNil(entry.metadata.crc32)
                     XCTAssertEqual(entry.metadata.encrypted,password != nil)
                     if format == .sevenZip && mode != 0 { XCTAssertNil(entry.metadata.packedSize) }
                     else { XCTAssertNotNil(entry.metadata.packedSize) }
@@ -47,6 +48,8 @@ final class ArchiveMetadataTests: XCTestCase {
     func testTarAndEmptyZIP() throws {
         let fixture = URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("tests/fixtures/links-and-special.tar")
         let tar = try LibArchiveEngine().inspect(fixture,cancellation:ArchiveCancellation())
+        XCTAssertTrue(tar.entries.allSatisfy { $0.metadata.crc32 == nil })
+        XCTAssertTrue(tar.entries.contains { $0.metadata.posixMode != nil })
         let m = try XCTUnwrap(tar.metadata)
         XCTAssertTrue(m.format?.lowercased().contains("tar") == true)
         XCTAssertEqual(m.fileCount,tar.entries.filter { $0.kind == .file }.count)

@@ -26,3 +26,13 @@ or unknown unpacked sizes and for non-regular entries. No checksums are computed
 Real-Mac check: open ZIP Store/Deflate, TAR and plain/encrypted/solid 7z; inspect all
 five columns, resize them, sort both directions, search, navigate, and verify the
 same items remain selected. Blank unknown fields and solid packed sizes are expected.
+
+CRC and Attributes columns use stored evidence only. CRC32 is eight uppercase hex
+ digits; no hash calculation is performed. Validated ordinary ZIP32 records supply
+CRC32 and external attributes; POSIX mode is used only for Unix-origin records.
+7z exposes CRC only for an actual UI4 item CRC property (including solid/encrypted
+items), and POSIX/Windows attributes only when provided by its handler. TAR exposes
+stored mode, never its header checksum as content CRC. Directories/links/special
+entries retain evidenced attributes but omit CRC. Synthetic folders remain blank.
+POSIX modes render rwxr-xr-x including special s/S/t/T bits; otherwise raw stored
+attribute bits render as explicitly hexadecimal values. Sorting uses numeric evidence.

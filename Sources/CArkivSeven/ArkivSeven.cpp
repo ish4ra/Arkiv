@@ -424,7 +424,11 @@ extern "C" int arkiv_seven_entries(int fd,const char *password,arkiv_metadata_ca
  p.Clear();if(h->GetProperty(i,kpidMTime,&p)==S_OK&&p.vt==VT_FILETIME){uint64_t ticks=((uint64_t)p.filetime.dwHighDateTime<<32)|p.filetime.dwLowDateTime;time=(double)ticks/10000000.0-11644473600.0;}
  p.Clear();if(h->GetProperty(i,kpidEncrypted,&p)==S_OK&&p.vt==VT_BOOL)encrypted=p.boolVal!=0;
  p.Clear();if(h->GetProperty(i,kpidMethod,&p)==S_OK&&p.vt==VT_BSTR)ConvertUnicodeToUTF8(UString(p.bstrVal),method);
- cb(ctx,path.Ptr(),packed,time,method.IsEmpty()?nullptr:method.Ptr(),encrypted);
+ int64_t crc=-1,mode=-1,attrs=-1;
+ p.Clear();if(h->GetProperty(i,kpidCRC,&p)==S_OK&&p.vt==VT_UI4)crc=p.ulVal;
+ p.Clear();if(h->GetProperty(i,kpidPosixAttrib,&p)==S_OK&&p.vt==VT_UI4)mode=p.ulVal;
+ p.Clear();if(h->GetProperty(i,kpidAttrib,&p)==S_OK&&p.vt==VT_UI4){attrs=p.ulVal&0xffff;if(mode<0&&(p.ulVal&0x8000))mode=p.ulVal>>16;}
+ cb(ctx,path.Ptr(),packed,time,method.IsEmpty()?nullptr:method.Ptr(),encrypted,crc,mode,attrs);
  }
  return 0;
  }catch(...){return 1;}
