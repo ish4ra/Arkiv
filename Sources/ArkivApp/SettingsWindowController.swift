@@ -61,6 +61,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             note("Get Arkiv actions when you right-click files in Finder. Enable Arkiv Finder yourself in macOS extension settings; Arkiv cannot grant this approval."),
             button("Finder Integration…", #selector(openFinder(_:))),
             note("The direct Arkiv menu covers items in your home folder. For other locations, use Finder’s Services submenu. The setup window shows current status and the manual settings path.")])
+        updates.onSettingsChange = { [weak self] in self?.refresh() }
         window.center()
         refresh()
     }

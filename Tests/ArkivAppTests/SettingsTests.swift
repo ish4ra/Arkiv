@@ -72,6 +72,9 @@ final class SettingsTests: XCTestCase {
         controller.refresh()
         XCTAssertEqual(controller.automaticChecks.state, .on)
         XCTAssertTrue(controller.automaticChecks.isEnabled)
+        let automaticMenuItem = try XCTUnwrap(menu.items.first { $0.title == "Automatically Check for Updates" })
+        XCTAssertTrue(NSApp.sendAction(automaticMenuItem.action!, to: automaticMenuItem.target, from: automaticMenuItem))
+        XCTAssertEqual(controller.automaticChecks.state, .off, "Menu changes must update the already-open Settings window")
     }
 
     @MainActor

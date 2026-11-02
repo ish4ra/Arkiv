@@ -26,6 +26,7 @@ final class UpdateController: NSObject, NSMenuItemValidation {
     private var driver: UpdaterMenuDriver?
     private var checkItems: [NSMenuItem] = []
     private var automaticItems: [NSMenuItem] = []
+    var onSettingsChange: (() -> Void)?
 
     override convenience init() {
         self.init(publicKey: { Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String },
@@ -79,6 +80,7 @@ final class UpdateController: NSObject, NSMenuItemValidation {
             item.isEnabled = driver != nil
             item.state = driver?.automaticallyChecksForUpdates == true ? .on : .off
         }
+        onSettingsChange?()
     }
 
     @objc private func unconfigured(_ sender: Any?) {
