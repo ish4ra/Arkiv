@@ -6,6 +6,7 @@ import ArkivCore
 import ArkivPresentation
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let preferences: AppPreferences
     private let recents: RecentArchives
     private let updates: UpdateController
     private let launchArguments: [String]
@@ -13,13 +14,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     override convenience init() {
         self.init(updates: UpdateController(), launchArguments: CommandLine.arguments)
     }
-    init(updates: UpdateController, launchArguments: [String], presentFinderSetup: (() -> Void)? = nil, recents: RecentArchives = RecentArchives()) {
+    init(updates: UpdateController, launchArguments: [String], presentFinderSetup: (() -> Void)? = nil, recents: RecentArchives = RecentArchives(), preferences: AppPreferences = AppPreferences()) {
+        self.preferences = preferences
         self.recents = recents
         self.updates = updates; self.launchArguments = launchArguments; self.presentFinderSetup = presentFinderSetup
         super.init()
         recents.open = { [weak self] url in self?.open(url) }
     }
     private let finderDeliveryDiagnostic = FinderDeliveryDiagnostic.fromArguments()
+    private(set) lazy var settings = SettingsWindowController(preferences: preferences, recents: recents,
+        updates: updates, showFinder: { [weak self] in self?.showFinderIntegration(nil) })
+    @objc func showSettings(_ sender: Any?) {
+        beginInteractiveSession()
+        settings.present()
+    }
     private lazy var finderSetup = FinderSetupWindowController()
     private let creation = ArchiveCreationController()
     private var handledLaunchRequest = false
@@ -30,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self?.finderDeliveryDiagnostic?.record(.open)
     }
     func applicationWillFinishLaunching(_ notification: Notification) {
+        preferences.appearance.apply()
         NSApp.servicesProvider = finderServices
     }
     static func shouldShowInitialBrowser(arguments: [String], handledRequest: Bool) -> Bool {
@@ -169,6 +178,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let main = NSMenu()
         let application = NSMenu()
         application.addItem(withTitle: "About Arkiv", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let settingsItem = application.addItem(withTitle: "Settings…", action: #selector(showSettings(_:)), keyEquivalent: ",")
+        settingsItem.target = self
+        application.addItem(.separator())
         updates.addMenuItems(to: application)
         let finder = application.addItem(withTitle: "Finder Integration…", action: #selector(showFinderIntegration(_:)), keyEquivalent: "")
         finder.target = self

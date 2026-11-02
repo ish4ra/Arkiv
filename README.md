@@ -20,6 +20,8 @@ Arkiv opens an archive as a browsable container rather than unpacking everything
 - **Drag in and out.** Drag entries to Finder, and drag Finder items into writable ZIPs.
 - **Test Archive.** Read and verify archive data without extracting anything.
 
+**Settings:** Arkiv → Settings… (⌘,) offers persisted System/Light/Dark appearance (Dark by default), recent-history clearing, existing Sparkle update controls, and Finder setup guidance. See [Settings](docs/settings.md).
+
 ## Format support
 
 Arkiv only lists a format as supported once it passes automated fixture tests. Recognising a file extension does not mean every compression method or variant inside it works.
@@ -152,7 +154,7 @@ Planned work that is **not** in current builds:
 - **Formats:** TAR creation, compressed TAR (`.tar.gz`, `.tar.bz2`, `.tar.xz`), broader RAR5 and RAR4 verification, multipart archives
 - **Archive work:** encrypted ZIP after interoperability testing, general multi-selection and update-by-date operations, editing more formats, archive comments
 - **Tools:** checksums, split/combine, benchmark, a command-line companion
-- **App:** Settings and a Quick Look extension for archives in Finder. Open Recent, advanced browser columns and Archive Info are implemented; see [Open Recent](docs/open-recent.md).
+- **App:** A Quick Look extension for archives in Finder remains planned. [Settings](docs/settings.md), [Open Recent](docs/open-recent.md), advanced browser columns and Archive Info are implemented.
 - **Distribution:** Developer ID signing and notarization, the final app icon and archive document icons
 
 The full plan is in [`ARKIV_SPEC.md`](ARKIV_SPEC.md) and its current status in the [feature matrix](docs/feature-matrix.md).

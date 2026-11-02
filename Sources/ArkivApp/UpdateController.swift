@@ -45,6 +45,21 @@ final class UpdateController: NSObject, NSMenuItemValidation {
         refreshMenuItems()
     }
 
+    /// Settings uses the same live Sparkle driver and consent storage as the menu.
+    var automaticChecks: Bool? {
+        get { driver?.automaticallyChecksForUpdates }
+        set {
+            guard let newValue, let driver else { return }
+            driver.automaticallyChecksForUpdates = newValue
+            refreshMenuItems()
+        }
+    }
+
+    func checkForUpdates(_ sender: Any?) {
+        guard let driver else { unconfigured(sender); return }
+        NSApp.sendAction(driver.checkAction, to: driver.checkTarget, from: sender)
+    }
+
     func addMenuItems(to menu: NSMenu) {
         checkItems.append(menu.addItem(withTitle: "Check for Updates…", action: nil, keyEquivalent: ""))
         let automatic = menu.addItem(withTitle: "Automatically Check for Updates", action: #selector(toggleAutomatic(_:)), keyEquivalent: "")

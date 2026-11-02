@@ -28,6 +28,6 @@
 | Icon / document icons | Original procedural app icon generated and packaged in macOS CI, visual validation pending; document family deferred |
 | Advanced columns | Packed Size, Ratio, Modified, Method, Encrypted, stored CRC32 and Attributes implemented; unknown evidence stays blank |
 | Open Recent | Native AppKit recent-document storage and File menu; successful normal archives only; nested/private temporary archives excluded |
-| Settings | Deferred |
+| Settings | Implemented: native General/Updates/Finder tabs, persisted appearance (default Dark), clear recents, Sparkle controls and existing Finder setup; see [Settings](settings.md) |
 
 See `archive-formats.md` for the narrower per-format evidence. This is an early development foundation, not a production-ready archive manager or completion of Priority A.
