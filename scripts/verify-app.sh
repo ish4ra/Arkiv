@@ -15,6 +15,7 @@ binary="$app/Contents/MacOS/Arkiv"
 python3 scripts/render-completion-sound.py --verify "$app/Contents/Resources/Arkiv-Extraction-Complete.wav"
 swift scripts/verify-completion-sound.swift "$app/Contents/Resources/Arkiv-Extraction-Complete.wav"
 plutil -lint "$app/Contents/Info.plist"
+python3 scripts/verify-document-icons.py "$app"
 python3 scripts/verify-finder-services.py "$app/Contents/Info.plist"
 python3 scripts/update-metadata.py verify "$app/Contents/Info.plist"
 actual=$(lipo -archs "$binary")

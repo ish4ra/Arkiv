@@ -77,3 +77,9 @@ No SVG is supplied. The Bézier geometry could be translated, but that alone doe
 not establish an exact match for AppKit's gradient rendering, color handling,
 and blurred shadow. An unverified SVG approximation would become a conflicting
 brand asset. The PNG exports and the original Swift renderer remain authoritative.
+
+## Archive documents
+
+The separate [document icon family](../docs/document-icons.md) places this exact
+transparent mark on a native document silhouette. It never modifies the app icon
+or these source PNGs. Regenerate during `scripts/build-app.sh` on macOS.

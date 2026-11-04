@@ -31,3 +31,5 @@
 | Settings | Implemented: native General/Updates/Finder tabs, persisted appearance (default Dark), clear recents, Sparkle controls and existing Finder setup; see [Settings](settings.md) |
 
 See `archive-formats.md` for the narrower per-format evidence. This is an early development foundation, not a production-ready archive manager or completion of Priority A.
+
+Archive document icons: ZIP, 7z, TAR and RAR share the original Tension Seal branding. Packaged resources are validated; Finder visual acceptance requires a real Mac. See [document icons](document-icons.md).

@@ -180,3 +180,5 @@ Third-party components keep their own licenses:
 - **Sparkle 2.10.0:** bundled for updates. Its license file is included in the app.
 
 See [third-party notices](docs/third-party-licenses.md).
+
+Archive document icons are provided for ZIP, 7z, TAR and RAR when macOS associates them with Arkiv. This does not change default handlers or expand RAR compatibility. See [document icons and Finder checks](docs/document-icons.md).

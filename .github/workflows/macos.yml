@@ -31,6 +31,8 @@ jobs:
         run: |
           python3 tests/test_updates.py -v
           python3 tests/test_update_channel.py -v
+      - name: Document icon registration and branding regressions
+        run: python3 tests/test_document_icons.py -v
       - name: Check for tracked signing material
         run: python3 scripts/check-update-secrets.py
       - name: Toolchain and backend
