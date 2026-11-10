@@ -2,7 +2,7 @@
 
 | Capability | State |
 | --- | --- |
-| Native archive browser | Implemented: AppKit table, resize/sort columns, multi-selection, search, folder/back/forward/up navigation, multiple windows |
+| Native archive browser | Implemented: AppKit table, resize/sort columns, persistent header-menu column visibility/widths (Name mandatory), multi-selection, search, folder/back/forward/up navigation, multiple windows |
 | Selective/all extraction | Implemented: new destination folder, bounded streaming, cancellation, progress and cleanup |
 | Extraction safety | Automated hostile-path/link/overwrite/CRC/limit regression suite |
 | macOS application validation | Native compilation, tests, arm64 app/icon packaging and signature verification passed macOS CI; interactive validation outstanding |

@@ -51,3 +51,26 @@ Before treating visual polish as final, test the packaged app on a real Mac:
 The Linux development environment cannot assess native macOS rendering or
 VoiceOver output. Passing CI establishes build/test/package validity, not a
 substitute for these interactive visual checks.
+
+## Phase 2: column customization
+
+Right-click the table header to show/hide any metadata column. Name remains
+visible. Visibility and user-resized widths are stored by stable column identifier
+in versioned UserDefaults keys; no archive paths are stored. Unknown columns are
+ignored, invalid widths fall back to defaults, and widths are bounded to 1600 pt.
+Existing windows retain their current layout; newly opened windows read the latest
+saved choices. Column order and sorting are not persisted in this phase.
+
+Columns use native manual resizing and horizontal scrolling instead of stretching
+the first column on window resize. Hiding/showing a column does not reload rows,
+change sorting or touch selection. Existing path-based selection preservation,
+navigation, search, footer and toolbar overflow remain in place. Empty archives
+now say “This archive is empty”; empty folders and unmatched searches retain their
+separate messages. Test Archive now has an explicit toolbar tooltip.
+
+Additional real-Mac checks: toggle all optional columns, resize and reopen a
+window/relaunch, verify Name cannot be hidden, and sort/filter with a selection.
+Test the minimum window width, long Unicode paths and large archives; verify
+header-menu checkmarks, horizontal scrolling, toolbar overflow, keyboard search
+and VoiceOver in System/Light/Dark. Automated tests establish state and layout
+constraints, not visual quality or spoken VoiceOver output.

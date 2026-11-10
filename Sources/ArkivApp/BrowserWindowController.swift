@@ -20,6 +20,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     }
     private(set) var isBusy = false
     private let table = ArchiveTableView()
+    private let columnPreferences: BrowserColumnPreferences
+    private var restoringColumns = true
     private var dragSession: ArchiveDragSession?
     private var dragIsActive = false
     private let dragQueue: OperationQueue = {
@@ -64,7 +66,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     private let engine = LibArchiveEngine()
     private let worker = DispatchQueue(label: "xyz.isharalakshan.arkiv.archive", qos: .userInitiated)
 
-    init(modificationFeedback: @escaping (Result<URL, Error>) -> Void = { ExtractionFeedback.completed($0) },
+    init(columnPreferences: BrowserColumnPreferences = BrowserColumnPreferences(),
+         modificationFeedback: @escaping (Result<URL, Error>) -> Void = { ExtractionFeedback.completed($0) },
          quickLook: ArchiveQuickLookPresenting = ArchiveQuickLook(),
          openFileLauncher: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) },
          prepareOpenFile: @escaping (ArchiveOpenSession, ArchiveSnapshot, String, ArchiveCancellation, @escaping @Sendable (ArchiveProgress) -> Void) throws -> ArchiveOpenedFile = {
@@ -73,6 +76,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
          requestArchivePassword: @escaping (URL, Bool, NSWindow?, @escaping (String?) -> Void) -> Void = {
              ArchivePasswordPrompt.ask(archive: $0, retry: $1, parent: $2, completion: $3)
          }) {
+        self.columnPreferences = columnPreferences
         self.quickLook = quickLook
         self.modificationFeedback = modificationFeedback
         self.openFileLauncher = openFileLauncher
@@ -106,7 +110,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
         table.setDraggingSourceOperationMask(.copy, forLocal: true)
         table.allowsColumnReordering = true
-        table.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
+        table.columnAutoresizingStyle = .noColumnAutoresizing
         table.rowHeight = 26
         table.intercellSpacing = NSSize(width: 8, height: 0)
         table.dataSource = self; table.delegate = self
@@ -115,11 +119,24 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         for (id, title, width) in [("name", "Name", 500.0), ("size", "Size", 110.0), ("type", "Kind", 130.0), ("packed", "Packed Size", 110.0), ("ratio", "Ratio", 90.0), ("modified", "Modified", 175.0), ("method", "Method", 130.0), ("encrypted", "Encrypted", 90.0), ("crc", "CRC", 100.0), ("attributes", "Attributes", 110.0)] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
             column.title = title; column.width = width; column.minWidth = id == "name" ? 180 : 80
-            column.resizingMask = [.autoresizingMask, .userResizingMask]
+            column.resizingMask = [.userResizingMask]
+            column.maxWidth = 1600
+            column.width = columnPreferences.width(id, fallback: width, minimum: Double(column.minWidth))
+            column.isHidden = columnPreferences.isHidden(id)
             column.headerCell.alignment = ["size","packed","ratio"].contains(id) ? .right : .left
             column.sortDescriptorPrototype = NSSortDescriptor(key: id, ascending: true)
             table.addTableColumn(column)
         }
+        let columns = NSMenu(title: "Columns")
+        columns.autoenablesItems = false
+        for column in table.tableColumns {
+            let item = columns.addItem(withTitle: column.title, action: #selector(toggleColumn(_:)), keyEquivalent: "")
+            item.target = self; item.representedObject = column.identifier.rawValue
+            item.state = column.isHidden ? .off : .on
+            item.isEnabled = column.identifier.rawValue != "name"
+        }
+        table.headerView?.menu = columns
+        restoringColumns = false
         table.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
         let menu = NSMenu()
         menu.addItem(withTitle: "Open", action: #selector(openSelectedFile(_:)), keyEquivalent: "").target = self
@@ -1117,7 +1134,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         table.reloadData()
         table.selectRowIndexes(BrowserPresentation.selection(paths, in: rows), byExtendingSelection: false)
         if !preservingSelection { table.scroll(.zero) }
-        noResults.stringValue = search.stringValue.isEmpty ? "This folder is empty" : "No matching entries"
+        noResults.stringValue = !search.stringValue.isEmpty ? "No matching entries"
+            : snapshot?.entries.isEmpty == true ? "This archive is empty" : "This folder is empty"
         noResults.isHidden = !rows.isEmpty
         updateStatus(); updateControls()
     }
@@ -1134,6 +1152,19 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         status.stringValue = text
         status.toolTip = text
     }
+    @objc func toggleColumn(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String, id != "name",
+              let column = table.tableColumn(withIdentifier: NSUserInterfaceItemIdentifier(id)) else { return }
+        column.isHidden.toggle()
+        columnPreferences.setHidden(column.isHidden, for: id)
+        sender.state = column.isHidden ? .off : .on
+    }
+    func tableViewColumnDidResize(_ notification: Notification) {
+        guard !restoringColumns, let column = notification.userInfo?["NSTableColumn"] as? NSTableColumn,
+              table.tableColumns.contains(where: { $0 === column }) else { return }
+        columnPreferences.setWidth(Double(column.width), for: column.identifier.rawValue)
+    }
+
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
     func tableViewSelectionDidChange(_ notification: Notification) { if !dragIsActive { dragSession = nil }; updateStatus(); window?.toolbar?.validateVisibleItems() }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -1201,7 +1232,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         let item = NSToolbarItem(itemIdentifier: id)
         item.label = title; item.paletteLabel = title
         let tips = ["open": "Open an archive (⌘O)", "extract": "Extract selected files and folders (⌘E)",
-            "all": "Extract the entire archive (⇧⌘E)", "info": "Show archive information (⌘I)"]
+            "all": "Extract the entire archive (⇧⌘E)", "test": "Test archive data and integrity", "info": "Show archive information (⌘I)"]
         item.toolTip = tips[id.rawValue]
         item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
         item.target = self; item.action = action
