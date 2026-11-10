@@ -30,14 +30,14 @@ Arkiv only lists a format as supported once it passes automated fixture tests. R
 | --- | --- | --- | --- | --- | --- |
 | **ZIP** | Store, Deflate | Store, Deflate (default format) | Add, Delete, Rename, Replace File¹ | Not supported | Data and CRC |
 | **7z** | LZMA, LZMA2 | LZMA2 | — | AES-256, optional encrypted filenames | Data and CRC |
-| **TAR** (uncompressed) | Yes | — | — | — | Structure only² |
+| **TAR**, **tar.gz/tgz**, **tar.bz2/tbz2**, **tar.xz/txz** | Yes; bounded single-stream decoding | — | — | — | Readability; compressed-stream checks² |
 | **RAR5** | Limited³ | Never | — | — | — |
 
 ¹ Ordinary single-disk ZIP32 archives. Encrypted, ZIP64 and multipart ZIPs are read-only.
-² TAR has no content checksum, so a passing test is reported as a warning.
+² TAR has no per-entry content checksum, so a passing test is reported as a warning. Compressed wrappers are validated separately.
 ³ Verified against a single stored (uncompressed) RAR5 fixture. Broader RAR5 and RAR4 decoding is not yet verified, and RAR creation is out of scope.
 
-**Not yet verified, so not advertised:** RAR4, RAR5 beyond the stored fixture, compressed TAR (`.tar.gz`, `.tar.bz2`, `.tar.xz`), ZIPX, disk images and the other formats in the [specification](ARKIV_SPEC.md). No support is claimed until fixture tests pass.
+**Not yet verified, so not advertised:** RAR4, RAR5 beyond the stored fixture, ZIPX, disk images and the other formats in the [specification](ARKIV_SPEC.md). No support is claimed until fixture tests pass.
 
 **Known unsupported:** encrypted ZIP (rejected rather than guessed at), multipart archives, and RAR creation. See [format evidence](docs/archive-formats.md) for details.
 
@@ -151,7 +151,7 @@ The app builds for arm64 by default. Set `ARKIV_ARCH=universal` for both build s
 
 Planned work that is **not** in current builds:
 
-- **Formats:** TAR creation, compressed TAR (`.tar.gz`, `.tar.bz2`, `.tar.xz`), broader RAR5 and RAR4 verification, multipart archives
+- **Formats:** TAR creation, broader RAR5 and RAR4 verification, multipart archives
 - **Archive work:** encrypted ZIP after interoperability testing, general multi-selection and update-by-date operations, editing more formats, archive comments
 - **Tools:** checksums, split/combine, benchmark, a command-line companion
 - **App:** A Quick Look extension for archives in Finder remains planned. [Settings](docs/settings.md), [Open Recent](docs/open-recent.md), advanced browser columns and Archive Info are implemented.
@@ -182,3 +182,5 @@ Third-party components keep their own licenses:
 See [third-party notices](docs/third-party-licenses.md).
 
 Archive document icons are provided for ZIP, 7z, TAR and RAR when macOS associates them with Arkiv. This does not change default handlers or expand RAR compatibility. See [document icons and Finder checks](docs/document-icons.md).
+
+See [compressed TAR](docs/compressed-tar.md) for stream integrity, temporary-disk limits and read-only compatibility boundaries.

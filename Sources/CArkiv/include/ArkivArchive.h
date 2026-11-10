@@ -128,4 +128,8 @@ int arkiv_seven_metadata(int, const char *, uint32_t *, char *, size_t);
 typedef void (*arkiv_metadata_callback)(void *, const char *, int64_t, double, const char *, int, int64_t, int64_t, int64_t);
 int arkiv_entry_metadata(const char *, arkiv_metadata_callback, void *);
 int arkiv_seven_entries(int, const char *, arkiv_metadata_callback, void *);
+int arkiv_archive_is_tar(const char *path);
+int arkiv_compression_kind(const char *path);
+int arkiv_decompress_tar(const char *path, const char *output, uint64_t limit, arkiv_cancel *token);
+
 #endif

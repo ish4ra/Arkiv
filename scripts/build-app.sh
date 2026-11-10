@@ -58,6 +58,8 @@ for format in ZIP 7z TAR RAR; do
 done
 cp docs/third-party-licenses.md "$app/Contents/Resources/ThirdPartyNotices.txt"
 mkdir -p "$app/Contents/Resources/licenses"
+cp Sources/CArkiv/vendor/bzip2-LICENSE "$app/Contents/Resources/licenses/"
+cp Sources/CArkiv/vendor/xz/COPYING.0BSD "$app/Contents/Resources/licenses/xz-0BSD.txt"
 cp licenses/libarchive-COPYING.txt "$app/Contents/Resources/licenses/"
 cp Vendor/7zip/License.txt "$app/Contents/Resources/licenses/7zip-License.txt"
 cp Vendor/7zip/copying.txt "$app/Contents/Resources/licenses/7zip-LGPL.txt"

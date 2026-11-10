@@ -798,7 +798,14 @@ int arkiv_is_seven(const char *path) {
  int fd=create_open(path); if(fd<0)return 0;unsigned char b[6];ssize_t n=read(fd,b,6);close(fd);
  return n==6&&!memcmp(b,"7z\xbc\xaf\x27\x1c",6);
 }
+int arkiv_archive_is_tar(const char *path) {
+ struct archive *a=reader(path);if(!a)return 0;
+ struct archive_entry *e;int status=archive_read_next_header(a,&e);
+ int yes=(status==ARCHIVE_OK||status==ARCHIVE_EOF)&&((archive_format(a)&ARCHIVE_FORMAT_BASE_MASK)==ARCHIVE_FORMAT_TAR);
+ archive_read_free(a);return yes;
+}
 int arkiv_archive_candidate(const char *path) {
+ if(arkiv_compression_kind(path))return 1;
  int fd=create_open(path); if(fd<0)return -1;
  unsigned char b[512]; ssize_t n=read(fd,b,sizeof(b)); close(fd);
  if(n<0)return -1;
@@ -937,7 +944,7 @@ int arkiv_test(const char *path, const char *password, arkiv_limits limits, arki
         char buffer[65536];
         while (!result && (status = archive_read_next_header(a, &entry)) == ARCHIVE_OK) {
             if (cancelled(token)) { result = 2; break; }
-            if (files >= limits.max_entries || !safe_path(archive_entry_pathname_utf8(entry)) || (entry_kind(entry) != 1 && entry_kind(entry) != 2)) {
+            if (files >= limits.max_entries || !safe_path(archive_entry_pathname_utf8(entry)) || (entry_kind(entry) != 1 && entry_kind(entry) != 2 && !(((archive_format(a)&ARCHIVE_FORMAT_BASE_MASK)==ARCHIVE_FORMAT_TAR) && (entry_kind(entry)==3 || entry_kind(entry)==4)))) {
                 result = fail(error, capacity, "Archive entry limit or safe path/type policy exceeded."); break;
             }
             if (archive_entry_is_encrypted(entry) > 0) { result = 8; fail(error, capacity, "Encrypted ZIP testing is unsupported."); break; }

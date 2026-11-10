@@ -11,7 +11,7 @@ These are **fixture results on Linux with libarchive 3.7.4 and in [macOS CI](htt
 | RAR4 | Decoder registered; no fixture validation yet | Not implemented | Not implemented |
 | All other spec formats | Deferred, not advertised | Not implemented | Not implemented |
 
-An accepted file extension does not prove a compression method is available. 7z encrypted extraction is supported through the bundled backend; encrypted ZIP remains rejected. ZIPX, compressed TAR filters, solid/multipart RAR and advanced 7z compatibility require dedicated fixtures before support claims. The app initially registers only ZIP/TAR document associations.
+An accepted file extension does not prove a compression method is available. 7z encrypted extraction is supported through the bundled backend; encrypted ZIP remains rejected. ZIPX, solid/multipart RAR and advanced 7z compatibility require dedicated fixtures before support claims. The app initially registers only ZIP/TAR document associations.
 
 ## Creation policy
 
@@ -37,3 +37,7 @@ No broad RAR codec or multipart claim is made.
 The 7-zip.org license endpoint was denied by this environment; research used the official ip7z GitHub source. This research is a foundation decision, not certification of every future backend or codec.
 
 ZIP creation details and validation: [creation.md](creation.md).
+
+## Compressed TAR
+
+Single-stream gzip/bzip2/XZ TAR reading uses bounded system decoders plus the existing TAR engine. See [evidence and limits](compressed-tar.md). No compressed TAR creation or standalone compressed-file support is advertised.

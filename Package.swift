@@ -5,7 +5,7 @@ var products: [Product] = [.library(name: "ArkivCore", targets: ["ArkivCore"])]
 var targets: [Target] = [
     .target(name: "ArkivFinderIntegration"),
     .testTarget(name: "ArkivFinderIntegrationTests", dependencies: ["ArkivFinderIntegration"]),
-    .target(name: "CArkiv", linkerSettings: [.linkedLibrary("archive"), .linkedLibrary("ArkivSeven")]),
+    .target(name: "CArkiv", cSettings: [.headerSearchPath("vendor/xz")], linkerSettings: [.linkedLibrary("z"), .linkedLibrary("bz2"), .linkedLibrary("lzma")] + [.linkedLibrary("archive"), .linkedLibrary("ArkivSeven")]),
     .target(name: "ArkivCore", dependencies: ["CArkiv", "ArkivFinderIntegration"]),
     .testTarget(name: "ArkivCoreTests", dependencies: ["ArkivCore"]),
     .target(name: "ArkivPresentation", dependencies: ["ArkivCore"]),

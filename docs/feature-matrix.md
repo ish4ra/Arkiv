@@ -33,3 +33,5 @@
 See `archive-formats.md` for the narrower per-format evidence. This is an early development foundation, not a production-ready archive manager or completion of Priority A.
 
 Archive document icons: ZIP, 7z, TAR and RAR share the original Tension Seal branding. Packaged resources are validated; Finder visual acceptance requires a real Mac. See [document icons](document-icons.md).
+
+Compressed TAR: read/browse/extract/Test via bounded gzip/bzip2/XZ decoding; shared Open/Quick Look/nested/drag workflows. Read-only; [limits](compressed-tar.md).

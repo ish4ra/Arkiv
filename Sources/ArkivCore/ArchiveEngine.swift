@@ -23,6 +23,9 @@ public enum ArchiveFailure: Error, LocalizedError {
         }
     }
 }
+private struct CompressedTARUnsupported: LocalizedError {
+    var errorDescription: String? { "Compressed TAR exceeds the supported expansion/memory budget or uses an unsupported integrity check." }
+}
 public struct ArchiveSnapshot: Sendable {
     public let url: URL
     public let entries: [ArchiveEntry]
@@ -31,7 +34,8 @@ public struct ArchiveSnapshot: Sendable {
     public internal(set) var sevenEncryptionPolicy: SevenZipEncryptionPolicy? = nil
     public internal(set) var metadata: ArchiveMetadata? = nil
     var sourceLease: ArchiveOpenedFileLease? = nil
-    var backingURL: URL { unlocked?.url ?? url }
+    var compressedTAR: UnlockedArchive? = nil
+    var backingURL: URL { compressedTAR?.url ?? unlocked?.url ?? url }
     public var index: ArchiveIndex { ArchiveIndex(entries: entries) }
 }
 func validateArchivePassword(_ password: String?) throws {
@@ -130,6 +134,8 @@ public struct LibArchiveEngine: ArchiveEngine {
     public func inspect(_ url: URL, cancellation: ArchiveCancellation, password: String?) throws -> ArchiveSnapshot {
         try validateArchivePassword(password)
         let stamp = try SourceStamp(url)
+        var compressedTAR: UnlockedArchive?
+        let compression = arkiv_compression_kind(url.path)
         var unlocked: UnlockedArchive?
         var sevenURL = url.standardizedFileURL
         #if os(macOS)
@@ -144,7 +150,15 @@ public struct LibArchiveEngine: ArchiveEngine {
             try check(result, Array("Cannot safely read the 7z archive.\0".utf8).map { CChar(bitPattern: $0) })
             unlocked = session
         }
-        let backing = unlocked?.url ?? url
+        if compression != 0 {
+            let spool = try UnlockedArchive()
+            let code = arkiv_decompress_tar(url.path, spool.url.path, limits.max_bytes, cancellation.pointer)
+            if code == 2 { throw ArchiveFailure.cancelled }
+            if code == 8 { throw CompressedTARUnsupported() }
+            guard code == 0 else { throw ArchiveFailure.message("Compressed TAR is damaged, unsupported, or exceeds decompression limits.") }
+            compressedTAR = spool
+        }
+        let backing = compressedTAR?.url ?? unlocked?.url ?? url
         let collector = EntryCollector()
         let context = Unmanaged.passUnretained(collector).toOpaque()
         var error = [CChar](repeating: 0, count: 256)
@@ -157,6 +171,9 @@ public struct LibArchiveEngine: ArchiveEngine {
             return 0
         }, context, &error, error.count, &detectedFormat, detectedFormat.count)
         try check(result, error)
+        if compressedTAR != nil, arkiv_archive_is_tar(backing.path) == 0 {
+            throw ArchiveFailure.message("The compressed stream does not contain a TAR archive.")
+        }
         guard try SourceStamp(url) == stamp else { throw ArchiveFailure.message("Archive changed while reading. Reopen it.") }
         let evidence = EntryMetadataCollector()
         let metadataContext = Unmanaged.passUnretained(evidence).toOpaque()
@@ -164,7 +181,7 @@ public struct LibArchiveEngine: ArchiveEngine {
         if unlocked != nil {
             let handle = try FileHandle(forReadingFrom:url); defer { try? handle.close() }
             metadataResult = arkiv_seven_entries(handle.fileDescriptor,password,collectEntryMetadata,metadataContext)
-        } else { metadataResult = arkiv_entry_metadata(url.path,collectEntryMetadata,metadataContext) }
+        } else { metadataResult = arkiv_entry_metadata(backing.path,collectEntryMetadata,metadataContext) }
         if metadataResult == 0 {
             let counts = Dictionary(grouping:collector.entries,by:{ $0.path.trimmingCharacters(in:CharacterSet(charactersIn:"/")) }).mapValues(\.count)
             collector.entries = collector.entries.map { entry in
@@ -175,6 +192,7 @@ public struct LibArchiveEngine: ArchiveEngine {
             }
         }
         var snapshot = ArchiveSnapshot(url: url, entries: collector.entries, stamp: stamp, unlocked: unlocked)
+        snapshot.compressedTAR = compressedTAR
         if unlocked != nil, password != nil {
             // Non-secret UI eligibility only. Every edit still asks for a fresh
             // password and validates the pinned original; never retain it here.
@@ -193,7 +211,7 @@ public struct LibArchiveEngine: ArchiveEngine {
                 solid = flags & 32 != 0; dataEncrypted = flags & 1 != 0; headersEncrypted = flags & 2 != 0
             }
         }
-        let formatName = String(cString:detectedFormat)
+        let formatName = compression == 0 ? String(cString:detectedFormat) : "TAR (" + [1:"gzip",2:"bzip2",3:"xz"][compression, default:"unknown"] + ")"
         snapshot.metadata = ArchiveMetadata(url:url,physicalSize:stamp.size,entries:collector.entries,
             format:unlocked != nil ? "7z" : (formatName.isEmpty ? nil : formatName),methods:methods,
             solid:solid,dataEncrypted:dataEncrypted,headersEncrypted:headersEncrypted)
@@ -276,6 +294,16 @@ extension LibArchiveEngine {
                      progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> ArchiveIntegrityResult {
         try validateArchivePassword(password)
         let stamp = try SourceStamp(url)
+        if arkiv_compression_kind(url.path) != 0 {
+            do {
+                let inspected = try inspect(url, cancellation: cancellation)
+                let result = try test(inspected.backingURL, cancellation: cancellation, progress: progress)
+                guard try SourceStamp(url) == stamp else { throw ArchiveFailure.message("Archive changed during testing.") }
+                return ArchiveIntegrityResult(state: result.state, detail: "Compressed-stream checksum and bounded decompression verified. " + result.detail)
+            } catch ArchiveFailure.cancelled { throw ArchiveFailure.cancelled }
+              catch let error as CompressedTARUnsupported { return ArchiveIntegrityResult(state: .unsupportedMethod, detail: error.localizedDescription) }
+              catch { return ArchiveIntegrityResult(state: .corrupt, detail: error.localizedDescription) }
+        }
         let receiver = ProgressReceiver(progress)
         let retained = Unmanaged.passRetained(receiver)
         defer { retained.release() }
