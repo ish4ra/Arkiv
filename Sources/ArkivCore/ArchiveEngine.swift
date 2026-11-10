@@ -48,7 +48,7 @@ final class UnlockedArchive: @unchecked Sendable {
     let directory: URL
     let url: URL
     init() throws {
-        directory = FileManager.default.temporaryDirectory.appendingPathComponent("arkiv-unlocked-" + UUID().uuidString, isDirectory: true)
+        directory = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("arkiv-unlocked-" + UUID().uuidString, isDirectory: true)
         url = directory.appendingPathComponent("contents.tar")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
     }

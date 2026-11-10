@@ -27,6 +27,8 @@ final class CompressedTARTests: XCTestCase {
                 let entry=try XCTUnwrap(snapshot.entries.first{$0.path=="folder/é 🐘.txt"})
                 XCTAssertNil(entry.metadata.crc32)
                 XCTAssertNotNil(entry.metadata.posixMode)
+                let backing = try XCTUnwrap(snapshot.compressedTAR?.url)
+                XCTAssertEqual(backing.path, backing.resolvingSymlinksInPath().path)
                 let output=try engine.extract(snapshot,ids:[entry.id],into:root,cancellation:ArchiveCancellation(),progress:{_ in})
                 XCTAssertEqual(try Data(contentsOf:output.appendingPathComponent(entry.path)),Data("hello".utf8))
                 XCTAssertFalse(FileManager.default.fileExists(atPath:output.appendingPathComponent("nested.zip").path))
