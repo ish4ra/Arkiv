@@ -1,6 +1,7 @@
 import bz2, gzip, lzma, io, tarfile, ctypes as C, unittest
 import test_engine
 import os
+import unicodedata
 from pathlib import Path
 LIB = test_engine.LIB
 LIB.arkiv_decompress_tar.argtypes=[C.c_char_p,C.c_char_p,C.c_uint64,C.c_void_p]
@@ -34,7 +35,8 @@ class CompressedTARTests(unittest.TestCase):
                     path_error = error.errno
                 finally:
                     os.close(fd)
-                print(f'::notice title=TAR stored permission evidence::status={result}, callbacks={len(modes)}, strictOpenErrno={path_error}, fixtureMode={modes.get("folder/é 🐘.txt", -1)}', flush=True)
+                normalized_match = any(unicodedata.normalize('NFC', name) == 'folder/é 🐘.txt' for name in modes)
+                print(f'::notice title=TAR stored permission evidence::status={result}, callbacks={len(modes)}, strictOpenErrno={path_error}, modes={list(modes.values())}, normalizedFixtureMatch={normalized_match}', flush=True)
                 self.assertEqual(result, 0)
                 self.assertEqual(set(modes), set(expected))
                 for name, mode in expected.items():
