@@ -1,10 +1,45 @@
 import bz2, gzip, lzma, io, tarfile, ctypes as C, unittest
 import test_engine
+import os
+from pathlib import Path
 LIB = test_engine.LIB
 LIB.arkiv_decompress_tar.argtypes=[C.c_char_p,C.c_char_p,C.c_uint64,C.c_void_p]
+METADATA = C.CFUNCTYPE(None, C.c_void_p, C.c_char_p, C.c_int64, C.c_double, C.c_char_p, C.c_int, C.c_int64, C.c_int64, C.c_int64)
+LIB.arkiv_entry_metadata.argtypes = [C.c_char_p, METADATA, C.c_void_p]
 class CompressedTARTests(unittest.TestCase):
     setUp = test_engine.EngineTests.setUp
     tearDown = test_engine.EngineTests.tearDown
+    def test_stored_permissions_through_private_spool(self):
+        fixtures = Path(__file__).parent / 'fixtures'
+        for codec in ['gz', 'bz2', 'xz']:
+            with self.subTest(codec=codec):
+                out = self.base.resolve() / ('spool-' + codec + '.tar')
+                self.assertEqual(LIB.arkiv_decompress_tar(bytes(fixtures / ('compressed.tar.' + codec)), bytes(out), 100000, self.token), 0)
+                # Independent fixture evidence, not permissions of the spool on disk.
+                with tarfile.open(out) as archive:
+                    expected = {e.name.rstrip('/'): e.mode for e in archive}
+                modes = {}
+                @METADATA
+                def metadata(_, name, packed, time, method, encrypted, crc, mode, attrs):
+                    modes[name.decode('utf8').rstrip('/')] = mode
+                result = LIB.arkiv_entry_metadata(bytes(out), metadata, None)
+                # Diagnose strict ancestor opening independently; never print paths.
+                fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
+                path_error = 0
+                try:
+                    for part in out.parts[1:]:
+                        next_fd = os.open(part, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+                        os.close(fd); fd = next_fd
+                except OSError as error:
+                    path_error = error.errno
+                finally:
+                    os.close(fd)
+                print(f'::notice title=TAR stored permission evidence::status={result}, callbacks={len(modes)}, strictOpenErrno={path_error}, fixtureMode={modes.get("folder/é 🐘.txt", -1)}', flush=True)
+                self.assertEqual(result, 0)
+                self.assertEqual(set(modes), set(expected))
+                for name, mode in expected.items():
+                    self.assertEqual(modes[name] & 0o7777, mode)
+
     def test_codecs_validation_limits_and_cleanup(self):
         raw=io.BytesIO()
         with tarfile.open(fileobj=raw,mode='w',format=tarfile.USTAR_FORMAT) as t:

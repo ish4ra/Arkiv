@@ -1,9 +1,14 @@
 import Foundation
 import XCTest
+import CArkiv
 #if os(Linux)
 import Glibc
 #endif
 @testable import ArkivCore
+private final class TARModeEvidence {
+    var count = 0
+    var mode: Int64 = -1
+}
 final class CompressedTARTests: XCTestCase {
     func testAllCodecsAliasesAndSharedWorkflows() throws {
         #if os(Linux)
@@ -27,6 +32,17 @@ final class CompressedTARTests: XCTestCase {
                 let entry=try XCTUnwrap(snapshot.entries.first{$0.path=="folder/é 🐘.txt"})
                 XCTAssertNil(entry.metadata.crc32)
                 XCTAssertNotNil(entry.metadata.posixMode)
+                // Check the C/Swift boundary independently of snapshot mapping.
+                let evidence = TARModeEvidence()
+                let status = arkiv_entry_metadata(snapshot.backingURL.path, { context, path, _, _, _, _, _, mode, _ in
+                    let evidence = Unmanaged<TARModeEvidence>.fromOpaque(context!).takeUnretainedValue()
+                    evidence.count += 1
+                    if path.map({ String(cString: $0) }) == "folder/é 🐘.txt" { evidence.mode = mode }
+                }, Unmanaged.passUnretained(evidence).toOpaque())
+                print("::notice title=TAR metadata boundary::status=\(status), callbacks=\(evidence.count), fixtureMode=\(evidence.mode)")
+                XCTAssertEqual(status, 0)
+                XCTAssertEqual(evidence.mode & 0o777, 0o755)
+                XCTAssertEqual(entry.metadata.posixMode.map { $0 & 0o777 }, 0o755)
                 let backing = try XCTUnwrap(snapshot.compressedTAR?.url)
                 XCTAssertEqual(backing.path, backing.resolvingSymlinksInPath().path)
                 let output=try engine.extract(snapshot,ids:[entry.id],into:root,cancellation:ArchiveCancellation(),progress:{_ in})
