@@ -18,11 +18,11 @@ class CompressedTARTests(unittest.TestCase):
                 self.assertEqual(LIB.arkiv_decompress_tar(bytes(fixtures / ('compressed.tar.' + codec)), bytes(out), 100000, self.token), 0)
                 # Independent fixture evidence, not permissions of the spool on disk.
                 with tarfile.open(out) as archive:
-                    expected = {e.name.rstrip('/'): e.mode for e in archive}
+                    expected = {unicodedata.normalize('NFC', e.name.rstrip('/')): e.mode for e in archive}
                 modes = {}
                 @METADATA
                 def metadata(_, name, packed, time, method, encrypted, crc, mode, attrs):
-                    modes[name.decode('utf8').rstrip('/')] = mode
+                    modes[unicodedata.normalize('NFC', name.decode('utf8').rstrip('/'))] = mode
                 result = LIB.arkiv_entry_metadata(bytes(out), metadata, None)
                 # Diagnose strict ancestor opening independently; never print paths.
                 fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY)

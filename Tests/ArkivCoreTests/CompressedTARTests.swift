@@ -3,6 +3,8 @@ import XCTest
 import CArkiv
 #if os(Linux)
 import Glibc
+#else
+import Darwin
 #endif
 @testable import ArkivCore
 private final class TARModeEvidence {
@@ -40,6 +42,12 @@ final class CompressedTARTests: XCTestCase {
                     if path.map({ String(cString: $0) }) == "folder/é 🐘.txt" { evidence.mode = mode }
                 }, Unmanaged.passUnretained(evidence).toOpaque())
                 print("::notice title=TAR metadata boundary::status=\(status), callbacks=\(evidence.count), fixtureMode=\(evidence.mode)")
+                if let canonical = realpath(snapshot.backingURL.path, nil) {
+                    defer { free(canonical) }
+                    let canonicalPath = String(cString: canonical)
+                    let canonicalStatus = arkiv_entry_metadata(canonicalPath, { _, _, _, _, _, _, _, _, _ in }, nil)
+                    print("::notice title=TAR POSIX path boundary::samePath=\(canonicalPath == snapshot.backingURL.path), canonicalStatus=\(canonicalStatus)")
+                }
                 XCTAssertEqual(status, 0)
                 XCTAssertEqual(evidence.mode & 0o777, 0o755)
                 XCTAssertEqual(entry.metadata.posixMode.map { $0 & 0o777 }, 0o755)
