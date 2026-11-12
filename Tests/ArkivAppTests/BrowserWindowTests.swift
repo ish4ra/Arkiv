@@ -99,7 +99,8 @@ final class BrowserWindowTests: XCTestCase {
         let archive = try ArchiveCreator().create(ArchiveCreationRequest(sources: [original], destination: root, name: "Example"),
             cancellation: ArchiveCancellation(), progress: { _ in })
         var sounds = 0
-        let controller = BrowserWindowController(modificationFeedback: { result in
+        let worker = DispatchQueue(label: "xyz.isharalakshan.arkiv.tests.zip-addition")
+        let controller = BrowserWindowController(worker: worker, modificationFeedback: { result in
             ExtractionFeedback.completed(result, play: { sounds += 1 })
         })
         defer { controller.close() }
@@ -129,7 +130,14 @@ final class BrowserWindowTests: XCTestCase {
         let bytes = try Data(contentsOf: archive)
         let another = root.appendingPathComponent("cancelled.txt")
         try Data(repeating: 65, count: 1_000_000).write(to: another)
-        controller.addItems([another]); controller.cancel(nil)
+        // A tiny transaction can commit before this thread gets to Cancel.
+        // Hold its worker until cancellation has been requested, rather than
+        // assuming two consecutive main-thread calls win a scheduling race.
+        worker.suspend()
+        controller.addItems([another])
+        XCTAssertTrue(controller.isBusy)
+        controller.cancel(nil)
+        worker.resume()
         for _ in 0..<400 {
             if !controller.isBusy { break }
             try await Task.sleep(nanoseconds: 25_000_000)

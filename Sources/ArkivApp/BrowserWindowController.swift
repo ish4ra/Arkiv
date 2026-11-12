@@ -64,9 +64,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     private let prepareOpenFile: (ArchiveOpenSession, ArchiveSnapshot, String, ArchiveCancellation, @escaping @Sendable (ArchiveProgress) -> Void) throws -> ArchiveOpenedFile
     private let requestArchivePassword: (URL, Bool, NSWindow?, @escaping (String?) -> Void) -> Void
     private let engine = LibArchiveEngine()
-    private let worker = DispatchQueue(label: "xyz.isharalakshan.arkiv.archive", qos: .userInitiated)
+    private let worker: DispatchQueue
 
-    init(columnPreferences: BrowserColumnPreferences = BrowserColumnPreferences(),
+    init(worker: DispatchQueue = DispatchQueue(label: "xyz.isharalakshan.arkiv.archive", qos: .userInitiated),
+         columnPreferences: BrowserColumnPreferences = BrowserColumnPreferences(),
          modificationFeedback: @escaping (Result<URL, Error>) -> Void = { ExtractionFeedback.completed($0) },
          quickLook: ArchiveQuickLookPresenting = ArchiveQuickLook(),
          openFileLauncher: @escaping (URL) -> Bool = { NSWorkspace.shared.open($0) },
@@ -76,6 +77,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
          requestArchivePassword: @escaping (URL, Bool, NSWindow?, @escaping (String?) -> Void) -> Void = {
              ArchivePasswordPrompt.ask(archive: $0, retry: $1, parent: $2, completion: $3)
          }) {
+        self.worker = worker
         self.columnPreferences = columnPreferences
         self.quickLook = quickLook
         self.modificationFeedback = modificationFeedback
