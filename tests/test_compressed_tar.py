@@ -22,6 +22,8 @@ class CompressedTARTests(unittest.TestCase):
                 modes = {}
                 @METADATA
                 def metadata(_, name, packed, time, method, encrypted, crc, mode, attrs):
+                    # macOS libarchive emits decomposed UTF-8; Swift paths compare
+                    # canonical Unicode equivalents. Compare the same way here.
                     modes[unicodedata.normalize('NFC', name.decode('utf8').rstrip('/'))] = mode
                 result = LIB.arkiv_entry_metadata(bytes(out), metadata, None)
                 # Diagnose strict ancestor opening independently; never print paths.
@@ -35,8 +37,7 @@ class CompressedTARTests(unittest.TestCase):
                     path_error = error.errno
                 finally:
                     os.close(fd)
-                normalized_match = any(unicodedata.normalize('NFC', name) == 'folder/é 🐘.txt' for name in modes)
-                print(f'::notice title=TAR stored permission evidence::status={result}, callbacks={len(modes)}, strictOpenErrno={path_error}, modes={list(modes.values())}, normalizedFixtureMatch={normalized_match}', flush=True)
+                self.assertEqual(path_error, 0)
                 self.assertEqual(result, 0)
                 self.assertEqual(set(modes), set(expected))
                 for name, mode in expected.items():

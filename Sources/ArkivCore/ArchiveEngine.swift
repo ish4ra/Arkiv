@@ -48,7 +48,16 @@ final class UnlockedArchive: @unchecked Sendable {
     let directory: URL
     let url: URL
     init() throws {
-        directory = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("arkiv-unlocked-" + UUID().uuidString, isDirectory: true)
+        var root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+        #if os(macOS)
+        // Foundation can retain /var or /tmp even after resolving symlinks.
+        // Match the trusted system-alias handling used by Open/creation so the
+        // strict metadata reader can open every ancestor with O_NOFOLLOW.
+        if root.path == "/var" || root.path.hasPrefix("/var/") || root.path == "/tmp" || root.path.hasPrefix("/tmp/") {
+            root = URL(fileURLWithPath: "/private" + root.path, isDirectory: true)
+        }
+        #endif
+        directory = root.appendingPathComponent("arkiv-unlocked-" + UUID().uuidString, isDirectory: true)
         url = directory.appendingPathComponent("contents.tar")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
     }

@@ -41,18 +41,16 @@ final class CompressedTARTests: XCTestCase {
                     evidence.count += 1
                     if path.map({ String(cString: $0) }) == "folder/é 🐘.txt" { evidence.mode = mode }
                 }, Unmanaged.passUnretained(evidence).toOpaque())
-                print("::notice title=TAR metadata boundary::status=\(status), callbacks=\(evidence.count), fixtureMode=\(evidence.mode)")
-                if let canonical = realpath(snapshot.backingURL.path, nil) {
-                    defer { free(canonical) }
-                    let canonicalPath = String(cString: canonical)
-                    let canonicalStatus = arkiv_entry_metadata(canonicalPath, { _, _, _, _, _, _, _, _, _ in }, nil)
-                    print("::notice title=TAR POSIX path boundary::samePath=\(canonicalPath == snapshot.backingURL.path), canonicalStatus=\(canonicalStatus)")
-                }
+                let canonical = try XCTUnwrap(realpath(snapshot.backingURL.path, nil))
+                defer { free(canonical) }
+                // Foundation URL equality/resolving alone does not prove that
+                // strict POSIX ancestor opening will avoid macOS system aliases.
+                XCTAssertEqual(snapshot.backingURL.path, String(cString: canonical))
+                XCTAssertEqual(evidence.count, snapshot.entries.count)
                 XCTAssertEqual(status, 0)
                 XCTAssertEqual(evidence.mode & 0o777, 0o755)
                 XCTAssertEqual(entry.metadata.posixMode.map { $0 & 0o777 }, 0o755)
-                let backing = try XCTUnwrap(snapshot.compressedTAR?.url)
-                XCTAssertEqual(backing.path, backing.resolvingSymlinksInPath().path)
+                XCTAssertNotNil(snapshot.compressedTAR)
                 let output=try engine.extract(snapshot,ids:[entry.id],into:root,cancellation:ArchiveCancellation(),progress:{_ in})
                 XCTAssertEqual(try Data(contentsOf:output.appendingPathComponent(entry.path)),Data("hello".utf8))
                 XCTAssertFalse(FileManager.default.fileExists(atPath:output.appendingPathComponent("nested.zip").path))

@@ -23,6 +23,10 @@ iteration, and failures remove partial output. Original source stamps are checke
 before/after inspection and before extraction. Snapshots retain the spool and
 release it when no longer needed. Existing open-file/nested/drag lifetime rules
 continue to apply; no password is stored.
+On macOS the private spool uses the physical `/private/var` or `/private/tmp`
+location for system temporary aliases: Foundation's symlink-resolution API alone
+can retain the alias. This preserves the metadata reader's strict no-symlink
+ancestor checks; stored TAR permissions still come only from archive headers.
 
 This is **not random access**. Initial open reads the entire compressed stream and
 uses temporary disk space; later operations scan its TAR representation. TAR must
