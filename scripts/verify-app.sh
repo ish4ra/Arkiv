@@ -28,6 +28,17 @@ case "$architecture" in
     ;;
   *) fail 'Unsupported architecture; use arm64, x86_64, or universal.' ;;
 esac
+# Check each slice, not just the host architecture: a native test can pass while
+# a Universal slice accidentally links a runner-local compression library.
+for arch in $actual; do
+  libraries=$(otool -arch "$arch" -L "$binary")
+  for library in libz.1.dylib libbz2.1.0.dylib liblzma.5.dylib; do
+    printf '%s\n' "$libraries" | grep -Fq $'\t/usr/lib/'"$library (" || fail "Missing system decoder $library in $arch slice."
+  done
+  if printf '%s\n' "$libraries" | grep -Eq '/usr/local/|/opt/'; then
+    fail "App $arch slice depends on a non-system host library."
+  fi
+done
 seven="$app/Contents/Frameworks/libArkivSeven.dylib"
 [[ -s "$seven" && ! -L "$seven" ]] || fail 'Bundled 7z engine is missing.'
 [[ -s "$app/Contents/Resources/licenses/7zip-License.txt" && -s "$app/Contents/Resources/licenses/7zip-LGPL.txt" ]] || fail '7-Zip licenses are missing.'

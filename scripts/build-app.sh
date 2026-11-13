@@ -10,6 +10,7 @@ case "$architecture" in
   universal) architectures=(arm64 x86_64) ;;
   *) echo 'ARKIV_ARCH must be arm64, x86_64, or universal.' >&2; exit 1 ;;
 esac
+sdk=$(xcrun --sdk macosx --show-sdk-path)
 mkdir -p build
 slices=$(mktemp -d "$PWD/build/app-slices.XXXXXX")
 trap 'rm -rf "$slices"' EXIT
@@ -20,8 +21,8 @@ for arch in "${architectures[@]}"; do
   cp ".build/sevenzip-$arch/libArkivSeven.dylib" .build/sevenzip/libArkivSeven.dylib
   cp ".build/sevenzip-$arch/libArkivSeven.dylib" "$slices/libArkivSeven-$arch.dylib"
   stage="compile-$arch"
-  swift build -c release --arch "$arch" -Xlinker -L"$PWD/.build/sevenzip"
-  binary_dir=$(swift build -c release --arch "$arch" -Xlinker -L"$PWD/.build/sevenzip" --show-bin-path)
+  swift build -c release --sdk "$sdk" --arch "$arch" -Xlinker -L"$PWD/.build/sevenzip"
+  binary_dir=$(swift build -c release --sdk "$sdk" --arch "$arch" -Xlinker -L"$PWD/.build/sevenzip" --show-bin-path)
   stage="check-slice-$arch"
   cp "$binary_dir/Arkiv" "$slices/Arkiv-$arch"
   lipo "$slices/Arkiv-$arch" -verify_arch "$arch"

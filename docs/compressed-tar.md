@@ -15,6 +15,19 @@ upstream XZ uses an unlimited decoder-memory budget. Arkiv instead validates
 checksums through the dedicated decoders and limits XZ decoder memory to 64 MiB.
 XZ streams with no integrity check or unsupported checks are rejected.
 
+macOS links the versioned Apple system decoder install names explicitly:
+`/usr/lib/libz.1.dylib`, `/usr/lib/libbz2.1.0.dylib` and
+`/usr/lib/liblzma.5.dylib`. Apple's linker resolves these inputs through the
+selected macOS SDK (including its arm64 and x86_64 stubs), rather than searching
+runner-local `-L` directories for `-llzma`. This avoids an Intel Homebrew library
+shadowing the SDK during a Universal cross-build. The app uses the supported
+macOS system libraries at runtime; no Homebrew installation or bundled XZ binary
+is required. API headers and their existing licenses are unchanged.
+
+CI links real decoder API probes for both architectures with a deliberately
+conflicting x86_64-only local liblzma, executes the native probe, and checks the
+packaged application's decoder load commands separately for every slice.
+
 Inspection sequentially decompresses into the existing owned private spool
 (0700 directory, 0600 file), bounded to 20 GiB including TAR metadata and padding.
 TAR entry/output limits and all existing extraction safeguards still apply.

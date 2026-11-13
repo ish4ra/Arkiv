@@ -2,10 +2,20 @@
 import PackageDescription
 var dependencies: [Package.Dependency] = []
 var products: [Product] = [.library(name: "ArkivCore", targets: ["ArkivCore"])]
+// Pin Apple system decoders instead of letting -l search runner-local/Homebrew
+// libraries. ld resolves these absolute system inputs through the selected SDK.
+var compressionLibraries: [LinkerSetting] = [.linkedLibrary("z"), .linkedLibrary("bz2"), .linkedLibrary("lzma")]
+#if os(macOS)
+compressionLibraries = [.unsafeFlags([
+    "-Xlinker", "/usr/lib/libz.1.dylib",
+    "-Xlinker", "/usr/lib/libbz2.1.0.dylib",
+    "-Xlinker", "/usr/lib/liblzma.5.dylib"
+])]
+#endif
 var targets: [Target] = [
     .target(name: "ArkivFinderIntegration"),
     .testTarget(name: "ArkivFinderIntegrationTests", dependencies: ["ArkivFinderIntegration"]),
-    .target(name: "CArkiv", cSettings: [.headerSearchPath("vendor/xz")], linkerSettings: [.linkedLibrary("z"), .linkedLibrary("bz2"), .linkedLibrary("lzma")] + [.linkedLibrary("archive"), .linkedLibrary("ArkivSeven")]),
+    .target(name: "CArkiv", cSettings: [.headerSearchPath("vendor/xz")], linkerSettings: compressionLibraries + [.linkedLibrary("archive"), .linkedLibrary("ArkivSeven")]),
     .target(name: "ArkivCore", dependencies: ["CArkiv", "ArkivFinderIntegration"]),
     .testTarget(name: "ArkivCoreTests", dependencies: ["ArkivCore"]),
     .target(name: "ArkivPresentation", dependencies: ["ArkivCore"]),
