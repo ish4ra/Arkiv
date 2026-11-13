@@ -8,7 +8,15 @@ import tempfile
 import unittest
 import zipfile
 
-LIB = C.CDLL(os.environ['ARKIV_TEST_LIBRARY'])
+try:
+    LIB = C.CDLL(os.environ['ARKIV_TEST_LIBRARY'])
+except OSError as error:
+    # This occurs before any archive/password input is read. Preserve the actual
+    # loader reason for CI diagnosis, with the checkout path redacted.
+    message = str(error).replace(str(Path.cwd()), '<checkout>')
+    message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+    print('::error title=Arkiv engine loader::' + message, flush=True)
+    raise
 class Limits(C.Structure):
     _fields_ = [('entries', C.c_uint64), ('bytes', C.c_uint64)]
 ENTRY = C.CFUNCTYPE(C.c_int, C.c_void_p, C.c_int64, C.c_char_p, C.c_int64, C.c_int)
