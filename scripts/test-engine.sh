@@ -8,11 +8,11 @@ export DYLD_LIBRARY_PATH="$PWD/.build/sevenzip${DYLD_LIBRARY_PATH:+:$DYLD_LIBRAR
 if [[ $(uname -s) == Darwin ]]; then
   library=.build/engine-tests/libarkiv.dylib
   sdk=$(xcrun --sdk macosx --show-sdk-path)
-  for library in libz.1 libbz2.1.0 liblzma.5; do
-    if [[ -f "$sdk/usr/lib/$library.tbd" ]]; then
-      echo "::notice title=Arkiv SDK decoder evidence::$library stub present"
+  for decoder in libz.1 libbz2.1.0 liblzma.5; do
+    if [[ -f "$sdk/usr/lib/$decoder.tbd" ]]; then
+      echo "::notice title=Arkiv SDK decoder evidence::$decoder stub present"
     else
-      echo "::error title=Arkiv SDK decoder evidence::$library stub absent"
+      echo "::error title=Arkiv SDK decoder evidence::$decoder stub absent"
       exit 1
     fi
   done
