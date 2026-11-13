@@ -13,8 +13,16 @@ SYSTEM_LIBRARIES = ('libz.1.dylib', 'libbz2.1.0.dylib', 'liblzma.5.dylib')
 @unittest.skipUnless(platform.system() == 'Darwin', 'Requires the real macOS SDK/linker')
 class DecoderLinkingTests(unittest.TestCase):
     def test_both_slices_ignore_host_library_and_use_system_decoders(self):
+        print('::notice title=Arkiv decoder link regression::Resolving SDK', flush=True)
         sdk = subprocess.check_output(['xcrun', '--sdk', 'macosx', '--show-sdk-path'], text=True).strip()
-        package = json.loads(subprocess.check_output(['swift', 'package', 'dump-package'], cwd=ROOT))
+        print('::notice title=Arkiv decoder link regression::Reading package link settings', flush=True)
+        manifest = subprocess.run(['swift', 'package', 'dump-package'], cwd=ROOT, capture_output=True, text=True)
+        if manifest.returncode:
+            for phrase in ['cannot be used within an App Sandbox', 'Operation not permitted', 'Invalid manifest', 'SDK must provide', 'Select an installed macOS SDK']:
+                if phrase.lower() in manifest.stderr.lower():
+                    print('::error title=Arkiv decoder manifest diagnostic::' + phrase, flush=True)
+        manifest.check_returncode()
+        package = json.loads(manifest.stdout)
         target = next(t for t in package['targets'] if t['name'] == 'CArkiv')
         flags = []
         for setting in target['settings']:
@@ -25,11 +33,13 @@ class DecoderLinkingTests(unittest.TestCase):
                 flags += kind['unsafeFlags']['_0']
             elif 'linkedLibrary' in kind and kind['linkedLibrary']['_0'] in ('z', 'bz2', 'lzma'):
                 flags += ['-l' + kind['linkedLibrary']['_0']]
+        print('::notice title=Arkiv decoder link regression::Package link settings parsed', flush=True)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             # A host-only library earlier on -L must never shadow the SDK.
             decoy = root / 'decoy.c'
             decoy.write_text('void arkiv_decoy(void) {}\n')
+            print('::notice title=Arkiv decoder link regression::Building conflicting host library', flush=True)
             subprocess.run(['xcrun', 'clang', '-isysroot', sdk, '-arch', 'x86_64',
                             '-dynamiclib', str(decoy), '-o', str(root / 'liblzma.dylib'),
                             '-Wl,-install_name,/usr/local/lib/liblzma.dylib'], check=True)
@@ -48,6 +58,7 @@ int main(void) {
 ''')
             for arch in ('arm64', 'x86_64'):
                 with self.subTest(architecture=arch):
+                    print('::notice title=Arkiv decoder link regression::Linking ' + arch, flush=True)
                     binary = root / arch
                     # Package flags use Swift driver's -Xlinker spelling, also
                     # accepted by clang. No extra SDK -L directory masks a bug.
@@ -62,6 +73,7 @@ int main(void) {
                     for name in SYSTEM_LIBRARIES:
                         self.assertIn('/usr/lib/' + name, dependencies)
                     self.assertFalse(any('/usr/local/' in p or '/opt/' in p for p in dependencies))
+                    print('::notice title=Arkiv decoder link regression::Verified system dependencies for ' + arch, flush=True)
                     if arch == platform.machine():
                         subprocess.run([str(binary)], check=True)
 

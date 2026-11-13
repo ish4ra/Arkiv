@@ -21,6 +21,7 @@ else
   library=.build/engine-tests/libarkiv.so
   cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Werror -shared -fPIC ${ARKIV_CFLAGS:-} -I Sources/CArkiv/include -I Sources/CArkiv/vendor/xz Sources/CArkiv/ArkivArchive.c Sources/CArkiv/ArkivOpenWorkspace.c Sources/CArkiv/ArkivCompressedTAR.c -Wl,-l:libarchive.so.13 -lz -Wl,-l:libbz2.so.1 -Wl,-l:liblzma.so.5 -L .build/sevenzip -lArkivSeven -Wl,-rpath,"$PWD/.build/sevenzip" -o "$library"
 fi
+echo "::notice title=Arkiv engine link evidence::Engine library linked"
 ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_engine.py -v
 
 ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_creation.py -v
