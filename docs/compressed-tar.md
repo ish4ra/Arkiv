@@ -15,12 +15,14 @@ upstream XZ uses an unlimited decoder-memory budget. Arkiv instead validates
 checksums through the dedicated decoders and limits XZ decoder memory to 64 MiB.
 XZ streams with no integrity check or unsupported checks are rejected.
 
-macOS links the versioned Apple system decoder install names explicitly:
-`/usr/lib/libz.1.dylib`, `/usr/lib/libbz2.1.0.dylib` and
-`/usr/lib/liblzma.5.dylib`. Apple's linker resolves these inputs through the
-selected macOS SDK (including its arm64 and x86_64 stubs), rather than searching
-runner-local `-L` directories for `-llzma`. This avoids an Intel Homebrew library
-shadowing the SDK during a Universal cross-build. The app uses the supported
+macOS links the decoder `.tbd` files explicitly from the SDK selected by
+`xcrun --sdk macosx --show-sdk-path`. Both SwiftPM and the engine test build use
+`libz.1.tbd`, `libbz2.1.0.tbd` and `liblzma.5.tbd`; missing SDK stubs fail closed.
+This avoids runner-local `-L` searches for `-llzma` and linker-specific rewriting
+of absolute host library paths. An Intel Homebrew library cannot shadow these
+SDK inputs during a Universal cross-build. The stubs declare the runtime install
+names `/usr/lib/libz.1.dylib`, `/usr/lib/libbz2.1.0.dylib` and
+`/usr/lib/liblzma.5.dylib`. The app uses the supported
 macOS system libraries at runtime; no Homebrew installation or bundled XZ binary
 is required. API headers and their existing licenses are unchanged.
 

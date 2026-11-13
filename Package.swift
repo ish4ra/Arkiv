@@ -2,15 +2,24 @@
 import PackageDescription
 var dependencies: [Package.Dependency] = []
 var products: [Product] = [.library(name: "ArkivCore", targets: ["ArkivCore"])]
-// Pin Apple system decoders instead of letting -l search runner-local/Homebrew
-// libraries. ld resolves these absolute system inputs through the selected SDK.
+// Pin Apple SDK decoder stubs instead of letting -l search runner-local/Homebrew
+// libraries or depending on linker-specific rewriting of absolute /usr/lib paths.
 var compressionLibraries: [LinkerSetting] = [.linkedLibrary("z"), .linkedLibrary("bz2"), .linkedLibrary("lzma")]
 #if os(macOS)
-compressionLibraries = [.unsafeFlags([
-    "-Xlinker", "/usr/lib/libz.1.dylib",
-    "-Xlinker", "/usr/lib/libbz2.1.0.dylib",
-    "-Xlinker", "/usr/lib/liblzma.5.dylib"
-])]
+import Foundation
+let sdkQuery = Process()
+sdkQuery.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+sdkQuery.arguments = ["--sdk", "macosx", "--show-sdk-path"]
+let sdkOutput = Pipe()
+sdkQuery.standardOutput = sdkOutput
+try sdkQuery.run()
+let sdkData = sdkOutput.fileHandleForReading.readDataToEndOfFile()
+sdkQuery.waitUntilExit()
+let sdk = String(decoding: sdkData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+precondition(sdkQuery.terminationStatus == 0 && !sdk.isEmpty, "Select an installed macOS SDK with xcode-select.")
+let decoderStubs = ["libz.1", "libbz2.1.0", "liblzma.5"].map { sdk + "/usr/lib/" + $0 + ".tbd" }
+precondition(decoderStubs.allSatisfy { FileManager.default.fileExists(atPath: $0) }, "The selected macOS SDK must provide all system decoder stubs.")
+compressionLibraries = [.unsafeFlags(decoderStubs.flatMap { ["-Xlinker", $0] })]
 #endif
 var targets: [Target] = [
     .target(name: "ArkivFinderIntegration"),

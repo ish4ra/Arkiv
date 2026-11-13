@@ -12,10 +12,11 @@ if [[ $(uname -s) == Darwin ]]; then
     if [[ -f "$sdk/usr/lib/$library.tbd" ]]; then
       echo "::notice title=Arkiv SDK decoder evidence::$library stub present"
     else
-      echo "::notice title=Arkiv SDK decoder evidence::$library stub absent"
+      echo "::error title=Arkiv SDK decoder evidence::$library stub absent"
+      exit 1
     fi
   done
-  xcrun --sdk macosx clang -isysroot "$sdk" -std=c11 -Wall -Wextra -Werror -dynamiclib -I Sources/CArkiv/include -I Sources/CArkiv/vendor/xz Sources/CArkiv/ArkivArchive.c Sources/CArkiv/ArkivOpenWorkspace.c Sources/CArkiv/ArkivCompressedTAR.c -larchive -Wl,/usr/lib/libz.1.dylib -Wl,/usr/lib/libbz2.1.0.dylib -Wl,/usr/lib/liblzma.5.dylib -L .build/sevenzip -lArkivSeven -Wl,-rpath,"$PWD/.build/sevenzip" -o "$library"
+  xcrun --sdk macosx clang -isysroot "$sdk" -std=c11 -Wall -Wextra -Werror -dynamiclib -I Sources/CArkiv/include -I Sources/CArkiv/vendor/xz Sources/CArkiv/ArkivArchive.c Sources/CArkiv/ArkivOpenWorkspace.c Sources/CArkiv/ArkivCompressedTAR.c -larchive -Xlinker "$sdk/usr/lib/libz.1.tbd" -Xlinker "$sdk/usr/lib/libbz2.1.0.tbd" -Xlinker "$sdk/usr/lib/liblzma.5.tbd" -L .build/sevenzip -lArkivSeven -Wl,-rpath,"$PWD/.build/sevenzip" -o "$library"
 else
   library=.build/engine-tests/libarkiv.so
   cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Werror -shared -fPIC ${ARKIV_CFLAGS:-} -I Sources/CArkiv/include -I Sources/CArkiv/vendor/xz Sources/CArkiv/ArkivArchive.c Sources/CArkiv/ArkivOpenWorkspace.c Sources/CArkiv/ArkivCompressedTAR.c -Wl,-l:libarchive.so.13 -lz -Wl,-l:libbz2.so.1 -Wl,-l:liblzma.so.5 -L .build/sevenzip -lArkivSeven -Wl,-rpath,"$PWD/.build/sevenzip" -o "$library"
