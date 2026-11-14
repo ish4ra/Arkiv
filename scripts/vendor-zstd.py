@@ -11,6 +11,6 @@ with tempfile.TemporaryDirectory() as temporary:
     archive.write_bytes(data)
     with tarfile.open(archive) as tar: tar.extractall(work,filter='data')
     source=work/'zstd-1.5.7'; target=ROOT/'Sources/CZstd'
-    subprocess.run(['python3',str(source/'build/single_file_libs/combine.py'),'-r',str(source/'lib'),'-x','legacy/zstd_legacy.h','-k','zstd.h','-o',str(target/'zstd.c'),str(source/'build/single_file_libs/zstd-in.c')],check=True)
+    subprocess.run(['python3',str(source/'build/single_file_libs/combine.py'),'-r',str(source/'lib'),'-x','legacy/zstd_legacy.h','-o',str(target/'zstd.c'),str(source/'build/single_file_libs/zstd-in.c')],check=True)
     for name in ['zstd.h','zstd_errors.h']:(target/'include'/name).write_bytes((source/'lib'/name).read_bytes())
     (ROOT/'licenses/zstd-LICENSE.txt').write_bytes((source/'LICENSE').read_bytes())

@@ -1,5 +1,5 @@
 """Pinned decoder policy against independently generated Zstandard fixtures."""
-import ctypes as C, os, struct, unittest, hashlib, json, random
+import ctypes as C, os, struct, unittest, hashlib, json, random, subprocess
 from pathlib import Path
 from test_standalone import StandaloneTests, LIB, PROGRESS, Limits
 from test_tar_creation import TARCreationTests
@@ -15,6 +15,13 @@ class ZstandardTests(StandaloneTests):
         root=Path(__file__).resolve().parents[1]
         for path,digest in json.loads((root/"Sources/CZstd/checksums.json").read_text()).items():
             self.assertEqual(hashlib.sha256((root/path).read_bytes()).hexdigest(),digest,path)
+    def test_no_accidental_host_zstd_headers(self):
+        root=Path(__file__).resolve().parents[1]
+        for source in ['Sources/CZstd/zstd.c','Sources/CArkiv/ArkivCompressedTAR.c']:
+            deps=subprocess.check_output(['cc','-M','-I',str(root/'Sources/CZstd/include'),'-I',str(root/'Sources/CArkiv/include'),'-I',str(root/'Sources/CArkiv/vendor/xz'),str(root/source)],text=True)
+            for dependency in deps.split():
+                if dependency.endswith(('/zstd.h','/zstd_errors.h')):
+                    self.assertEqual(Path(dependency).resolve().parent,root/'Sources/CZstd/include')
     def test_creation_independent_decoders_and_no_overwrite(self):
         for raw in (b'',b'hello',bytes(range(256))*4096,random.Random(42).randbytes(300000)):
             for p in self.dest.iterdir():

@@ -14,7 +14,7 @@ implementation with its retained BSD notice.
 
 `Sources/CZstd` contains the unmodified output of the official
 [amalgamation tool](https://github.com/facebook/zstd/tree/v1.5.7/build/single_file_libs)
-and public headers, not the CLI or an unrelated compression suite. SwiftPM
+with its internal header fully inlined, plus public headers for Arkiv callers, not the CLI or an unrelated compression suite. SwiftPM
 compiles this C target into each app slice. It is statically linked; no external
 `libzstd`, Homebrew installation, subprocess, or download is needed at runtime.
 `scripts/vendor-zstd.py` reproduces the source from the pinned archive with SHA256
