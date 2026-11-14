@@ -45,9 +45,14 @@ class DecoderLinkingTests(unittest.TestCase):
                             '-Wl,-install_name,/usr/local/lib/liblzma.dylib'], check=True)
             probe = root / 'probe.c'
             probe.write_text('''#include <zlib.h>
+#include <zstd.h>
 #include "bzlib.h"
 #include "xz/lzma.h"
 int main(void) {
+    unsigned char zpacked[128], zplain[16];
+    size_t zn=ZSTD_compress(zpacked,sizeof(zpacked),"Arkiv",5,3);
+    if (ZSTD_isError(zn) || ZSTD_decompress(zplain,sizeof(zplain),zpacked,zn)!=5) return 11;
+    if (ZSTD_versionNumber()!=10507) return 12;
     if (!zlibVersion() || !BZ2_bzlibVersion()) return 1;
     lzma_stream stream = LZMA_STREAM_INIT;
     if (lzma_stream_decoder(&stream, 64ULL * 1024 * 1024, 0) != LZMA_OK) return 2;
@@ -84,13 +89,14 @@ int main(void) {
                                     '-mmacosx-version-min=13.0', '-L' + str(root),
                                     '-I', str(ROOT / 'Sources/CArkiv/vendor'),
                                     '-I', str(ROOT / 'Sources/CArkiv/vendor/xz'),
-                                    str(probe), *flags, '-o', str(binary)], check=True)
+                                    '-I', str(ROOT / 'Sources/CZstd/include'),
+                                    str(ROOT / 'Sources/CZstd/zstd.c'), str(probe), *flags, '-o', str(binary)], check=True)
                     subprocess.run(['lipo', str(binary), '-verify_arch', arch], check=True)
                     linked = subprocess.check_output(['otool', '-L', str(binary)], text=True)
                     dependencies = [line.strip().split(' (')[0] for line in linked.splitlines()[1:]]
                     for name in SYSTEM_LIBRARIES:
                         self.assertIn('/usr/lib/' + name, dependencies)
-                    self.assertFalse(any('/usr/local/' in p or '/opt/' in p for p in dependencies))
+                    self.assertFalse(any('/usr/local/' in p or '/opt/' in p or 'libzstd' in p for p in dependencies))
                     print('::notice title=Arkiv decoder link regression::Verified system dependencies for ' + arch, flush=True)
                     if arch == platform.machine():
                         subprocess.run([str(binary)], check=True)

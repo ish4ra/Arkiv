@@ -10,6 +10,7 @@ These are **fixture results on Linux with libarchive 3.7.4 and in [macOS CI](htt
 | RAR5 | One stored upstream fixture, byte-for-byte extraction | Never create RAR | Not implemented |
 | RAR4 | Decoder registered; no fixture validation yet | Not implemented | Not implemented |
 | GZIP / BZIP2 / XZ standalone | One logical regular file, complete bounded checksum validation; Open/Quick Look/drag | Single-file creation, fixed levels 6/9/6; no editing | No encryption; one complete stream only; [limits](standalone-compression.md) |
+| ZSTD / TAR.ZST / TZST | Bounded single standard frame, standalone or actual decoded TAR; optional checksum handled honestly | Single-file ZSTD or shared PAX TAR + ZSTD; no editing | Level 3 with checksum; no external dictionaries/encryption/multipart; [policy](zstandard.md) |
 | All other spec formats | Deferred, not advertised | Not implemented | Not implemented |
 
 An accepted file extension does not prove a compression method is available. 7z encrypted extraction is supported through the bundled backend; encrypted ZIP remains rejected. ZIPX, solid/multipart RAR and advanced 7z compatibility require dedicated fixtures before support claims. The app initially registers only ZIP/TAR document associations.
@@ -42,3 +43,5 @@ ZIP creation details and validation: [creation.md](creation.md).
 ## Compressed TAR
 
 Single-stream gzip/bzip2/XZ TAR reading uses bounded system decoders plus the existing TAR engine. See [evidence and limits](compressed-tar.md). Creation supports the same wrappers and aliases through the shared PAX TAR writer and bounded encoders. Standalone GZIP/BZIP2/XZ is separately supported for one file, without fabricated TAR headers; see [standalone policy](standalone-compression.md). TAR editing remains unavailable.
+
+ZSTD uses the pinned bundled backend rather than system decoders. See [Zstandard](zstandard.md) for frame, memory, checksum and TAR-content detection policy.

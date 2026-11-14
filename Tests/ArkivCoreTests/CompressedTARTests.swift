@@ -21,7 +21,7 @@ final class CompressedTARTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at:root) }
         let fixtures=URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("tests/fixtures")
         let engine=LibArchiveEngine()
-        for (codec,aliases) in [("gz",["tar.gz","tgz"]),("bz2",["tar.bz2","tbz2"]),("xz",["tar.xz","txz"])] {
+        for (codec,aliases) in [("gz",["tar.gz","tgz"]),("bz2",["tar.bz2","tbz2"]),("xz",["tar.xz","txz"]),("zst",["tar.zst","tzst"])] {
             let empty=try engine.inspect(fixtures.appendingPathComponent("empty.tar."+codec),cancellation:ArchiveCancellation())
             XCTAssertTrue(empty.entries.isEmpty)
             XCTAssertThrowsError(try engine.inspect(fixtures.appendingPathComponent("invalid-inner.tar."+codec),cancellation:ArchiveCancellation()))

@@ -11,7 +11,7 @@ import tempfile
 FORMATS = {'ZIP': 'public.zip-archive', 'TAR': 'public.tar-archive',
            '7z': 'org.7-zip.7-zip-archive', 'RAR': 'com.rarlab.rar-archive'}
 
-STREAM_FORMATS = {'org.gnu.gnu-zip-archive': 'gz', 'public.bzip2-archive': 'bz2', 'org.tukaani.xz-archive': 'xz'}
+STREAM_FORMATS = {'org.gnu.gnu-zip-archive': 'gz', 'public.bzip2-archive': 'bz2', 'org.tukaani.xz-archive': 'xz', 'org.zstandard.zstd': 'zst'}
 
 def verify_metadata(info):
     assert info['CFBundleIconFile'] == 'Arkiv'
@@ -31,7 +31,7 @@ def verify_metadata(info):
         assert len(matches) == 1
         assert matches[0]['CFBundleTypeRole'] == 'Viewer' and matches[0]['LSHandlerRank'] == 'Alternate'
         assert 'CFBundleTypeIconFile' not in matches[0], 'No new document artwork claimed'
-        assert imported[uti]['UTTypeTagSpecification']['public.filename-extension'] == [ext]
+        assert imported[uti]['UTTypeTagSpecification']['public.filename-extension'] == ([ext, 'tzst'] if ext == 'zst' else [ext])
         assert imported[uti]['UTTypeConformsTo'] == ['public.archive']
     for name, ext in [('7z', '7z'), ('RAR', 'rar')]:
         assert imported[FORMATS[name]]['UTTypeTagSpecification']['public.filename-extension'] == [ext]

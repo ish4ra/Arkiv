@@ -2,7 +2,7 @@ import Foundation
 import CArkiv
 
 public enum ArchiveFormat: Sendable, CaseIterable {
-    case zip, sevenZip, tar, tarGzip, tgz, tarBzip2, tbz2, tarXZ, txz, gzip, bzip2, xz
+    case zip, sevenZip, tar, tarGzip, tgz, tarBzip2, tbz2, tarXZ, txz, gzip, bzip2, xz, zstd, tarZstd, tzst
     public var fileExtension: String {
         switch self {
         case .zip: return ".zip"
@@ -17,6 +17,9 @@ public enum ArchiveFormat: Sendable, CaseIterable {
         case .gzip: return ".gz"
         case .bzip2: return ".bz2"
         case .xz: return ".xz"
+        case .zstd: return ".zst"
+        case .tarZstd: return ".tar.zst"
+        case .tzst: return ".tzst"
         }
     }
     public var title: String {
@@ -31,21 +34,24 @@ public enum ArchiveFormat: Sendable, CaseIterable {
         case .gzip: name = "GZIP (single file)"
         case .bzip2: name = "BZIP2 (single file)"
         case .xz: name = "XZ (single file)"
+        case .zstd: name = "ZSTD (single file)"
+        case .tarZstd, .tzst: name = "TAR + ZSTD"
         }
         return "\(name) (\(fileExtension))"
     }
     var tarCodec: Int32? {
         switch self {
-        case .zip, .sevenZip, .gzip, .bzip2, .xz: return nil
+        case .zip, .sevenZip, .gzip, .bzip2, .xz, .zstd: return nil
         case .tar: return 0
         case .tarGzip, .tgz: return 1
         case .tarBzip2, .tbz2: return 2
         case .tarXZ, .txz: return 3
+        case .tarZstd, .tzst: return 4
         }
     }
     public var isStandalone: Bool { streamCodec != nil }
     var streamCodec: Int32? {
-        switch self { case .gzip: return 1; case .bzip2: return 2; case .xz: return 3; default: return nil }
+        switch self { case .gzip: return 1; case .bzip2: return 2; case .xz: return 3; case .zstd: return 4; default: return nil }
     }
     public var compressionDescription: String {
         switch self {
@@ -55,6 +61,7 @@ public enum ArchiveFormat: Sendable, CaseIterable {
         case .tarGzip, .tgz, .gzip: return "gzip · level 6"
         case .tarBzip2, .tbz2, .bzip2: return "bzip2 · level 9"
         case .tarXZ, .txz, .xz: return "XZ · LZMA2 level 6"
+        case .tarZstd, .tzst, .zstd: return "ZSTD · level 3 · checksum"
         }
     }
 }

@@ -170,3 +170,7 @@ regular file only. They retain its full basename/extension and use fixed levels
 require a container such as TAR. Core enforces this independently of UI. The same
 bounded codecs, source pinning, decoded byte comparison and exclusive publication
 protect creation; [policy, metadata and compatibility details](standalone-compression.md).
+
+## Zstandard
+
+Create Archive and Finder Add to Archive also offer **ZSTD (.zst)** for exactly one regular file, and **TAR + ZSTD (.tar.zst / .tzst)** for files/folders. Both use the existing transactional creators, level 3, an 8 MiB window, a single codec thread and content checksum; no encryption or advanced controls. ZIP stays the default. See [ZSTD limits and verification](zstandard.md).

@@ -13,7 +13,7 @@ final class StandaloneStreamTests: XCTestCase {
     func testIndependentStreamsMetadataExtractionOpenQuickLookAndDrag() throws {
         let root = try temporary(); defer { try? FileManager.default.removeItem(at: root) }
         let engine = LibArchiveEngine()
-        for (ext, codec) in [("gz", "GZIP"), ("bz2", "BZIP2"), ("xz", "XZ")] {
+        for (ext, codec) in [("gz", "GZIP"), ("bz2", "BZIP2"), ("xz", "XZ"), ("zst", "ZSTD")] {
             for name in ["資料 é 🐘.sql." + ext, "misleading.zip", "opaque.tar." + ext] {
                 let archive = root.appendingPathComponent(name)
                 try Data(contentsOf: fixtures.appendingPathComponent("standalone.sql." + ext)).write(to: archive)
@@ -86,7 +86,7 @@ final class StandaloneStreamTests: XCTestCase {
         let folder = root.appendingPathComponent("folder")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
         let engine = LibArchiveEngine()
-        for format: ArchiveFormat in [.gzip, .bzip2, .xz] {
+        for format: ArchiveFormat in [.gzip, .bzip2, .xz, .zstd] {
             for data in [Data(), Data("hello".utf8), bytes] {
                 try data.write(to: source)
                 let url = try ArchiveCreator().create(.init(sources: [source], destination: root, name: "é 🐘.sql", format: format), cancellation: .init(), progress: { _ in })

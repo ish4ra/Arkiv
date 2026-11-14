@@ -11,6 +11,7 @@ binary="$app/Contents/MacOS/Arkiv"
 [[ -x "$binary" ]] || fail 'App executable is missing or not executable.'
 [[ -s "$app/Contents/Resources/Arkiv.icns" ]] || fail 'Original app icon is missing.'
 [[ -s "$app/Contents/Resources/ThirdPartyNotices.txt" ]] || fail 'Third-party notices are missing.'
+[[ -s "$app/Contents/Resources/licenses/zstd-LICENSE.txt" ]] || fail 'Zstandard BSD license is missing.'
 [[ -s "$app/Contents/Resources/licenses/libarchive-COPYING.txt" ]] || fail 'Libarchive license is missing.'
 python3 scripts/render-completion-sound.py --verify "$app/Contents/Resources/Arkiv-Extraction-Complete.wav"
 swift scripts/verify-completion-sound.swift "$app/Contents/Resources/Arkiv-Extraction-Complete.wav"
@@ -35,7 +36,7 @@ for arch in $actual; do
   for library in libz.1.dylib libbz2.1.0.dylib liblzma.5.dylib; do
     printf '%s\n' "$libraries" | grep -Fq $'\t/usr/lib/'"$library (" || fail "Missing system decoder $library in $arch slice."
   done
-  if printf '%s\n' "$libraries" | grep -Eq '/usr/local/|/opt/'; then
+  if printf '%s\n' "$libraries" | grep -Eq '/usr/local/|/opt/|libzstd'; then
     fail "App $arch slice depends on a non-system host library."
   fi
 done

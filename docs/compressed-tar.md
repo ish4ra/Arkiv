@@ -76,3 +76,5 @@ On a real Mac, open each variant; browse/search; test; extract selected/all; pre
 Space and open a regular entry; open nested.zip; drag entries to Finder; cancel a
 large open. Confirm the archive is read-only, CRC remains blank, and temporary
 space is released after closing archive windows. Visual/UI acceptance is manual.
+
+ZSTD-compressed TAR (`.tar.zst`, `.tzst`) now uses the same TAR/spool workflows with a pinned static decoder. Its optional checksum and memory policy are documented separately in [zstandard.md](zstandard.md); the gzip/bzip2/XZ policies above are unchanged.

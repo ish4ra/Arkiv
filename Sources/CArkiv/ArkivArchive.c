@@ -669,7 +669,7 @@ static int create_archive(const char *const *sources, size_t count, const char *
                      arkiv_cancel *token, arkiv_progress_callback progress, void *context,
                      char *error, size_t capacity, int format, const char *password, int headers, const char *prefix, const char *root, int omit_root, const int *methods, int level, uint32_t dictionary, unsigned threads, int solid, uint64_t block) {
     int seven = format == 1, tar = format >= 2, codec = format - 2;
-    if (format < 0 || format > 5 || (tar && (password || prefix[0] || root || methods)))
+    if (format < 0 || format > 6 || (tar && (password || prefix[0] || root || methods)))
         return fail(error, capacity, "Invalid TAR creation options.");
     if ((!seven && (dictionary || threads!=2 || solid || block)) || (seven && !arkiv_seven_solid_memory(level,dictionary,threads,0,solid,block)))
         return fail(error, capacity, "Unsupported 7z dictionary or thread count.");
@@ -682,8 +682,8 @@ static int create_archive(const char *const *sources, size_t count, const char *
     if (cancelled(token)) return 2;
     const char *suffix = seven ? ".7z" : ".zip";
     if (tar) {
-        const char *suffixes[] = { ".tar", ".tar.gz", ".tar.bz2", ".tar.xz" };
-        const char *aliases[] = { ".tar", ".tgz", ".tbz2", ".txz" };
+        const char *suffixes[] = { ".tar", ".tar.gz", ".tar.bz2", ".tar.xz", ".tar.zst" };
+        const char *aliases[] = { ".tar", ".tgz", ".tbz2", ".txz", ".tzst" };
         suffix = suffixes[codec];
         size_t n = strlen(name), alias = strlen(aliases[codec]);
         if (n > alias && !strcmp(name + n - alias, aliases[codec])) suffix = aliases[codec];
@@ -1669,7 +1669,7 @@ int arkiv_entry_metadata(const char *path, arkiv_metadata_callback cb, void *ctx
 int arkiv_create_tar(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int codec, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity) {
- if (codec < 0 || codec > 3) return fail(error,capacity,"Unsupported TAR compression.");
+ if (codec < 0 || codec > 4) return fail(error,capacity,"Unsupported TAR compression.");
  return create_archive(sources,count,parent,stage,name,published,published_capacity,1,limits,token,progress,context,error,capacity,codec+2,NULL,0,"",NULL,0,NULL,6,0,2,0,0);
 }
 
@@ -1711,8 +1711,8 @@ int arkiv_copy_regular(const char *source,const char *parent,const char *name,ui
 int arkiv_create_stream(const char *source,const char *parent,const char *stage,const char *name,
                         char *published,size_t published_capacity,int codec,arkiv_limits limits,
                         arkiv_cancel *token,arkiv_progress_callback progress,void *context,char *error,size_t capacity) {
-    const char *suffixes[]={".gz",".bz2",".xz"};
-    if(codec<1||codec>3||!limits.max_entries||!safe_path(stage)||strchr(stage,'/')||!safe_path(name)||strchr(name,'/')||!published||published_capacity<256)
+    const char *suffixes[]={".gz",".bz2",".xz",".zst"};
+    if(codec<1||codec>4||!limits.max_entries||!safe_path(stage)||strchr(stage,'/')||!safe_path(name)||strchr(name,'/')||!published||published_capacity<256)
         return fail(error,capacity,"Invalid standalone compression request.");
     const char *suffix=suffixes[codec-1];size_t ext=strlen(suffix);
     if(strlen(name)<=ext||strcmp(name+strlen(name)-ext,suffix))return fail(error,capacity,"Invalid compression suffix.");

@@ -4,7 +4,7 @@ Arkiv reads and creates one-file `.gz`, `.bz2` and `.xz` streams in process.
 `database.sql.gz` represents one regular file, `database.sql`, rather than a
 folder hierarchy. ZIP remains the default creation format. These streams cannot
 be edited in place and offer no encryption, solid, dictionary or thread controls.
-Standalone LZMA, ZSTD and other codecs are not implemented by this milestone.
+ZSTD is now supported with its distinct optional-checksum policy; see [Zstandard](zstandard.md). Standalone LZMA and other codecs remain unavailable.
 
 ## Recognition and integrity
 

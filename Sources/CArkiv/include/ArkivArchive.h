@@ -149,4 +149,7 @@ int arkiv_copy_regular(const char *, const char *, const char *, uint64_t, arkiv
 int arkiv_create_stream(const char *, const char *, const char *, const char *, char *, size_t, int,
                         arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
 
+/* Checksum evidence from the same pinned, fully decoded stream: 0 absent, 1 verified. */
+int arkiv_decompress_stream_inspect(const char *, const char *, uint64_t, arkiv_cancel *, arkiv_progress_callback, void *, int *);
+
 #endif

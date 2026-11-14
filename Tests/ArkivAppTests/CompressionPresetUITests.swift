@@ -18,7 +18,7 @@ final class CompressionPresetUITests: XCTestCase {
         for sources in [[file], [other], [file, other], [root]] {
             let handoff = try CreationHandoff(command: .addArchive, sources: sources)
             let routed = try CreationHandoff(url: handoff.url)
-            for wanted: ArchiveFormat in [.gzip, .bzip2, .xz] {
+            for wanted: ArchiveFormat in [.gzip, .bzip2, .xz, .zstd] {
                 let sheet = CreateArchiveSheet(sources: routed.sources, encrypted: false)
                 defer { sheet.close() }
                 let all = views(try XCTUnwrap(sheet.window?.contentView))

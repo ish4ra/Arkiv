@@ -35,6 +35,7 @@ public struct ArchiveSnapshot: Sendable {
     public internal(set) var metadata: ArchiveMetadata? = nil
     var sourceLease: ArchiveOpenedFileLease? = nil
     var compressedTAR: UnlockedArchive? = nil
+    var streamChecksum: Bool? = nil
     var standalone: StandaloneStream? = nil
     var backingURL: URL { standalone?.spool.url ?? compressedTAR?.url ?? unlocked?.url ?? url }
     public var index: ArchiveIndex { ArchiveIndex(entries: entries) }
@@ -146,6 +147,7 @@ public struct LibArchiveEngine: ArchiveEngine {
         try validateArchivePassword(password)
         let stamp = try SourceStamp(url)
         var compressedTAR: UnlockedArchive?
+        var checksum: Int32 = -1
         let compression = arkiv_compression_kind(url.path)
         var unlocked: UnlockedArchive?
         var sevenURL = url.standardizedFileURL
@@ -164,10 +166,10 @@ public struct LibArchiveEngine: ArchiveEngine {
         if compression != 0 {
             let spool = try UnlockedArchive(filename: "contents.decoded")
             let receiver = ProgressReceiver(progress)
-            let code = arkiv_decompress_stream_progress(sevenURL.path, spool.url.path, limits.max_bytes, cancellation.pointer, { context, files, bytes in
+            let code = arkiv_decompress_stream_inspect(sevenURL.path, spool.url.path, limits.max_bytes, cancellation.pointer, { context, files, bytes in
                 guard let context else { return }
                 Unmanaged<ProgressReceiver>.fromOpaque(context).takeUnretainedValue().callback(.init(files: files, bytes: bytes))
-            }, Unmanaged.passUnretained(receiver).toOpaque())
+            }, Unmanaged.passUnretained(receiver).toOpaque(), &checksum)
             if code == 2 { throw ArchiveFailure.cancelled }
             if code == 8 { throw CompressedStreamUnsupported() }
             guard code == 0 else { throw ArchiveFailure.message("Compressed stream is damaged, unsupported, or exceeds decompression limits.") }
@@ -181,6 +183,7 @@ public struct LibArchiveEngine: ArchiveEngine {
                 let entry = ArchiveEntry(id: 0, path: name, size: Int64(decodedStamp.size), kind: .file,
                                          metadata: .init(compressionMethod: codec))
                 var snapshot = ArchiveSnapshot(url: url, entries: [entry], stamp: stamp, unlocked: nil)
+                snapshot.streamChecksum = checksum == 1
                 snapshot.standalone = StandaloneStream(spool: spool, stamp: decodedStamp, entry: entry)
                 snapshot.metadata = ArchiveMetadata(url: url, physicalSize: stamp.size, entries: [entry], format: codec, methods: codec)
                 if cancellation.isCancelled { throw ArchiveFailure.cancelled }
@@ -226,6 +229,7 @@ public struct LibArchiveEngine: ArchiveEngine {
         }
         var snapshot = ArchiveSnapshot(url: url, entries: collector.entries, stamp: stamp, unlocked: unlocked)
         snapshot.compressedTAR = compressedTAR
+        if compressedTAR != nil { snapshot.streamChecksum = checksum == 1 }
         if unlocked != nil, password != nil {
             // Non-secret UI eligibility only. Every edit still asks for a fresh
             // password and validates the pinned original; never retain it here.
@@ -244,7 +248,7 @@ public struct LibArchiveEngine: ArchiveEngine {
                 solid = flags & 32 != 0; dataEncrypted = flags & 1 != 0; headersEncrypted = flags & 2 != 0
             }
         }
-        let formatName = compression == 0 ? String(cString:detectedFormat) : "TAR (" + [1:"gzip",2:"bzip2",3:"xz"][compression, default:"unknown"] + ")"
+        let formatName = compression == 0 ? String(cString:detectedFormat) : "TAR (" + [1:"gzip",2:"bzip2",3:"xz",4:"zstd"][compression, default:"unknown"] + ")"
         snapshot.metadata = ArchiveMetadata(url:url,physicalSize:stamp.size,entries:collector.entries,
             format:unlocked != nil ? "7z" : (formatName.isEmpty ? nil : formatName),methods:methods,
             solid:solid,dataEncrypted:dataEncrypted,headersEncrypted:headersEncrypted)
@@ -353,11 +357,15 @@ extension LibArchiveEngine {
                 let inspected = try inspect(url, cancellation: cancellation, password: nil, progress: progress)
                 if inspected.standalone != nil {
                     guard try SourceStamp(url) == stamp else { throw ArchiveFailure.message("Compressed file changed during testing.") }
+                    if inspected.streamChecksum == false {
+                        return ArchiveIntegrityResult(state: .warning, detail: "The complete ZSTD frame was decoded within limits. This frame has no content checksum; content integrity cannot be confirmed.")
+                    }
                     return ArchiveIntegrityResult(state: .ok, detail: "The complete single-file stream was decoded within limits and its compression checksums verified.")
                 }
                 let result = try test(inspected.backingURL, cancellation: cancellation, progress: progress)
                 guard try SourceStamp(url) == stamp else { throw ArchiveFailure.message("Archive changed during testing.") }
-                return ArchiveIntegrityResult(state: result.state, detail: "Compressed-stream checksum and bounded decompression verified. " + result.detail)
+                let detail = inspected.streamChecksum == false ? "ZSTD framing and bounded decompression verified; this frame has no content checksum. " : "Compressed-stream checksum and bounded decompression verified. "
+                return ArchiveIntegrityResult(state: result.state, detail: detail + result.detail)
             } catch ArchiveFailure.cancelled { throw ArchiveFailure.cancelled }
               catch let error as CompressedStreamUnsupported { return ArchiveIntegrityResult(state: .unsupportedMethod, detail: error.localizedDescription) }
               catch { return ArchiveIntegrityResult(state: .corrupt, detail: error.localizedDescription) }

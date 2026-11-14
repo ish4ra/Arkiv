@@ -9,7 +9,7 @@ struct StandaloneStream: Sendable {
 
     static func outputName(for source: URL) throws -> String {
         let original = source.lastPathComponent
-        let suffix = [".gz", ".bz2", ".xz"].first { original.lowercased().hasSuffix($0) }
+        let suffix = [".gz", ".bz2", ".xz", ".zst"].first { original.lowercased().hasSuffix($0) }
         let name = suffix.map { String(original.dropLast($0.count)) } ?? original + ".decompressed"
         guard !name.isEmpty, name != ".", name != "..", name.utf8.count <= 255,
               !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) || "/\\:".unicodeScalars.contains($0) }) else {
@@ -18,6 +18,6 @@ struct StandaloneStream: Sendable {
         return name
     }
     static func codecName(_ codec: Int32) -> String {
-        [1: "GZIP", 2: "BZIP2", 3: "XZ"][codec, default: "Unknown"]
+        [1: "GZIP", 2: "BZIP2", 3: "XZ", 4: "ZSTD"][codec, default: "Unknown"]
     }
 }

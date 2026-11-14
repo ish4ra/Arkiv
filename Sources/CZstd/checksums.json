@@ -1,0 +1,6 @@
+{
+  "Sources/CZstd/zstd.c": "0822c531cd40f7ba045875934f2e094e954866cde943fafdb82e6e291ba725a6",
+  "Sources/CZstd/include/zstd.h": "9b4bc8245565c98ccfc61c07749928b57e7c0f6fddb0530c4f6aa1971893d88b",
+  "Sources/CZstd/include/zstd_errors.h": "66a8c3f71d12ea6e797e4f622f31f3f8f81c41b36f48cad4f5de7d8bfb6aac0a",
+  "licenses/zstd-LICENSE.txt": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+}

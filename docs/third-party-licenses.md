@@ -11,3 +11,5 @@ Arkiv distributes a separately built dynamic library using the official 7-Zip 26
 `created-plain.7z` and `created-aes-headers.7z` contain original synthetic test data generated through this bridge; the public fixture password is `fixture password`. They are test assets, not bundled user data.
 
 Compressed TAR uses system zlib, libbz2 and liblzma (no CLI dependency). Vendored public API headers: bzip2 1.0.8 (`Sources/CArkiv/vendor/bzip2-LICENSE`) and XZ Utils 5.8.1 (`Sources/CArkiv/vendor/xz/COPYING.0BSD`, 0BSD). Upstream sources: libarchive/bzip2 tag bzip2-1.0.8 and tukaani-project/xz tag v5.8.1. These headers do not bundle an alternative decoder binary.
+
+Zstandard 1.5.7 is statically bundled as the official single-file C library under the BSD 3-clause option. Its BSD license is retained in `licenses/zstd-LICENSE.txt` and packaged in Arkiv.app; embedded xxHash notices are retained in the source. No CLI is bundled. Exact provenance, regeneration and policy: [zstandard.md](zstandard.md).

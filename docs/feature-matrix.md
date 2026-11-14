@@ -37,3 +37,7 @@ See `archive-formats.md` for the narrower per-format evidence. This is an early 
 Archive document icons: ZIP, 7z, TAR and RAR share the original Tension Seal branding. Packaged resources are validated; Finder visual acceptance requires a real Mac. See [document icons](document-icons.md).
 
 Compressed TAR: read/browse/extract/Test via bounded gzip/bzip2/XZ decoding; shared Open/Quick Look/nested/drag workflows. Creation also supported; editing remains unavailable. [Limits](compressed-tar.md).
+
+## Zstandard
+
+ZSTD standalone (`.zst`) and compressed TAR (`.tar.zst`, `.tzst`) support content-based browse, extract, Test, Open File, Quick Look, drag-out and creation through the existing shared workflows. Standalone creation requires one regular file; TAR creation accepts file/folder selections. Checksum-less frames produce an integrity warning. Editing, dictionaries, concatenated/skippable frames and advanced controls are unavailable. See [verified policy and limits](zstandard.md).

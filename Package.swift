@@ -24,7 +24,8 @@ compressionLibraries = [.unsafeFlags(decoderStubs.flatMap { ["-Xlinker", $0] })]
 var targets: [Target] = [
     .target(name: "ArkivFinderIntegration"),
     .testTarget(name: "ArkivFinderIntegrationTests", dependencies: ["ArkivFinderIntegration"]),
-    .target(name: "CArkiv", cSettings: [.headerSearchPath("vendor/xz")], linkerSettings: compressionLibraries + [.linkedLibrary("archive"), .linkedLibrary("ArkivSeven")]),
+    .target(name: "CZstd", exclude: ["checksums.json"]),
+    .target(name: "CArkiv", dependencies: ["CZstd"], cSettings: [.headerSearchPath("vendor/xz")], linkerSettings: compressionLibraries + [.linkedLibrary("archive"), .linkedLibrary("ArkivSeven")]),
     .target(name: "ArkivCore", dependencies: ["CArkiv", "ArkivFinderIntegration"]),
     .testTarget(name: "ArkivCoreTests", dependencies: ["ArkivCore"]),
     .target(name: "ArkivPresentation", dependencies: ["ArkivCore"]),

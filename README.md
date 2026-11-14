@@ -30,6 +30,7 @@ Arkiv only lists a format as supported once it passes automated fixture tests. R
 | --- | --- | --- | --- | --- | --- |
 | **ZIP** | Store, Deflate | Store, Deflate (default format) | Add, Delete, Rename, Replace File¹ | Not supported | Data and CRC |
 | **7z** | LZMA, LZMA2 | LZMA2 | — | AES-256, optional encrypted filenames | Data and CRC |
+| **ZSTD / TAR.ZST / TZST** | Standalone or decoded TAR; optional checksum | One file or PAX TAR hierarchy | — | — | [Bounded frame policy](docs/zstandard.md) |
 | **GZIP / BZIP2 / XZ** standalone | One file; bounded checksum validation | One regular file | — | — | Complete stream checks |
 | **TAR**, **tar.gz/tgz**, **tar.bz2/tbz2**, **tar.xz/txz** | Yes; bounded single-stream decoding | TAR, gzip, bzip2, XZ | — | — | Readability; compressed-stream checks² |
 | **RAR5** | Limited³ | Never | — | — | — |
@@ -187,3 +188,5 @@ See [third-party notices](docs/third-party-licenses.md).
 Archive document icons are provided for ZIP, 7z, TAR and RAR when macOS associates them with Arkiv. This does not change default handlers or expand RAR compatibility. See [document icons and Finder checks](docs/document-icons.md).
 
 See [compressed TAR](docs/compressed-tar.md) for stream integrity, temporary-disk limits and read-only compatibility boundaries.
+
+Zstandard is available for single-file `.zst` and compressed TAR (`.tar.zst`, `.tzst`): browse, extract, Test, Open, Quick Look, drag-out and Create Archive/Finder Add to Archive. ZIP remains the creation default. See [ZSTD frame policy, resource limits and testing](docs/zstandard.md).
