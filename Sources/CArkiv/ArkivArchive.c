@@ -547,13 +547,41 @@ static int create_same_stat(const struct stat *a, const struct stat *b) {
         a->st_ctim.tv_sec == b->st_ctim.tv_sec && a->st_ctim.tv_nsec == b->st_ctim.tv_nsec;
 #endif
 }
+struct create_source { char *disk, *entry; struct stat stamp; };
+struct create_manifest { struct create_source *items; size_t count, capacity, bytes; };
+static int create_remember(struct create_manifest *m, const char *disk, const char *entry, const struct stat *st) {
+    size_t bytes = strlen(disk) + strlen(entry) + 2 + sizeof(struct create_source);
+    if (bytes > (64U << 20) - m->bytes) return 1;
+    if (m->count == m->capacity) {
+        size_t capacity = m->capacity ? m->capacity * 2 : 32;
+        void *items = realloc(m->items, capacity * sizeof(*m->items));
+        if (!items) return 1;
+        m->items = items; m->capacity = capacity;
+    }
+    struct create_source item = { strdup(disk), strdup(entry), *st };
+    if (!item.disk || !item.entry) { free(item.disk); free(item.entry); return 1; }
+    m->items[m->count++] = item; m->bytes += bytes; return 0;
+}
+struct tar_output { int fd; uint64_t bytes, limit; arkiv_cancel *token; };
+static la_ssize_t create_tar_write(struct archive *a, void *opaque, const void *data, size_t size) {
+    (void)a; struct tar_output *out = opaque;
+    if (cancelled(out->token) || size > out->limit - out->bytes) return -1;
+    size_t offset = 0;
+    while (offset < size) {
+        ssize_t n = write(out->fd, (const char *)data + offset, size - offset);
+        if (n <= 0) return -1;
+        offset += (size_t)n;
+    }
+    out->bytes += size; return (la_ssize_t)size;
+}
 struct create_state {
     struct archive *writer; arkiv_limits limits; arkiv_cancel *token;
     arkiv_progress_callback progress; void *context;
     uint64_t entries, bytes; char *error; size_t capacity;
     dev_t stage_dev; ino_t stage_ino; int omit_root, preserve_permissions;
+    struct create_manifest *manifest;
 };
-static int create_walk(struct create_state *s, int fd, const char *path, unsigned depth) {
+static int create_walk(struct create_state *s, int fd, const char *path, unsigned depth, const char *disk) {
     if (cancelled(s->token)) return 2;
     struct stat st;
     if (depth > 128 || !safe_path(path) || fstat(fd, &st) ||
@@ -564,16 +592,18 @@ static int create_walk(struct create_state *s, int fd, const char *path, unsigne
     if ((!omit && ++s->entries > s->limits.max_entries) || st.st_size < 0 ||
         (S_ISREG(st.st_mode) && (uint64_t)st.st_size > s->limits.max_bytes - s->bytes))
         return fail(s->error, s->capacity, "Creation safety limit exceeded.");
+    if (s->manifest && create_remember(s->manifest, disk, path, &st))
+        return fail(s->error, s->capacity, "Creation source metadata exceeds the 64 MiB safety limit.");
     if (!omit) {
     struct archive_entry *entry = archive_entry_new();
-    if (!entry) return fail(s->error, s->capacity, "Cannot allocate ZIP entry.");
+    if (!entry) return fail(s->error, s->capacity, "Cannot allocate archive entry.");
     archive_entry_set_pathname_utf8(entry, path);
     archive_entry_set_filetype(entry, S_ISDIR(st.st_mode) ? AE_IFDIR : AE_IFREG);
     archive_entry_set_perm(entry, s->preserve_permissions ? st.st_mode & 0777 : (S_ISDIR(st.st_mode) ? 0755 : 0644));
     archive_entry_set_mtime(entry, st.st_mtime, 0);
     archive_entry_set_size(entry, S_ISDIR(st.st_mode) ? 0 : st.st_size);
     int result = archive_write_header(s->writer, entry); archive_entry_free(entry);
-    if (result != ARCHIVE_OK) return fail(s->error, s->capacity, "Cannot write ZIP header.");
+    if (result != ARCHIVE_OK) return fail(s->error, s->capacity, "Cannot write archive header.");
     }
     if (S_ISDIR(st.st_mode)) {
         DIR *dir = fdopendir(dup(fd));
@@ -589,7 +619,11 @@ static int create_walk(struct create_state *s, int fd, const char *path, unsigne
             }
             int childfd = openat(fd, item->d_name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
             if (childfd < 0) { status = fail(s->error, s->capacity, "Cannot safely open source item."); break; }
-            status = create_walk(s, childfd, child, depth + 1); close(childfd);
+            char *child_disk = NULL;
+            if (s->manifest && asprintf(&child_disk, "%s/%s", disk, item->d_name) < 0) {
+                close(childfd); status = 1; break;
+            }
+            status = create_walk(s, childfd, child, depth + 1, child_disk); free(child_disk); close(childfd);
             if (status) break;
         }
         closedir(dir); if (status) return status;
@@ -600,7 +634,7 @@ static int create_walk(struct create_state *s, int fd, const char *path, unsigne
             size_t wanted = (uint64_t)st.st_size - count < sizeof(buffer) ? (size_t)((uint64_t)st.st_size - count) : sizeof(buffer);
             ssize_t n = read(fd, buffer, wanted);
             if (n <= 0 || archive_write_data(s->writer, buffer, (size_t)n) != n)
-                return fail(s->error, s->capacity, "Source changed or ZIP write failed.");
+                return fail(s->error, s->capacity, "Source changed or archive write failed.");
             count += (uint64_t)n; s->bytes += (uint64_t)n;
             if (s->progress) s->progress(s->context, s->entries, s->bytes);
         }
@@ -611,7 +645,7 @@ static int create_walk(struct create_state *s, int fd, const char *path, unsigne
     struct stat final_stat;
     if (fstat(fd, &final_stat) || !create_same_stat(&final_stat, &st))
         return fail(s->error, s->capacity, "Source changed during creation.");
-    if (!omit && archive_write_finish_entry(s->writer) != ARCHIVE_OK) return fail(s->error, s->capacity, "Cannot finish ZIP entry.");
+    if (!omit && archive_write_finish_entry(s->writer) != ARCHIVE_OK) return fail(s->error, s->capacity, "Cannot finish archive entry.");
     if (s->progress) s->progress(s->context, s->entries, s->bytes);
     return 0;
 }
@@ -619,19 +653,30 @@ static int seven_cancel(void *token) { return cancelled(token); }
 static int create_archive(const char *const *sources, size_t count, const char *parent,
                      const char *stage, const char *name, char *published_name, size_t published_capacity, int compression, arkiv_limits limits,
                      arkiv_cancel *token, arkiv_progress_callback progress, void *context,
-                     char *error, size_t capacity, int seven, const char *password, int headers, const char *prefix, const char *root, int omit_root, const int *methods, int level, uint32_t dictionary, unsigned threads, int solid, uint64_t block) {
+                     char *error, size_t capacity, int format, const char *password, int headers, const char *prefix, const char *root, int omit_root, const int *methods, int level, uint32_t dictionary, unsigned threads, int solid, uint64_t block) {
+    int seven = format == 1, tar = format >= 2, codec = format - 2;
+    if (format < 0 || format > 5 || (tar && (password || prefix[0] || root || methods)))
+        return fail(error, capacity, "Invalid TAR creation options.");
     if ((!seven && (dictionary || threads!=2 || solid || block)) || (seven && !arkiv_seven_solid_memory(level,dictionary,threads,0,solid,block)))
         return fail(error, capacity, "Unsupported 7z dictionary or thread count.");
-    if (seven ? (compression != 1 || (level!=1&&level!=3&&level!=5&&level!=7&&level!=9)) :
-        (compression==0 ? level!=0 : compression!=1 || (level!=1&&level!=3&&level!=6&&level!=9)))
+    if (!tar && (seven ? (compression != 1 || (level!=1&&level!=3&&level!=5&&level!=7&&level!=9)) :
+        (compression==0 ? level!=0 : compression!=1 || (level!=1&&level!=3&&level!=6&&level!=9))))
         return fail(error, capacity, "Unsupported compression method or level.");
     if (omit_root && !root) return fail(error, capacity, "Invalid replacement root.");
     if (root && (count != 1 || seven || !safe_path(root))) return fail(error, capacity, "Invalid replacement folder.");
     if (prefix && *prefix && !safe_path(prefix)) return fail(error, capacity, "Invalid archive folder.");
     if (cancelled(token)) return 2;
-    size_t extension = seven ? 3 : 4;
     const char *suffix = seven ? ".7z" : ".zip";
-    const char *payload = seven ? "archive.7z" : "archive.zip";
+    if (tar) {
+        const char *suffixes[] = { ".tar", ".tar.gz", ".tar.bz2", ".tar.xz" };
+        const char *aliases[] = { ".tar", ".tgz", ".tbz2", ".txz" };
+        suffix = suffixes[codec];
+        size_t n = strlen(name), alias = strlen(aliases[codec]);
+        if (n > alias && !strcmp(name + n - alias, aliases[codec])) suffix = aliases[codec];
+    }
+    size_t extension = strlen(suffix);
+    const char *initial = tar ? "archive.tar" : "archive.zip";
+    const char *payload = tar ? (codec ? "archive.compressed" : initial) : (seven ? "archive.7z" : initial);
     if (!published_name || published_capacity < 256 || !count || count > limits.max_entries || !safe_path(stage) || strchr(stage, '/') || !safe_path(name) || strchr(name, '/') || strlen(name) <= extension || strcmp(name + strlen(name) - extension, suffix))
         return fail(error, capacity, "Invalid creation request.");
     locale_t utf8 = newlocale(LC_CTYPE_MASK, "en_US.UTF-8", NULL);
@@ -640,21 +685,28 @@ static int create_archive(const char *const *sources, size_t count, const char *
     locale_t previous = uselocale(utf8);
     int parentfd = create_open(parent), stagefd = -1, output = -1, sevenfd = -1, checkfd = -1, status = 1;
     struct archive *writer = NULL, *verify = NULL;
+    struct create_manifest manifest = {0};
+    struct tar_output tar_out = { -1, 0, limits.max_bytes < (20ULL << 30) ? limits.max_bytes : (20ULL << 30), token };
     if (parentfd < 0) goto done;
     stagefd = openat(parentfd, stage, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (stagefd < 0) goto done;
-    output = openat(stagefd, "archive.zip", O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    output = openat(stagefd, initial, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
     if (output < 0) goto done;
     writer = archive_write_new();
     char zipLevel[2] = { (char)('0' + (seven ? 6 : level)), 0 };
-    if (!writer || archive_write_set_format_zip(writer) != ARCHIVE_OK ||
+    if (tar) {
+        tar_out.fd = output;
+        if (!writer || archive_write_set_format_pax_restricted(writer) != ARCHIVE_OK ||
+            archive_write_set_bytes_per_block(writer, 512) != ARCHIVE_OK ||
+            archive_write_open(writer, &tar_out, NULL, create_tar_write, NULL) != ARCHIVE_OK) goto done;
+    } else if (!writer || archive_write_set_format_zip(writer) != ARCHIVE_OK ||
         archive_write_set_format_option(writer, "zip", "compression", compression ? "deflate" : "store") != ARCHIVE_OK ||
         archive_write_set_format_option(writer, "zip", "hdrcharset", "UTF-8") != ARCHIVE_OK ||
         archive_write_set_format_option(writer, "zip", "compression-level", zipLevel) != ARCHIVE_OK ||
         archive_write_open_fd(writer, output) != ARCHIVE_OK) goto done;
     struct stat stage_stat;
     if (fstat(stagefd, &stage_stat)) goto done;
-    struct create_state state = { writer, limits, token, progress, context, 0, 0, error, capacity, stage_stat.st_dev, stage_stat.st_ino, omit_root, root != NULL };
+    struct create_state state = { writer, limits, token, progress, context, 0, 0, error, capacity, stage_stat.st_dev, stage_stat.st_ino, omit_root, tar || root != NULL, tar ? &manifest : NULL };
     for (size_t i = 0; i < count; i++) {
         /* Each new root begins in failure state until it is fully written. */
         status = 1;
@@ -671,7 +723,7 @@ static int create_archive(const char *const *sources, size_t count, const char *
         if (prefix && *prefix) {
             if (asprintf(&entry_path, "%s/%s", prefix, base ? base + 1 : sources[i]) < 0) { close(fd); goto done; }
         }
-        status = create_walk(&state, fd, root ? root : (entry_path ? entry_path : (base ? base + 1 : sources[i])), 0);
+        status = create_walk(&state, fd, root ? root : (entry_path ? entry_path : (base ? base + 1 : sources[i])), 0, sources[i]);
         free(entry_path); close(fd);
         if (status) goto done;
     }
@@ -680,17 +732,46 @@ static int create_archive(const char *const *sources, size_t count, const char *
     archive_write_free(writer); writer = NULL;
     verify = archive_read_new();
     if (!verify || archive_read_support_filter_none(verify) != ARCHIVE_OK ||
-        archive_read_support_format_zip(verify) != ARCHIVE_OK || archive_read_open_fd(verify, output, 65536) != ARCHIVE_OK) goto done;
+        (tar ? archive_read_support_format_tar(verify) : archive_read_support_format_zip(verify)) != ARCHIVE_OK || archive_read_open_fd(verify, output, 65536) != ARCHIVE_OK) goto done;
     struct archive_entry *entry; int r; uint64_t entries = 0, bytes = 0; char buffer[65536];
     while ((r = archive_read_next_header(verify, &entry)) == ARCHIVE_OK) {
         if (++entries > limits.max_entries || (entry_kind(entry) != 1 && entry_kind(entry) != 2)) goto done;
-        ssize_t n;
-        while ((n = archive_read_data(verify, buffer, sizeof(buffer))) > 0) {
-            if (cancelled(token)) { status = 2; goto done; }
-            if ((uint64_t)n > limits.max_bytes - bytes) goto done;
-            bytes += (uint64_t)n;
+        int sourcefd = -1;
+        if (tar) {
+            if (entries > manifest.count) goto done;
+            struct create_source *source = &manifest.items[entries-1];
+            const char *path = archive_entry_pathname_utf8(entry);
+            size_t length = path ? strlen(path) : 0;
+            if (length && path[length-1] == '/') length--;
+            struct stat st;
+            sourcefd = create_open(source->disk);
+            if (!path || strlen(source->entry) != length || memcmp(path, source->entry, length) ||
+                sourcefd < 0 || fstat(sourcefd, &st) || !create_same_stat(&st, &source->stamp) ||
+                archive_entry_perm(entry) != (source->stamp.st_mode & 0777) ||
+                archive_entry_mtime(entry) != source->stamp.st_mtime ||
+                (S_ISDIR(st.st_mode) ? entry_kind(entry) != 2 :
+                    entry_kind(entry) != 1 || archive_entry_size(entry) != st.st_size)) {
+                if (sourcefd >= 0) close(sourcefd);
+                goto done;
+            }
         }
-        if (n < 0) goto done;
+        ssize_t n; int bad = 0;
+        while ((n = archive_read_data(verify, buffer, sizeof(buffer))) > 0) {
+            if (cancelled(token)) { status = 2; bad = 1; break; }
+            if ((uint64_t)n > limits.max_bytes - bytes) { bad = 1; break; }
+            bytes += (uint64_t)n;
+            if (tar) {
+                char original[65536]; size_t offset = 0;
+                while (offset < (size_t)n) {
+                    ssize_t got = read(sourcefd, original + offset, (size_t)n - offset);
+                    if (got <= 0) { bad = 1; break; }
+                    offset += (size_t)got;
+                }
+                if (bad || memcmp(original, buffer, (size_t)n)) { bad = 1; break; }
+            }
+        }
+        if (sourcefd >= 0) close(sourcefd);
+        if (n < 0 || bad) goto done;
     }
     if (r != ARCHIVE_EOF || entries != state.entries || bytes != state.bytes) goto done;
     if (cancelled(token)) { status = 2; goto done; }
@@ -709,6 +790,52 @@ static int create_archive(const char *const *sources, size_t count, const char *
         status = arkiv_seven_decode(sevenfd, checkfd, password, seven_cancel, token);
         if (status) goto done;
     }
+    if (tar && codec) {
+        sevenfd = openat(stagefd, payload, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+        if (sevenfd < 0) goto done;
+        status = arkiv_compress_tar_fd(output, sevenfd, codec, tar_out.limit, token);
+        if (status) goto done;
+        status = 1;
+        char *packed = NULL, *decoded = NULL;
+        if (asprintf(&packed, "%s/%s/%s", parent, stage, payload) < 0) goto done;
+        if (asprintf(&decoded, "%s/%s/verify.tar", parent, stage) < 0) { free(packed); goto done; }
+        /* The actual bounded reader validates the complete compression checksum. */
+        int decoded_status = arkiv_decompress_tar(packed, decoded, tar_out.limit, token);
+        free(packed); free(decoded);
+        if (decoded_status) { status = decoded_status; goto done; }
+        checkfd = openat(stagefd, "verify.tar", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+        if (checkfd < 0 || lseek(output, 0, SEEK_SET) < 0) goto done;
+        for (;;) {
+            if (cancelled(token)) { status = 2; goto done; }
+            ssize_t n = read(output, buffer, sizeof(buffer));
+            if (n < 0) goto done;
+            char decoded_buffer[65536]; size_t offset = 0;
+            while (offset < (size_t)n) {
+                ssize_t got = read(checkfd, decoded_buffer + offset, (size_t)n - offset);
+                if (got <= 0) goto done;
+                offset += (size_t)got;
+            }
+            if (memcmp(buffer, decoded_buffer, (size_t)n)) goto done;
+            if (!n) { if (read(checkfd, decoded_buffer, 1) != 0) goto done; break; }
+        }
+    }
+    if (tar) {
+        char *validated = NULL;
+        if (asprintf(&validated, "%s/%s/%s", parent, stage, codec ? "verify.tar" : initial) < 0) goto done;
+        int integrity = arkiv_test(validated, NULL, limits, token, NULL, NULL, error, capacity);
+        free(validated);
+        /* TAR has no stored content CRC: the shared reader's Warning is expected.
+           Payload correctness was separately checked byte-for-byte above. */
+        if (integrity != 9) { status = integrity ? integrity : 1; goto done; }
+        for (size_t i = 0; i < manifest.count; i++) {
+            if (cancelled(token)) { status = 2; goto done; }
+            struct create_source *source = &manifest.items[i]; struct stat st;
+            int fd = create_open(source->disk);
+            int valid = fd >= 0 && !fstat(fd, &st) && create_same_stat(&source->stamp, &st);
+            if (fd >= 0) close(fd);
+            if (!valid) { status = fail(error, capacity, "Source changed during creation."); goto done; }
+        }
+    }
     /* A same-filesystem hard link publishes atomically without replacing any item. */
     status = 3;
     for (unsigned attempt = 1; attempt <= 1000; attempt++) {
@@ -720,15 +847,18 @@ static int create_archive(const char *const *sources, size_t count, const char *
         if (errno != EEXIST) { status = 1; goto done; }
     }
 done:
+    for (size_t i = 0; i < manifest.count; i++) { free(manifest.items[i].disk); free(manifest.items[i].entry); }
+    free(manifest.items);
     if (verify) archive_read_free(verify);
     if (writer) archive_write_free(writer);
     if (sevenfd >= 0) close(sevenfd);
     if (checkfd >= 0) close(checkfd);
     if (output >= 0) close(output);
-    if (stagefd >= 0) { unlinkat(stagefd, "archive.zip", 0); unlinkat(stagefd, "archive.7z", 0); unlinkat(stagefd, "verify.zip", 0); close(stagefd); }
+    if (stagefd >= 0) { unlinkat(stagefd, "archive.zip", 0); unlinkat(stagefd, "archive.7z", 0); unlinkat(stagefd, "verify.zip", 0); unlinkat(stagefd, "archive.tar", 0); unlinkat(stagefd, "archive.compressed", 0); unlinkat(stagefd, "verify.tar", 0); close(stagefd); }
     if (parentfd >= 0) close(parentfd);
     uselocale(previous); freelocale(utf8);
-    if (status == 1 && error && capacity && !error[0]) fail(error, capacity, "Cannot safely create or verify archive.");
+    if (status && cancelled(token)) status = 2;
+    if (status != 0 && status != 2 && status != 3 && error && capacity && !error[0]) fail(error, capacity, "Cannot safely create or verify archive.");
     return status;
 }
 
@@ -1527,4 +1657,11 @@ int arkiv_entry_metadata(const char *path, arkiv_metadata_callback cb, void *ctx
  }
  }
  close(fd);return 0;
+}
+
+int arkiv_create_tar(const char *const *sources, size_t count, const char *parent, const char *stage,
+ const char *name, char *published, size_t published_capacity, int codec, arkiv_limits limits,
+ arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity) {
+ if (codec < 0 || codec > 3) return fail(error,capacity,"Unsupported TAR compression.");
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,1,limits,token,progress,context,error,capacity,codec+2,NULL,0,"",NULL,0,NULL,6,0,2,0,0);
 }

@@ -1,10 +1,10 @@
-# Compressed TAR reading
+# Compressed TAR reading and creation
 
-TAR wrapped in a single gzip, bzip2 or XZ stream is read-only. Names such as
+TAR wrapped in a single gzip, bzip2 or XZ stream is supported for reading and creation; editing remains unavailable. Names such as
 `.tar.gz`/`.tgz`, `.tar.bz2`/`.tbz2`, `.tar.xz`/`.txz` are conventions: magic,
 validated compression and the actual inner TAR determine acceptance. A valid
 archive with a misleading suffix is still recognized; compressed non-TAR data
-is rejected. No standalone GZIP/BZIP2/XZ-file support or TAR creation is claimed.
+is rejected. No standalone GZIP/BZIP2/XZ-file support is claimed. Creation uses the existing shared creator; see [settings, limits and verification](creation.md#tar-and-compressed-tar-creation).
 
 ## Backend and limits
 
@@ -26,7 +26,7 @@ names `/usr/lib/libz.1.dylib`, `/usr/lib/libbz2.1.0.dylib` and
 macOS system libraries at runtime; no Homebrew installation or bundled XZ binary
 is required. API headers and their existing licenses are unchanged.
 
-CI links real decoder API probes for both architectures with a deliberately
+CI links real encoder and decoder API probes for both architectures with a deliberately
 conflicting x86_64-only local liblzma, executes the native probe, and checks the
 packaged application's decoder load commands separately for every slice.
 

@@ -5,17 +5,20 @@ public enum CompressionPreset: String, CaseIterable, Sendable {
     case store, fastest, fast, normal, maximum, ultra
     public var title: String { rawValue.capitalized }
     public static func available(for format: ArchiveFormat) -> [CompressionPreset] {
-        format == .zip ? [.store, .fastest, .fast, .normal, .maximum] : [.fastest, .fast, .normal, .maximum, .ultra]
+        if format.tarCodec != nil { return [.normal] }
+        return format == .zip ? [.store, .fastest, .fast, .normal, .maximum] : [.fastest, .fast, .normal, .maximum, .ultra]
     }
     public enum Backend: Equatable, Sendable {
+        case tarStream(codec: Int32)
         case zipStore
         case zipDeflate(level: Int32)
         case sevenLZMA2(level: Int32)
         var level: Int32 {
-            switch self { case .zipStore: return 0; case .zipDeflate(let n), .sevenLZMA2(let n): return n }
+            switch self { case .tarStream: return 6; case .zipStore: return 0; case .zipDeflate(let n), .sevenLZMA2(let n): return n }
         }
     }
     public func backend(for format: ArchiveFormat) throws -> Backend {
+        if let codec = format.tarCodec, self == .normal { return .tarStream(codec: codec) }
         switch (format, self) {
         case (.zip, .store): return .zipStore
         case (.zip, .fastest): return .zipDeflate(level: 1)

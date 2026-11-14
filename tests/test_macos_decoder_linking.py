@@ -53,7 +53,25 @@ int main(void) {
     if (lzma_stream_decoder(&stream, 64ULL * 1024 * 1024, 0) != LZMA_OK) return 2;
     lzma_ret result = lzma_code(&stream, LZMA_FINISH);
     lzma_end(&stream);
-    return result == LZMA_OK || result == LZMA_BUF_ERROR ? 0 : 3;
+    if (result != LZMA_OK && result != LZMA_BUF_ERROR) return 3;
+    unsigned char buffer[4096];
+    z_stream z = {0};
+    if (deflateInit2(&z, 6, Z_DEFLATED, 31, 8, Z_DEFAULT_STRATEGY) != Z_OK) return 4;
+    z.next_out = buffer; z.avail_out = sizeof(buffer);
+    if (deflate(&z, Z_FINISH) != Z_STREAM_END) return 5;
+    deflateEnd(&z);
+    bz_stream bz = {0};
+    if (BZ2_bzCompressInit(&bz, 9, 0, 30) != BZ_OK) return 6;
+    bz.next_out = (char *)buffer; bz.avail_out = sizeof(buffer);
+    if (BZ2_bzCompress(&bz, BZ_FINISH) != BZ_STREAM_END) return 7;
+    BZ2_bzCompressEnd(&bz);
+    lzma_stream encoder = LZMA_STREAM_INIT;
+    if (lzma_easy_encoder_memusage(6) > (128ULL << 20) || lzma_easy_decoder_memusage(6) > (64ULL << 20)) return 8;
+    if (lzma_easy_encoder(&encoder, 6, LZMA_CHECK_CRC64) != LZMA_OK) return 9;
+    encoder.next_out = buffer; encoder.avail_out = sizeof(buffer);
+    if (lzma_code(&encoder, LZMA_FINISH) != LZMA_STREAM_END) return 10;
+    lzma_end(&encoder);
+    return 0;
 }
 ''')
             for arch in ('arm64', 'x86_64'):

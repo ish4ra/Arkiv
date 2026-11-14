@@ -2,7 +2,7 @@
 
 A native macOS archive manager, built for the depth of tools like 7-Zip and WinRAR and designed properly for the Mac.
 
-Arkiv opens an archive as a browsable container rather than unpacking everything at once. Browse folders, search, preview and open individual files, extract exactly what you need, create ZIP and encrypted 7z archives, and edit supported ZIPs, all from a native AppKit app with Finder integration. No Electron, no web views, and no Homebrew or command-line tools to install.
+Arkiv opens an archive as a browsable container rather than unpacking everything at once. Browse folders, search, preview and open individual files, extract exactly what you need, create ZIP, encrypted 7z and compressed TAR archives, and edit supported ZIPs, all from a native AppKit app with Finder integration. No Electron, no web views, and no Homebrew or command-line tools to install.
 
 [![macOS CI](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml/badge.svg?branch=main)](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml)
 
@@ -30,7 +30,7 @@ Arkiv only lists a format as supported once it passes automated fixture tests. R
 | --- | --- | --- | --- | --- | --- |
 | **ZIP** | Store, Deflate | Store, Deflate (default format) | Add, Delete, Rename, Replace File¹ | Not supported | Data and CRC |
 | **7z** | LZMA, LZMA2 | LZMA2 | — | AES-256, optional encrypted filenames | Data and CRC |
-| **TAR**, **tar.gz/tgz**, **tar.bz2/tbz2**, **tar.xz/txz** | Yes; bounded single-stream decoding | — | — | — | Readability; compressed-stream checks² |
+| **TAR**, **tar.gz/tgz**, **tar.bz2/tbz2**, **tar.xz/txz** | Yes; bounded single-stream decoding | TAR, gzip, bzip2, XZ | — | — | Readability; compressed-stream checks² |
 | **RAR5** | Limited³ | Never | — | — | — |
 
 ¹ Ordinary single-disk ZIP32 archives. Encrypted, ZIP64 and multipart ZIPs are read-only.
@@ -58,6 +58,8 @@ Encrypted 7z archives ask for a password when opened, with retry on a wrong pass
 ### Create archives
 
 Use **File → Create Archive…** (⇧⌘N) or Finder's **Add to Archive…** to choose a name, destination, format and compression method. ZIP offers Store or Deflate. 7z offers LZMA2 with optional AES-256 encryption and optional encrypted filenames. **Compress with Password…** uses 7z, because ZIP encryption has not yet passed interoperability testing. Arkiv never falls back silently to legacy ZipCrypto.
+
+TAR, TAR + gzip, TAR + bzip2 and TAR + XZ are also available in the same dialog, including `.tgz`, `.tbz2` and `.txz` aliases. They use fixed bounded settings and do not support passwords or editing.
 
 New archives are reopened and verified before they appear, and existing files are never replaced: name clashes become `Name (2).zip` and so on. See [creation](docs/creation.md) and [7z and AES-256](docs/sevenzip.md).
 

@@ -31,7 +31,7 @@ final class ArchiveCreationController {
         let name = name ?? CreationHandoff.baseName(for: sources)
         let request = ArchiveCreationRequest(sources: sources, destination: destination, name: name, compression: compression, format: format, password: password, encryptFilenames: encryptFilenames, preset: preset, sevenZipOptions: sevenZipOptions)
         isBusy = true
-        let operation = FinderOperationWindow(archive: destination.appendingPathComponent(name + (format == .sevenZip ? ".7z" : ".zip")), verb: "Compressing")
+        let operation = FinderOperationWindow(archive: destination.appendingPathComponent(name + format.fileExtension), verb: "Compressing")
         self.operation = operation
         operation.showWindow(nil) // nonactivating panel: Finder retains focus
         let cancellation = operation.cancellation
@@ -97,7 +97,7 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
     private let passwords = PasswordEntryView(confirm: true)
     private let filenames = NSButton(checkboxWithTitle: "Encrypt filenames", target: nil, action: nil)
     private let encryptionNote = NSTextField(wrappingLabelWithString: "ZIP encryption is unavailable. Choose 7z for AES-256.")
-    private var selectedFormat: ArchiveFormat { format.indexOfSelectedItem == 1 ? .sevenZip : .zip }
+    private var selectedFormat: ArchiveFormat { ArchiveFormat.allCases[format.indexOfSelectedItem] }
     private var destination: URL
     private var finished = false
 
@@ -138,7 +138,7 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
         advanced.orientation = .vertical; advanced.alignment = .leading; advanced.spacing = 8
         let advancedViews: [NSView] = [disclosure,advancedFields,memory]
         advancedViews.forEach { advanced.addArrangedSubview($0) }
-        format.addItems(withTitles: ["ZIP (.zip)", "7z (.7z)"])
+        format.addItems(withTitles: ArchiveFormat.allCases.map(\.title))
         format.setAccessibilityLabel("Archive format")
         format.target = self; format.action = #selector(changeFormat)
         encryption.target = self; encryption.action = #selector(changeEncryption)
@@ -185,12 +185,16 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
     @objc private func changeFormat() {
         compression.removeAllItems()
         let presets = CompressionPreset.available(for: selectedFormat)
-        compression.addItems(withTitles: presets.map(\.title))
+        let isTAR = selectedFormat != .zip && selectedFormat != .sevenZip
+        compression.addItems(withTitles: isTAR ? [selectedFormat.compressionDescription] : presets.map(\.title))
+        compression.isEnabled = !isTAR
         compression.selectItem(at: presets.firstIndex(of: .normal)!)
-        compression.toolTip = selectedFormat == .sevenZip ? "LZMA2 compression. Higher presets may need substantially more memory and time." : "Store uses no compression; other presets use Deflate."
+        compression.toolTip = isTAR ? "Fixed, bounded compression settings. TAR has no encryption." : selectedFormat == .sevenZip ? "LZMA2 compression. Higher presets may need substantially more memory and time." : "Store uses no compression; other presets use Deflate."
         encryption.isEnabled = selectedFormat == .sevenZip
         encryptionNote.isHidden = selectedFormat == .sevenZip
-        if selectedFormat == .zip { encryption.state = .off; passwords.clear() }
+        encryption.isHidden = isTAR
+        encryptionNote.stringValue = isTAR ? "TAR formats do not support encryption." : "ZIP encryption is unavailable. Choose 7z for AES-256."
+        if selectedFormat != .sevenZip { encryption.state = .off; passwords.clear() }
         changeEncryption()
         updateAdvanced()
     }
@@ -242,8 +246,9 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
     @objc private func createArchive() {
         guard createButton.isEnabled else { return }
         var value = name.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if value.lowercased().hasSuffix(".zip") { value = String(value.dropLast(4)) }
-        else if value.lowercased().hasSuffix(".7z") { value = String(value.dropLast(3)) }
+        if let suffix = ArchiveFormat.allCases.map(\.fileExtension).sorted(by: { $0.count > $1.count }).first(where: { value.lowercased().hasSuffix($0) }) {
+            value = String(value.dropLast(suffix.count))
+        }
         guard !value.isEmpty, value != ".", value != "..", !value.unicodeScalars.contains(where: { $0.value < 32 || "/\\:".unicodeScalars.contains($0) }), value.utf8.count <= 180 else {
             NSAlert(error: ArchiveFailure.message("Enter an archive name without colons, path separators or control characters (up to 180 UTF-8 bytes).")).runModal(); return
         }

@@ -1,7 +1,53 @@
 import Foundation
 import CArkiv
 
-public enum ArchiveFormat: Sendable { case zip, sevenZip }
+public enum ArchiveFormat: Sendable, CaseIterable {
+    case zip, sevenZip, tar, tarGzip, tgz, tarBzip2, tbz2, tarXZ, txz
+    public var fileExtension: String {
+        switch self {
+        case .zip: return ".zip"
+        case .sevenZip: return ".7z"
+        case .tar: return ".tar"
+        case .tarGzip: return ".tar.gz"
+        case .tgz: return ".tgz"
+        case .tarBzip2: return ".tar.bz2"
+        case .tbz2: return ".tbz2"
+        case .tarXZ: return ".tar.xz"
+        case .txz: return ".txz"
+        }
+    }
+    public var title: String {
+        let name: String
+        switch self {
+        case .zip: name = "ZIP"
+        case .sevenZip: name = "7z"
+        case .tar: name = "TAR"
+        case .tarGzip, .tgz: name = "TAR + gzip"
+        case .tarBzip2, .tbz2: name = "TAR + bzip2"
+        case .tarXZ, .txz: name = "TAR + XZ"
+        }
+        return "\(name) (\(fileExtension))"
+    }
+    var tarCodec: Int32? {
+        switch self {
+        case .zip, .sevenZip: return nil
+        case .tar: return 0
+        case .tarGzip, .tgz: return 1
+        case .tarBzip2, .tbz2: return 2
+        case .tarXZ, .txz: return 3
+        }
+    }
+    public var compressionDescription: String {
+        switch self {
+        case .zip: return "Store or Deflate"
+        case .sevenZip: return "LZMA2"
+        case .tar: return "None (uncompressed)"
+        case .tarGzip, .tgz: return "gzip · level 6"
+        case .tarBzip2, .tbz2: return "bzip2 · level 9"
+        case .tarXZ, .txz: return "XZ · LZMA2 level 6"
+        }
+    }
+}
 public enum ZIPCompression: Sendable { case store, deflate }
 public struct ArchiveCreationRequest: Sendable {
     public let format: ArchiveFormat
@@ -36,7 +82,7 @@ public struct ArchiveCreator: Sendable {
                 progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
         let backend = try request.preset.backend(for: request.format)
         guard request.format == .sevenZip || request.sevenZipOptions == nil else {
-            throw ArchiveFailure.message("7z advanced options cannot be used for ZIP creation.")
+            throw ArchiveFailure.message("Advanced compression options are available for 7z creation only.")
         }
         let advanced: SevenZipCreationOptions.Resolved?
         if request.format == .sevenZip {
@@ -57,7 +103,7 @@ public struct ArchiveCreator: Sendable {
                   fileMethods.count == request.sources.count else { throw ArchiveFailure.message("Invalid replacement compression plan.") }
         }
         try validateArchivePassword(request.password)
-        if request.format == .zip, request.password != nil {
+        if request.format != .sevenZip, request.password != nil {
             throw ArchiveFailure.message("Password protection is available for 7z archives only.")
         }
         func local(_ url: URL) -> Bool {
@@ -120,10 +166,16 @@ public struct ArchiveCreator: Sendable {
             let stage = destination.appendingPathComponent(".arkiv-create-" + UUID().uuidString, isDirectory: true)
             try manager.createDirectory(at: stage, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
             defer { try? manager.removeItem(at: stage) }
-            let filename = request.name + (request.format == .sevenZip ? ".7z" : ".zip")
+            let filename = request.name + request.format.fileExtension
             var published = [CChar](repeating: 0, count: 512)
             var error = [CChar](repeating: 0, count: 256)
             let result = pointers.withUnsafeBufferPointer { buffer in
+                if let codec = request.format.tarCodec {
+                    return arkiv_create_tar(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
+                        filename, &published, published.count, codec,
+                        arkiv_limits(max_entries: 100_000, max_bytes: 20 * 1024 * 1024 * 1024),
+                        cancellation.pointer, callback, context, &error, error.count)
+                }
                 if let fileMethods {
                     return arkiv_create_zip_files(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
                         filename, &published, published.count, fileMethods,

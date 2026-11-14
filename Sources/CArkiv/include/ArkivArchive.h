@@ -132,4 +132,10 @@ int arkiv_archive_is_tar(const char *path);
 int arkiv_compression_kind(const char *path);
 int arkiv_decompress_tar(const char *path, const char *output, uint64_t limit, arkiv_cancel *token);
 
+/* TAR creation: codec 0=plain, 1=gzip, 2=bzip2, 3=XZ. Fixed bounded settings. */
+int arkiv_create_tar(const char *const *, size_t, const char *, const char *, const char *,
+                    char *, size_t, int, arkiv_limits, arkiv_cancel *, arkiv_progress_callback,
+                    void *, char *, size_t);
+int arkiv_compress_tar_fd(int, int, int, uint64_t, arkiv_cancel *);
+
 #endif

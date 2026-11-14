@@ -6,6 +6,45 @@ import ArkivCore
 final class CompressionPresetUITests: XCTestCase {
     private func views(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(views) }
     @MainActor
+    func testTARFormatsUseSharedSetupWithoutEncryptionOrAdvancedOptions() throws {
+        _ = NSApplication.shared
+        let source = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".txt")
+        try Data("input".utf8).write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+        for wanted in ArchiveFormat.allCases where wanted != .zip && wanted != .sevenZip {
+            // Also exercise switching away from the Finder password setup.
+            let sheet = CreateArchiveSheet(sources: [source], encrypted: true)
+            defer { sheet.close() }
+            let all = views(try XCTUnwrap(sheet.window?.contentView))
+            let popups = all.compactMap { $0 as? NSPopUpButton }
+            let format = try XCTUnwrap(popups.first { $0.itemTitles.contains("ZIP (.zip)") })
+            let compression = try XCTUnwrap(popups.first { $0.itemTitles.contains("Ultra") })
+            XCTAssertEqual(format.itemTitles, ArchiveFormat.allCases.map(\.title))
+            format.selectItem(withTitle: wanted.title)
+            XCTAssertTrue(format.sendAction(format.action, to: format.target))
+            XCTAssertEqual(compression.itemTitles, [wanted.compressionDescription])
+            XCTAssertFalse(compression.isEnabled)
+            let encryption = try XCTUnwrap(all.compactMap { $0 as? NSButton }.first { $0.title == "Protect with AES-256 password" })
+            XCTAssertEqual(encryption.state, .off)
+            XCTAssertFalse(encryption.isEnabled)
+            XCTAssertTrue(encryption.isHiddenOrHasHiddenAncestor)
+            XCTAssertTrue(try XCTUnwrap(popups.first { $0.itemTitles.contains("16 MiB block") }).isHiddenOrHasHiddenAncestor)
+            var submitted = false
+            sheet.complete = { destination, _, preset, format, password, _, options in
+                submitted = true
+                XCTAssertNotNil(destination)
+                XCTAssertEqual(format, wanted)
+                XCTAssertEqual(preset, .normal)
+                XCTAssertNil(password)
+                XCTAssertNil(options)
+            }
+            let create = try XCTUnwrap(all.compactMap { $0 as? NSButton }.first { $0.title == "Create" })
+            XCTAssertTrue(create.isEnabled)
+            create.performClick(nil)
+            XCTAssertTrue(submitted)
+        }
+    }
+    @MainActor
     func testSolidControlsDefaultDependencyAndSubmission() async throws {
         _ = NSApplication.shared
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

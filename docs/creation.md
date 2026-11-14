@@ -1,4 +1,4 @@
-# ZIP / 7z creation and Finder compression
+# Archive creation and Finder compression
 
 ZIP is Arkiv’s primary/default creation format. Arkiv creates ZIP archives using system libarchive and offers 7z as a secondary format using a bundled, in-process 7-Zip library. RAR/RAR5 creation is not supported; read support never implies write support.
 There is no shell compression command, bundled 7zz executable, or Homebrew/runtime
@@ -13,8 +13,8 @@ Unicode, spaces, emoji, nested contents and empty directories are supported.
 The menu for normal items offers:
 
 - **Add to Archive…** — native setup sheet (or standalone native panel when no
-  browser is open), with selected items, name, destination, ZIP/7z format and
-  ZIP Store/Deflate presets or 7z LZMA2 presets, both defaulting to Normal. See [preset mappings and resource limits](compression-presets.md). Destination selection uses the native folder chooser.
+  browser is open), with selected items, name, destination, ZIP/7z/TAR format and
+  ZIP Store/Deflate presets or 7z LZMA2 presets, both defaulting to Normal. TAR options use fixed bounded settings described below. See [preset mappings and resource limits](compression-presets.md). Destination selection uses the native folder chooser.
 - **Compress to “Name.zip”** — direct creation beside the selection.
 - **Compress to “Name.7z”** — direct LZMA2 creation beside the selection.
 - **Compress with Password…** — opens setup with 7z/AES-256 selected, Password,
@@ -109,3 +109,54 @@ all four creation routes and checks that cold direct ZIP/7z requests have no bro
 5. With Arkiv quit, test Extract Here/Folder: no browser/focus jump or Finder
    navigation. Open activates; Extract To shows its chooser. Recheck Services,
    completion sound, onboarding on normal launch, and Sparkle on Intel/Apple Silicon.
+
+## TAR and compressed TAR creation
+
+The same Create Archive sheet (including Finder **Add to Archive…**) offers TAR
+(`.tar`), TAR + gzip (`.tar.gz`, `.tgz`), TAR + bzip2 (`.tar.bz2`, `.tbz2`) and
+TAR + XZ (`.tar.xz`, `.txz`). Aliases produce identical formats. ZIP remains the
+default; direct Finder ZIP/7z actions are unchanged. No additional direct Finder
+commands, TAR encryption, standalone compressed-file creation or TAR editing.
+
+System libarchive writes restricted PAX TAR, adding PAX headers when UTF-8/long
+paths require them. The existing descriptor traversal accepts only regular files
+and directories, including empty files/directories. It rejects links (including
+ancestor symlinks), special files, unsafe paths, overlapping roots and output
+inside a source. Permissions preserve only `0777` bits (no setuid/setgid/sticky);
+mtime is stored at whole-second precision. Owners, ACLs, xattrs, resource forks,
+Finder metadata and link identities are not copied.
+
+Fixed compression settings are gzip level 6 (Deflate with CRC32/ISIZE trailer),
+bzip2 block level 9 (block/stream CRCs), and XZ preset 6 (LZMA2, 8 MiB dictionary,
+CRC64). There are no TAR level/dictionary/thread controls. Encoding uses 64 KiB
+input/output buffers; XZ admission requires at most 128 MiB encoder memory and
+64 MiB decoder memory. Sources are limited to 100,000 entries, depth 128 and
+4096-byte archive paths. The TAR, including metadata/padding, is capped at 20 GiB;
+source identity/path records have a 64 MiB budget. Compressed output allows at
+most TAR's limit plus 1% + 1 MiB framing overhead. These are ceilings, not reserved
+memory. Temporary disk may hold the original TAR, compressed output and decoded
+verification TAR together (roughly three times uncompressed size).
+
+Before publication, every TAR file is read back and compared with its safely
+reopened source, with modes/mtime/entry sizes checked. Compressed output is decoded
+by Arkiv's existing bounded, checksum-validating reader and compared byte-for-byte
+with that TAR. The shared integrity reader then checks the verified TAR. Every
+source identity/size/mtime/ctime is revalidated before an exclusive same-filesystem
+hard link publishes the result. Numbered suffixes preserve complete extensions
+(e.g. `Name (2).tar.gz`). Cancellation/failure cleans private staging and never
+replaces an existing archive. Inputs must remain stable; this is not a filesystem
+snapshot. Test Archive still reports TAR's honest no-per-file-checksum Warning.
+
+Backend tests independently decode all wrappers with Python's gzip/bz2/lzma and
+read the PAX TAR with tarfile, checking bytes, long Unicode paths, empty entries,
+permissions, mtime, checksums, collision handling, bounds and unsafe-source cleanup.
+Core round trips use Arkiv inspection, extraction, Test, Open/Quick Look materialization
+and drag delivery. Native tests exercise the shared sheet's formats and disable
+unsupported options. SDK probes link encoder and decoder APIs for both CPUs;
+macOS CI is required to confirm the system-library implementation.
+
+Real-Mac check: create every variant from a folder containing nested/empty folders,
+a long Unicode filename and an executable file. Reopen, Test and extract; compare
+contents and permissions. Repeat to check numbered names, cancel a large creation,
+and try an unsafe symlink input. Check Finder Add to Archive exposes the formats,
+direct ZIP/7z remains unchanged, and TAR shows no password or advanced controls.
