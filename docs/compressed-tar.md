@@ -3,8 +3,8 @@
 TAR wrapped in a single gzip, bzip2 or XZ stream is supported for reading and creation; editing remains unavailable. Names such as
 `.tar.gz`/`.tgz`, `.tar.bz2`/`.tbz2`, `.tar.xz`/`.txz` are conventions: magic,
 validated compression and the actual inner TAR determine acceptance. A valid
-archive with a misleading suffix is still recognized; compressed non-TAR data
-is rejected. No standalone GZIP/BZIP2/XZ-file support is claimed. Creation uses the existing shared creator; see [settings, limits and verification](creation.md#tar-and-compressed-tar-creation).
+archive with a misleading suffix is still recognized. Valid compressed non-TAR data
+uses the separate single-file representation described in [standalone compression](standalone-compression.md); recognizable malformed TAR still fails closed. Creation uses the existing shared creator; see [settings, limits and verification](creation.md#tar-and-compressed-tar-creation).
 
 ## Backend and limits
 

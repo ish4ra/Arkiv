@@ -30,6 +30,7 @@ Arkiv only lists a format as supported once it passes automated fixture tests. R
 | --- | --- | --- | --- | --- | --- |
 | **ZIP** | Store, Deflate | Store, Deflate (default format) | Add, Delete, Rename, Replace File¹ | Not supported | Data and CRC |
 | **7z** | LZMA, LZMA2 | LZMA2 | — | AES-256, optional encrypted filenames | Data and CRC |
+| **GZIP / BZIP2 / XZ** standalone | One file; bounded checksum validation | One regular file | — | — | Complete stream checks |
 | **TAR**, **tar.gz/tgz**, **tar.bz2/tbz2**, **tar.xz/txz** | Yes; bounded single-stream decoding | TAR, gzip, bzip2, XZ | — | — | Readability; compressed-stream checks² |
 | **RAR5** | Limited³ | Never | — | — | — |
 
@@ -59,7 +60,7 @@ Encrypted 7z archives ask for a password when opened, with retry on a wrong pass
 
 Use **File → Create Archive…** (⇧⌘N) or Finder's **Add to Archive…** to choose a name, destination, format and compression method. ZIP offers Store or Deflate. 7z offers LZMA2 with optional AES-256 encryption and optional encrypted filenames. **Compress with Password…** uses 7z, because ZIP encryption has not yet passed interoperability testing. Arkiv never falls back silently to legacy ZipCrypto.
 
-TAR, TAR + gzip, TAR + bzip2 and TAR + XZ are also available in the same dialog, including `.tgz`, `.tbz2` and `.txz` aliases. They use fixed bounded settings and do not support passwords or editing.
+TAR, TAR + gzip, TAR + bzip2 and TAR + XZ are also available in the same dialog, including `.tgz`, `.tbz2` and `.txz` aliases. They use fixed bounded settings and do not support passwords or editing. **GZIP, BZIP2 and XZ single-file** options are also available for exactly one regular file (`database.sql` → `database.sql.gz`). For multiple files/folders, choose a container such as TAR. See [standalone compression](docs/standalone-compression.md).
 
 New archives are reopened and verified before they appear, and existing files are never replaced: name clashes become `Name (2).zip` and so on. See [creation](docs/creation.md) and [7z and AES-256](docs/sevenzip.md).
 

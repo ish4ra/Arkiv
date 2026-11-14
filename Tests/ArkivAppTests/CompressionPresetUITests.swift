@@ -1,10 +1,51 @@
 import AppKit
 import XCTest
 import ArkivCore
+import ArkivFinderIntegration
 @testable import ArkivApp
 
 final class CompressionPresetUITests: XCTestCase {
     private func views(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(views) }
+    @MainActor
+    func testStandaloneFinderSetupNamesAndSelectionRestrictions() throws {
+        _ = NSApplication.shared
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("database.sql")
+        let other = root.appendingPathComponent("already.tar")
+        try Data("data".utf8).write(to: file); try Data("data".utf8).write(to: other)
+        for sources in [[file], [other], [file, other], [root]] {
+            let handoff = try CreationHandoff(command: .addArchive, sources: sources)
+            let routed = try CreationHandoff(url: handoff.url)
+            for wanted: ArchiveFormat in [.gzip, .bzip2, .xz] {
+                let sheet = CreateArchiveSheet(sources: routed.sources, encrypted: false)
+                defer { sheet.close() }
+                let all = views(try XCTUnwrap(sheet.window?.contentView))
+                let format = try XCTUnwrap(all.compactMap { $0 as? NSPopUpButton }.first { $0.itemTitles.contains("ZIP (.zip)") })
+                XCTAssertEqual(format.titleOfSelectedItem, "ZIP (.zip)")
+                format.selectItem(withTitle: wanted.title); XCTAssertTrue(format.sendAction(format.action, to: format.target))
+                let create = try XCTUnwrap(all.compactMap { $0 as? NSButton }.first { $0.title == "Create" })
+                let eligible = sources.count == 1 && sources != [root]
+                XCTAssertEqual(create.isEnabled, eligible)
+                if eligible {
+                    var submitted = false
+                    sheet.complete = { destination, name, preset, format, password, _, options in
+                        submitted = true; XCTAssertNotNil(destination)
+                        XCTAssertEqual(name, sources[0].lastPathComponent)
+                        XCTAssertEqual(format, wanted); XCTAssertEqual(preset, .normal)
+                        XCTAssertNil(password); XCTAssertNil(options)
+                    }
+                    create.performClick(nil); XCTAssertTrue(submitted)
+                } else {
+                    XCTAssertTrue(all.compactMap { $0 as? NSTextField }.contains { $0.stringValue.contains("TAR-based format") })
+                    format.selectItem(withTitle: ArchiveFormat.tarGzip.title)
+                    XCTAssertTrue(format.sendAction(format.action, to: format.target))
+                    XCTAssertTrue(create.isEnabled)
+                }
+            }
+        }
+    }
     @MainActor
     func testTARFormatsUseSharedSetupWithoutEncryptionOrAdvancedOptions() throws {
         _ = NSApplication.shared

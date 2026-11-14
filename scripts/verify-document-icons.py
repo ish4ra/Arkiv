@@ -11,11 +11,13 @@ import tempfile
 FORMATS = {'ZIP': 'public.zip-archive', 'TAR': 'public.tar-archive',
            '7z': 'org.7-zip.7-zip-archive', 'RAR': 'com.rarlab.rar-archive'}
 
+STREAM_FORMATS = {'org.gnu.gnu-zip-archive': 'gz', 'public.bzip2-archive': 'bz2', 'org.tukaani.xz-archive': 'xz'}
+
 def verify_metadata(info):
     assert info['CFBundleIconFile'] == 'Arkiv'
     assert info['CFBundleIdentifier'] == 'xyz.isharalakshan.arkiv'
     declarations = info['CFBundleDocumentTypes']
-    assert len(declarations) == 4
+    assert len(declarations) == 4 + len(STREAM_FORMATS)
     for name, uti in FORMATS.items():
         matches = [d for d in declarations if d['LSItemContentTypes'] == [uti]]
         assert len(matches) == 1
@@ -23,7 +25,14 @@ def verify_metadata(info):
         assert d['CFBundleTypeIconFile'] == f'Arkiv-{name}.icns'
         assert d['CFBundleTypeRole'] == 'Viewer' and d['LSHandlerRank'] == 'Alternate'
     imported = {d['UTTypeIdentifier']: d for d in info['UTImportedTypeDeclarations']}
-    assert set(imported) == {FORMATS['7z'], FORMATS['RAR']}
+    assert set(imported) == {FORMATS['7z'], FORMATS['RAR']} | set(STREAM_FORMATS)
+    for uti, ext in STREAM_FORMATS.items():
+        matches = [d for d in declarations if d['LSItemContentTypes'] == [uti]]
+        assert len(matches) == 1
+        assert matches[0]['CFBundleTypeRole'] == 'Viewer' and matches[0]['LSHandlerRank'] == 'Alternate'
+        assert 'CFBundleTypeIconFile' not in matches[0], 'No new document artwork claimed'
+        assert imported[uti]['UTTypeTagSpecification']['public.filename-extension'] == [ext]
+        assert imported[uti]['UTTypeConformsTo'] == ['public.archive']
     for name, ext in [('7z', '7z'), ('RAR', 'rar')]:
         assert imported[FORMATS[name]]['UTTypeTagSpecification']['public.filename-extension'] == [ext]
     assert not info.get('UTExportedTypeDeclarations'), 'Arkiv does not own these standard formats'

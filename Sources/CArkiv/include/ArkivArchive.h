@@ -138,4 +138,15 @@ int arkiv_create_tar(const char *const *, size_t, const char *, const char *, co
                     void *, char *, size_t);
 int arkiv_compress_tar_fd(int, int, int, uint64_t, arkiv_cancel *);
 
+/* Shared bounded single-stream codecs; no implied TAR container. */
+int arkiv_decompress_stream(const char *, const char *, uint64_t, arkiv_cancel *);
+int arkiv_decompress_stream_progress(const char *, const char *, uint64_t, arkiv_cancel *, arkiv_progress_callback, void *);
+int arkiv_compress_stream_fd(int, int, int, uint64_t, arkiv_cancel *, arkiv_progress_callback, void *);
+int arkiv_tar_terminated(const char *);
+int arkiv_tar_candidate(const char *);
+int arkiv_file_pin_descriptor(arkiv_file_pin *);
+int arkiv_copy_regular(const char *, const char *, const char *, uint64_t, arkiv_cancel *, arkiv_progress_callback, void *);
+int arkiv_create_stream(const char *, const char *, const char *, const char *, char *, size_t, int,
+                        arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t);
+
 #endif

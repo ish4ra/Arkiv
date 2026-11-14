@@ -650,6 +650,20 @@ static int create_walk(struct create_state *s, int fd, const char *path, unsigne
     return 0;
 }
 static int seven_cancel(void *token) { return cancelled(token); }
+/* Same-filesystem exclusive publication, shared by containers and standalone streams. */
+static int create_publish(int stagefd, const char *payload, int parentfd, const char *name, const char *suffix,
+                          char *published_name, size_t published_capacity, arkiv_cancel *token) {
+    size_t extension = strlen(suffix);
+    for (unsigned attempt = 1; attempt <= 1000; attempt++) {
+        if (cancelled(token)) return 2;
+        int length = attempt == 1 ? snprintf(published_name, published_capacity, "%s", name) :
+            snprintf(published_name, published_capacity, "%.*s (%u)%s", (int)(strlen(name)-extension), name, attempt, suffix);
+        if (length < 0 || (size_t)length >= published_capacity) return 1;
+        if (!linkat(stagefd,payload,parentfd,published_name,0)) return 0;
+        if (errno != EEXIST) return 1;
+    }
+    return 3;
+}
 static int create_archive(const char *const *sources, size_t count, const char *parent,
                      const char *stage, const char *name, char *published_name, size_t published_capacity, int compression, arkiv_limits limits,
                      arkiv_cancel *token, arkiv_progress_callback progress, void *context,
@@ -836,16 +850,8 @@ static int create_archive(const char *const *sources, size_t count, const char *
             if (!valid) { status = fail(error, capacity, "Source changed during creation."); goto done; }
         }
     }
-    /* A same-filesystem hard link publishes atomically without replacing any item. */
-    status = 3;
-    for (unsigned attempt = 1; attempt <= 1000; attempt++) {
-        if (cancelled(token)) { status = 2; goto done; }
-        int length = attempt == 1 ? snprintf(published_name, published_capacity, "%s", name) :
-            snprintf(published_name, published_capacity, "%.*s (%u)%s", (int)(strlen(name) - extension), name, attempt, suffix);
-        if (length < 0 || (size_t)length >= published_capacity) { status = 1; goto done; }
-        if (!linkat(stagefd, payload, parentfd, published_name, 0)) { status = 0; break; }
-        if (errno != EEXIST) { status = 1; goto done; }
-    }
+    status = create_publish(stagefd,payload,parentfd,name,suffix,published_name,published_capacity,token);
+
 done:
     for (size_t i = 0; i < manifest.count; i++) { free(manifest.items[i].disk); free(manifest.items[i].entry); }
     free(manifest.items);
@@ -883,6 +889,7 @@ int arkiv_file_pin_valid(arkiv_file_pin *p) {
  int ok=!fstat(p->fd,&held)&&!fstat(fd,&current)&&create_same_stat(&held,&p->stamp)&&create_same_stat(&current,&p->stamp);
  close(fd);return ok;
 }
+int arkiv_file_pin_descriptor(arkiv_file_pin *p) { return p ? p->fd : -1; }
 void arkiv_file_pin_end(arkiv_file_pin *p){if(p){close(p->fd);free(p->path);free(p);}}
 
 int arkiv_create_zip_folder(const char *const *sources, size_t count, const char *parent, const char *stage,
@@ -1664,4 +1671,84 @@ int arkiv_create_tar(const char *const *sources, size_t count, const char *paren
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity) {
  if (codec < 0 || codec > 3) return fail(error,capacity,"Unsupported TAR compression.");
  return create_archive(sources,count,parent,stage,name,published,published_capacity,1,limits,token,progress,context,error,capacity,codec+2,NULL,0,"",NULL,0,NULL,6,0,2,0,0);
+}
+
+/* Recognizable damaged TAR must not fall back to an opaque standalone file. */
+int arkiv_tar_candidate(const char *path) {
+    if (arkiv_archive_is_tar(path)) return 1;
+    int fd = create_open(path); if (fd < 0) return -1;
+    unsigned char b[512]; ssize_t n = read(fd,b,sizeof(b)); close(fd);
+    if (n < 0) return -1;
+    return n >= 262 && !memcmp(b+257,"ustar",5);
+}
+
+int arkiv_copy_regular(const char *source,const char *parent,const char *name,uint64_t limit,
+                       arkiv_cancel *token,arkiv_progress_callback progress,void *context) {
+    if (!safe_path(name) || strchr(name,'/')) return 1;
+    arkiv_file_pin *pin = arkiv_file_pin_begin(source);
+    int in=arkiv_file_pin_descriptor(pin), dir=-1, out=-1, status=1;
+    struct stat st;
+    if (in<0 || fstat(in,&st) || st.st_size<0 || (uint64_t)st.st_size>limit) goto done;
+    dir=create_open(parent); if (dir<0) goto done;
+    if (cancelled(token)) { status=2; goto done; }
+    out=openat(dir,name,O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600); if(out<0)goto done;
+    unsigned char buffer[65536]; uint64_t total=0;
+    for (;;) {
+        if (cancelled(token)) {status=2;goto done;}
+        ssize_t n=read(in,buffer,sizeof(buffer));if(n<0)goto done;if(!n)break;
+        if((uint64_t)n>limit-total)goto done;
+        size_t offset=0;while(offset<(size_t)n) {ssize_t w=write(out,buffer+offset,(size_t)n-offset);if(w<=0)goto done;offset+=(size_t)w;}
+        total+=(uint64_t)n;if(progress)progress(context,1,total);
+    }
+    if(total!=(uint64_t)st.st_size || !arkiv_file_pin_valid(pin) || fsync(out))goto done;
+    status=cancelled(token)?2:0;
+ done:
+    if(out>=0) {if(close(out) && !status)status=1;if(status)unlinkat(dir,name,0);}
+    if(dir>=0)close(dir);
+    arkiv_file_pin_end(pin);return status;
+}
+
+int arkiv_create_stream(const char *source,const char *parent,const char *stage,const char *name,
+                        char *published,size_t published_capacity,int codec,arkiv_limits limits,
+                        arkiv_cancel *token,arkiv_progress_callback progress,void *context,char *error,size_t capacity) {
+    const char *suffixes[]={".gz",".bz2",".xz"};
+    if(codec<1||codec>3||!limits.max_entries||!safe_path(stage)||strchr(stage,'/')||!safe_path(name)||strchr(name,'/')||!published||published_capacity<256)
+        return fail(error,capacity,"Invalid standalone compression request.");
+    const char *suffix=suffixes[codec-1];size_t ext=strlen(suffix);
+    if(strlen(name)<=ext||strcmp(name+strlen(name)-ext,suffix))return fail(error,capacity,"Invalid compression suffix.");
+    arkiv_file_pin *pin=arkiv_file_pin_begin(source);
+    int input=arkiv_file_pin_descriptor(pin),parentfd=-1,stagefd=-1,out=-1,verify=-1,status=1;
+    struct stat st;char *packed=NULL,*decoded=NULL;
+    if(cancelled(token)){status=2;goto done;}
+    if(input<0||fstat(input,&st)||st.st_size<0||(uint64_t)st.st_size>limits.max_bytes)goto done;
+    parentfd=create_open(parent);if(parentfd<0)goto done;
+    stagefd=openat(parentfd,stage,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);if(stagefd<0)goto done;
+    out=openat(stagefd,"stream",O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);if(out<0)goto done;
+    status=arkiv_compress_stream_fd(input,out,codec,limits.max_bytes,token,progress,context);if(status)goto done;
+    status=1;
+    if(asprintf(&packed,"%s/%s/stream",parent,stage)<0||asprintf(&decoded,"%s/%s/decoded",parent,stage)<0)goto done;
+    status=arkiv_decompress_stream(packed,decoded,limits.max_bytes,token);if(status)goto done;
+    status=1;
+    verify=openat(stagefd,"decoded",O_RDONLY|O_NOFOLLOW|O_CLOEXEC);
+    if(verify<0||lseek(input,0,SEEK_SET)<0)goto done;
+    for(;;) {
+        if(cancelled(token)){status=2;goto done;}
+        unsigned char original[65536],check[65536];ssize_t n=read(input,original,sizeof(original));
+        if(n<0)goto done;
+        size_t offset=0;while(offset<(size_t)n){ssize_t got=read(verify,check+offset,(size_t)n-offset);if(got<=0)goto done;offset+=(size_t)got;}
+        if(memcmp(original,check,(size_t)n))goto done;
+        if(!n){if(read(verify,check,1)!=0)goto done;break;}
+    }
+    if(!arkiv_file_pin_valid(pin))goto done;
+    status=create_publish(stagefd,"stream",parentfd,name,suffix,published,published_capacity,token);
+ done:
+    free(packed);free(decoded);
+    if(verify>=0)close(verify);
+    if(out>=0)close(out);
+    if(stagefd>=0){unlinkat(stagefd,"stream",0);unlinkat(stagefd,"decoded",0);close(stagefd);}
+    if(parentfd>=0)close(parentfd);
+    arkiv_file_pin_end(pin);
+    if(status && cancelled(token))status=2;
+    if(status && status!=2 && status!=3)fail(error,capacity,"Cannot safely compress or verify the source. It may have changed, be unsupported, or exceed resource limits.");
+    return status;
 }

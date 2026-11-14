@@ -2,7 +2,7 @@ import Foundation
 import CArkiv
 
 public enum ArchiveFormat: Sendable, CaseIterable {
-    case zip, sevenZip, tar, tarGzip, tgz, tarBzip2, tbz2, tarXZ, txz
+    case zip, sevenZip, tar, tarGzip, tgz, tarBzip2, tbz2, tarXZ, txz, gzip, bzip2, xz
     public var fileExtension: String {
         switch self {
         case .zip: return ".zip"
@@ -14,6 +14,9 @@ public enum ArchiveFormat: Sendable, CaseIterable {
         case .tbz2: return ".tbz2"
         case .tarXZ: return ".tar.xz"
         case .txz: return ".txz"
+        case .gzip: return ".gz"
+        case .bzip2: return ".bz2"
+        case .xz: return ".xz"
         }
     }
     public var title: String {
@@ -25,26 +28,33 @@ public enum ArchiveFormat: Sendable, CaseIterable {
         case .tarGzip, .tgz: name = "TAR + gzip"
         case .tarBzip2, .tbz2: name = "TAR + bzip2"
         case .tarXZ, .txz: name = "TAR + XZ"
+        case .gzip: name = "GZIP (single file)"
+        case .bzip2: name = "BZIP2 (single file)"
+        case .xz: name = "XZ (single file)"
         }
         return "\(name) (\(fileExtension))"
     }
     var tarCodec: Int32? {
         switch self {
-        case .zip, .sevenZip: return nil
+        case .zip, .sevenZip, .gzip, .bzip2, .xz: return nil
         case .tar: return 0
         case .tarGzip, .tgz: return 1
         case .tarBzip2, .tbz2: return 2
         case .tarXZ, .txz: return 3
         }
     }
+    public var isStandalone: Bool { streamCodec != nil }
+    var streamCodec: Int32? {
+        switch self { case .gzip: return 1; case .bzip2: return 2; case .xz: return 3; default: return nil }
+    }
     public var compressionDescription: String {
         switch self {
         case .zip: return "Store or Deflate"
         case .sevenZip: return "LZMA2"
         case .tar: return "None (uncompressed)"
-        case .tarGzip, .tgz: return "gzip · level 6"
-        case .tarBzip2, .tbz2: return "bzip2 · level 9"
-        case .tarXZ, .txz: return "XZ · LZMA2 level 6"
+        case .tarGzip, .tgz, .gzip: return "gzip · level 6"
+        case .tarBzip2, .tbz2, .bzip2: return "bzip2 · level 9"
+        case .tarXZ, .txz, .xz: return "XZ · LZMA2 level 6"
         }
     }
 }
@@ -127,6 +137,12 @@ public struct ArchiveCreator: Sendable {
             return url
         }
         let manager = FileManager.default
+        if request.format.isStandalone {
+            guard request.sources.count == 1,
+                  try manager.attributesOfItem(atPath: request.sources[0].path)[.type] as? FileAttributeType == .typeRegular else {
+                throw ArchiveFailure.message("Standalone compression requires exactly one regular file. Choose a TAR-based format for folders or multiple files.")
+            }
+        }
         let destination = canonicalSystemURL(request.destination)
         var paths: [String] = [], names = Set<String>()
         for source in request.sources {
@@ -170,6 +186,12 @@ public struct ArchiveCreator: Sendable {
             var published = [CChar](repeating: 0, count: 512)
             var error = [CChar](repeating: 0, count: 256)
             let result = pointers.withUnsafeBufferPointer { buffer in
+                if let codec = request.format.streamCodec {
+                    return arkiv_create_stream(buffer[0], destination.path, stage.lastPathComponent,
+                        filename, &published, published.count, codec,
+                        arkiv_limits(max_entries: 100_000, max_bytes: 20 * 1024 * 1024 * 1024),
+                        cancellation.pointer, callback, context, &error, error.count)
+                }
                 if let codec = request.format.tarCodec {
                     return arkiv_create_tar(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
                         filename, &published, published.count, codec,

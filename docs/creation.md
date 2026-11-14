@@ -116,7 +116,8 @@ The same Create Archive sheet (including Finder **Add to Archive…**) offers TA
 (`.tar`), TAR + gzip (`.tar.gz`, `.tgz`), TAR + bzip2 (`.tar.bz2`, `.tbz2`) and
 TAR + XZ (`.tar.xz`, `.txz`). Aliases produce identical formats. ZIP remains the
 default; direct Finder ZIP/7z actions are unchanged. No additional direct Finder
-commands, TAR encryption, standalone compressed-file creation or TAR editing.
+commands, TAR encryption or TAR editing. Standalone compression is a separate
+choice for one regular file; see below.
 
 System libarchive writes restricted PAX TAR, adding PAX headers when UTF-8/long
 paths require them. The existing descriptor traversal accepts only regular files
@@ -160,3 +161,12 @@ a long Unicode filename and an executable file. Reopen, Test and extract; compar
 contents and permissions. Repeat to check numbered names, cancel a large creation,
 and try an unsafe symlink input. Check Finder Add to Archive exposes the formats,
 direct ZIP/7z remains unchanged, and TAR shows no password or advanced controls.
+
+## Standalone single-file compression
+
+GZIP (.gz), BZIP2 (.bz2) and XZ (.xz) are available in the same setup sheet for one
+regular file only. They retain its full basename/extension and use fixed levels
+6/9/6 respectively, without password/advanced controls. Multiple files or folders
+require a container such as TAR. Core enforces this independently of UI. The same
+bounded codecs, source pinning, decoded byte comparison and exclusive publication
+protect creation; [policy, metadata and compatibility details](standalone-compression.md).

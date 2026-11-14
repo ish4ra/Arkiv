@@ -100,9 +100,11 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
     private var selectedFormat: ArchiveFormat { ArchiveFormat.allCases[format.indexOfSelectedItem] }
     private var destination: URL
     private var finished = false
+    private var suggestedName: String
 
     init(sources: [URL], encrypted: Bool) {
         self.sources = sources
+        suggestedName = CreationHandoff.baseName(for: sources)
         destination = sources.first?.deletingLastPathComponent() ?? FileManager.default.homeDirectoryForCurrentUser
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 510, height: 340),
                             styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -183,17 +185,20 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
         window.makeFirstResponder(name)
     }
     @objc private func changeFormat() {
+        let nextName = selectedFormat.isStandalone && sources.count == 1 ? sources[0].lastPathComponent : CreationHandoff.baseName(for: sources)
+        if name.stringValue == suggestedName { name.stringValue = nextName }
+        suggestedName = nextName
         compression.removeAllItems()
         let presets = CompressionPreset.available(for: selectedFormat)
-        let isTAR = selectedFormat != .zip && selectedFormat != .sevenZip
-        compression.addItems(withTitles: isTAR ? [selectedFormat.compressionDescription] : presets.map(\.title))
-        compression.isEnabled = !isTAR
+        let fixedSettings = selectedFormat != .zip && selectedFormat != .sevenZip
+        compression.addItems(withTitles: fixedSettings ? [selectedFormat.compressionDescription] : presets.map(\.title))
+        compression.isEnabled = !fixedSettings
         compression.selectItem(at: presets.firstIndex(of: .normal)!)
-        compression.toolTip = isTAR ? "Fixed, bounded compression settings. TAR has no encryption." : selectedFormat == .sevenZip ? "LZMA2 compression. Higher presets may need substantially more memory and time." : "Store uses no compression; other presets use Deflate."
+        compression.toolTip = fixedSettings ? "Fixed, bounded compression settings. This format has no encryption." : selectedFormat == .sevenZip ? "LZMA2 compression. Higher presets may need substantially more memory and time." : "Store uses no compression; other presets use Deflate."
         encryption.isEnabled = selectedFormat == .sevenZip
         encryptionNote.isHidden = selectedFormat == .sevenZip
-        encryption.isHidden = isTAR
-        encryptionNote.stringValue = isTAR ? "TAR formats do not support encryption." : "ZIP encryption is unavailable. Choose 7z for AES-256."
+        encryption.isHidden = fixedSettings
+        encryptionNote.stringValue = fixedSettings ? "This format does not support encryption." : "ZIP encryption is unavailable. Choose 7z for AES-256."
         if selectedFormat != .sevenZip { encryption.state = .off; passwords.clear() }
         changeEncryption()
         updateAdvanced()
@@ -210,6 +215,11 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
         advanced.isHidden = selectedFormat != .sevenZip
         advancedFields.isHidden = advancedToggle.state != .on
         createButton.isEnabled = true
+        if selectedFormat.isStandalone {
+            let regular = sources.count == 1 && (try? FileManager.default.attributesOfItem(atPath: sources[0].path)[.type] as? FileAttributeType) == .typeRegular
+            createButton.isEnabled = regular
+            encryptionNote.stringValue = regular ? "One regular file. No encryption. Use TAR for folders or multiple files." : "Choose exactly one regular file, or use a TAR-based format for this selection."
+        }
         if selectedFormat == .sevenZip {
             if !sizeStarted {
                 sizeStarted = true
@@ -246,7 +256,7 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
     @objc private func createArchive() {
         guard createButton.isEnabled else { return }
         var value = name.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let suffix = ArchiveFormat.allCases.map(\.fileExtension).sorted(by: { $0.count > $1.count }).first(where: { value.lowercased().hasSuffix($0) }) {
+        if (!selectedFormat.isStandalone || value != sources.first?.lastPathComponent), let suffix = ArchiveFormat.allCases.map(\.fileExtension).sorted(by: { $0.count > $1.count }).first(where: { value.lowercased().hasSuffix($0) }) {
             value = String(value.dropLast(suffix.count))
         }
         guard !value.isEmpty, value != ".", value != "..", !value.unicodeScalars.contains(where: { $0.value < 32 || "/\\:".unicodeScalars.contains($0) }), value.utf8.count <= 180 else {

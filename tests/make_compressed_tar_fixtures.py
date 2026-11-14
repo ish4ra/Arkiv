@@ -15,4 +15,4 @@ for suffix,compress in [('gz',lambda b:gzip.compress(b,mtime=0)),('bz2',bz2.comp
     (out/('compressed.tar.'+suffix)).write_bytes(compress(t.getvalue()))
 for suffix,compress in [('gz',lambda b:gzip.compress(b,mtime=0)),('bz2',bz2.compress),('xz',lzma.compress)]:
     (out/('empty.tar.'+suffix)).write_bytes(compress(bytes(10240)))
-    (out/('invalid-inner.tar.'+suffix)).write_bytes(compress(b'not a tar'+bytes(10240-9)))
+    (out/('invalid-inner.tar.'+suffix)).write_bytes(compress(bytes([t.getvalue()[0] ^ 0x80]) + t.getvalue()[1:]))

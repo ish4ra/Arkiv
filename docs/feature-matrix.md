@@ -6,6 +6,7 @@
 | Selective/all extraction | Implemented: new destination folder, bounded streaming, cancellation, progress and cleanup |
 | Extraction safety | Automated hostile-path/link/overwrite/CRC/limit regression suite |
 | macOS application validation | Native compilation, tests, arm64 app/icon packaging and signature verification passed macOS CI; interactive validation outstanding |
+| Standalone GZIP / BZIP2 / XZ | Read, single-row browse, extract, Test, Open/Quick Look/drag and single-file creation; strict checksums/limits; [details](standalone-compression.md) |
 | Create TAR / compressed TAR | PAX TAR; gzip/bzip2/XZ with long/short suffixes in Create Archive / Finder Add to Archive; bounded encoders, byte verification, no encryption or editing; [details](creation.md#tar-and-compressed-tar-creation) |
 | Create ZIP | Store/Deflate, native creation setup, direct Finder multi-selection compression; [details](creation.md) |
 | Create/read 7z / AES-256 / filename encryption | LZMA2, content/header encryption, native password prompt/retry; [backend and limits](sevenzip.md) |

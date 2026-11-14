@@ -15,6 +15,7 @@ public enum ArchiveAdditionCapability: Equatable, Sendable {
 public struct ArchiveAdditionUpdater: Sendable {
     public init() {}
     public func capability(for snapshot: ArchiveSnapshot) -> ArchiveAdditionCapability {
+        if snapshot.standalone != nil { return .readOnly("Standalone compressed files cannot be modified. Create a new compressed file instead.") }
         if ArchiveZIPUpdater().canAdd(to: snapshot) { return .zip }
         guard (try? SourceStamp(snapshot.url)) == snapshot.stamp else {
             return .readOnly("Archive changed since it was opened. Reopen it.")

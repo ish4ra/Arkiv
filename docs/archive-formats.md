@@ -9,6 +9,7 @@ These are **fixture results on Linux with libarchive 3.7.4 and in [macOS CI](htt
 | 7z | LZMA/LZMA2; plain/encrypted fixtures and round trips | Create LZMA2; no modification | AES-256 content, optional filenames; full-data/CRC Test; no multipart |
 | RAR5 | One stored upstream fixture, byte-for-byte extraction | Never create RAR | Not implemented |
 | RAR4 | Decoder registered; no fixture validation yet | Not implemented | Not implemented |
+| GZIP / BZIP2 / XZ standalone | One logical regular file, complete bounded checksum validation; Open/Quick Look/drag | Single-file creation, fixed levels 6/9/6; no editing | No encryption; one complete stream only; [limits](standalone-compression.md) |
 | All other spec formats | Deferred, not advertised | Not implemented | Not implemented |
 
 An accepted file extension does not prove a compression method is available. 7z encrypted extraction is supported through the bundled backend; encrypted ZIP remains rejected. ZIPX, solid/multipart RAR and advanced 7z compatibility require dedicated fixtures before support claims. The app initially registers only ZIP/TAR document associations.
@@ -40,4 +41,4 @@ ZIP creation details and validation: [creation.md](creation.md).
 
 ## Compressed TAR
 
-Single-stream gzip/bzip2/XZ TAR reading uses bounded system decoders plus the existing TAR engine. See [evidence and limits](compressed-tar.md). Creation supports the same wrappers and aliases through the shared PAX TAR writer and bounded encoders. No standalone compressed-file support or TAR editing is advertised.
+Single-stream gzip/bzip2/XZ TAR reading uses bounded system decoders plus the existing TAR engine. See [evidence and limits](compressed-tar.md). Creation supports the same wrappers and aliases through the shared PAX TAR writer and bounded encoders. Standalone GZIP/BZIP2/XZ is separately supported for one file, without fabricated TAR headers; see [standalone policy](standalone-compression.md). TAR editing remains unavailable.

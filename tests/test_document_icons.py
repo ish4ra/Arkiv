@@ -14,6 +14,12 @@ class DocumentIconTests(unittest.TestCase):
     def test_supported_viewer_alternate_registrations(self):
         icons.verify_metadata(self.info)
 
+    def test_stream_registration_keeps_existing_default_handlers(self):
+        for uti in icons.STREAM_FORMATS:
+            changed = copy.deepcopy(self.info)
+            next(d for d in changed['CFBundleDocumentTypes'] if d['LSItemContentTypes'] == [uti])['LSHandlerRank'] = 'Owner'
+            with self.assertRaises(AssertionError): icons.verify_metadata(changed)
+
     def test_original_artwork_preserved(self):
         icons.verify_branding()
 

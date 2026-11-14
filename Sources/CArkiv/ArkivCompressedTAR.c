@@ -8,6 +8,8 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 int arkiv_compression_kind(const char *path) {
     int fd=open(path,O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);
@@ -20,13 +22,39 @@ int arkiv_compression_kind(const char *path) {
 }
 /* 0 success, 2 cancelled, 6 corrupt, 8 unsupported/resource limit.
    No output survives any unsuccessful return. Concatenated streams are rejected. */
-int arkiv_decompress_tar(const char *path,const char *output,uint64_t limit,arkiv_cancel *token) {
+/* Preserve trusted macOS temporary aliases, without following arbitrary links. */
+static arkiv_file_pin *stream_pin(const char *path) {
+#ifdef __APPLE__
+    if (!strncmp(path,"/var/",5) || !strncmp(path,"/tmp/",5)) {
+        char *physical=NULL;
+        if (asprintf(&physical,"/private%s",path)<0) return NULL;
+        arkiv_file_pin *pin=arkiv_file_pin_begin(physical); free(physical); return pin;
+    }
+#endif
+    return arkiv_file_pin_begin(path);
+}
+static int tar_end(int fd, uint64_t size) {
+    unsigned char tail[1024];
+    if (size < sizeof(tail) || size % 512 || pread(fd, tail, sizeof(tail), (off_t)(size-sizeof(tail))) != sizeof(tail)) return 0;
+    for (size_t i=0; i<sizeof(tail); i++) if (tail[i]) return 0;
+    return 1;
+}
+int arkiv_tar_terminated(const char *path) {
+    arkiv_file_pin *pin = stream_pin(path); if (!pin) return 0;
+    int fd = arkiv_file_pin_descriptor(pin); struct stat st;
+    int valid = !fstat(fd, &st) && st.st_size >= 0 && tar_end(fd, (uint64_t)st.st_size) && arkiv_file_pin_valid(pin);
+    arkiv_file_pin_end(pin); return valid;
+}
+static int decompress_stream(const char *path,const char *output,uint64_t limit,arkiv_cancel *token,
+                             int require_tar, arkiv_progress_callback progress, void *context) {
     if(arkiv_cancel_is_set(token))return 2;
     int kind=arkiv_compression_kind(path), in=-1,out=-1,result=6,initialized=0,input_eof=0;
     z_stream z={0}; bz_stream bz={0}; lzma_stream x=LZMA_STREAM_INIT;
     struct stat before,after;
+    arkiv_file_pin *pin = NULL;
     unsigned char input[65536],buffer[65536];size_t available=0;uint64_t total=0;
-    in=open(path,O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);
+    pin=stream_pin(path);
+    in=arkiv_file_pin_descriptor(pin);
     if(!kind||in<0||fstat(in,&before)||!S_ISREG(before.st_mode))goto done;
     out=open(output,O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);
     if(out<0)goto done;
@@ -47,26 +75,38 @@ int arkiv_decompress_tar(const char *path,const char *output,uint64_t limit,arki
         if(!ok||(!produced&&prior==available&&!ended))break;
         if(produced>limit-total){result=8;break;}total+=produced;
         size_t offset=0;while(offset<produced){ssize_t n=write(out,buffer+offset,produced-offset);if(n<=0)goto done;offset+=(size_t)n;}
+        if(progress)progress(context,1,total);
         if(ended) {
-            unsigned char extra,tail[1024]; int zero=1;
-            if(total>=1024 && pread(out,tail,sizeof(tail),(off_t)(total-1024))==(ssize_t)sizeof(tail)) {
-                for(size_t i=0;i<sizeof(tail);i++)if(tail[i])zero=0;
-            } else zero=0;
-            if(!available&&read(in,&extra,1)==0&&zero&&total%512==0&&
-               !fstat(in,&after)&&before.st_size==after.st_size&&before.st_mtime==after.st_mtime)result=0;
+            unsigned char extra;
+            if(!available && read(in,&extra,1)==0 && (!require_tar || tar_end(out,total)) &&
+               !fstat(in,&after) && before.st_size==after.st_size && before.st_mtime==after.st_mtime &&
+               arkiv_file_pin_valid(pin)) result=0;
             break;
         }
     }
  done:
+    if(arkiv_cancel_is_set(token))result=2;
     if(initialized){if(kind==1)inflateEnd(&z);if(kind==2)BZ2_bzDecompressEnd(&bz);if(kind==3)lzma_end(&x);}
-    if(in>=0)close(in);
+    arkiv_file_pin_end(pin);
     if(out>=0){if(close(out)&&result==0)result=6;if(result)unlink(output);}
     return result;
 }
 
+int arkiv_decompress_tar(const char *path,const char *output,uint64_t limit,arkiv_cancel *token) {
+    return decompress_stream(path,output,limit,token,1,NULL,NULL);
+}
+int arkiv_decompress_stream(const char *path,const char *output,uint64_t limit,arkiv_cancel *token) {
+    return decompress_stream(path,output,limit,token,0,NULL,NULL);
+}
+int arkiv_decompress_stream_progress(const char *path,const char *output,uint64_t limit,arkiv_cancel *token,
+                                    arkiv_progress_callback progress,void *context) {
+    return decompress_stream(path,output,limit,token,0,progress,context);
+}
+
 /* Fixed, interoperable creation settings: gzip 6, bzip2 9, XZ 6/CRC64.
    Input/output descriptors belong to the creator's private staging directory. */
-int arkiv_compress_tar_fd(int in, int out, int kind, uint64_t limit, arkiv_cancel *token) {
+int arkiv_compress_stream_fd(int in, int out, int kind, uint64_t limit, arkiv_cancel *token,
+                             arkiv_progress_callback progress, void *context) {
     if (kind < 1 || kind > 3 || limit > (20ULL << 30)) return 8;
     z_stream z = {0}; bz_stream bz = {0}; lzma_stream x = LZMA_STREAM_INIT;
     unsigned char input[65536], buffer[65536];
@@ -120,6 +160,7 @@ int arkiv_compress_tar_fd(int in, int out, int kind, uint64_t limit, arkiv_cance
             if (n <= 0) goto done;
             offset += (size_t)n;
         }
+        if (progress) progress(context,1,consumed);
         if (ended) { result = fsync(out) ? 6 : 0; break; }
     }
 done:
@@ -129,4 +170,8 @@ done:
         if (kind == 3) lzma_end(&x);
     }
     return result;
+}
+
+int arkiv_compress_tar_fd(int in,int out,int kind,uint64_t limit,arkiv_cancel *token) {
+    return arkiv_compress_stream_fd(in,out,kind,limit,token,NULL,NULL);
 }

@@ -18,6 +18,9 @@
 <dict><key>CFBundleTypeName</key><string>TAR Archive</string><key>CFBundleTypeIconFile</key><string>Arkiv-TAR.icns</string><key>CFBundleTypeRole</key><string>Viewer</string><key>LSHandlerRank</key><string>Alternate</string><key>LSItemContentTypes</key><array><string>public.tar-archive</string></array></dict>
 <dict><key>CFBundleTypeName</key><string>7z Archive</string><key>CFBundleTypeIconFile</key><string>Arkiv-7z.icns</string><key>CFBundleTypeRole</key><string>Viewer</string><key>LSHandlerRank</key><string>Alternate</string><key>LSItemContentTypes</key><array><string>org.7-zip.7-zip-archive</string></array></dict>
 <dict><key>CFBundleTypeName</key><string>RAR Archive</string><key>CFBundleTypeIconFile</key><string>Arkiv-RAR.icns</string><key>CFBundleTypeRole</key><string>Viewer</string><key>LSHandlerRank</key><string>Alternate</string><key>LSItemContentTypes</key><array><string>com.rarlab.rar-archive</string></array></dict>
+<dict><key>CFBundleTypeName</key><string>GZIP Compressed File</string><key>CFBundleTypeRole</key><string>Viewer</string><key>LSHandlerRank</key><string>Alternate</string><key>LSItemContentTypes</key><array><string>org.gnu.gnu-zip-archive</string></array></dict>
+<dict><key>CFBundleTypeName</key><string>BZIP2 Compressed File</string><key>CFBundleTypeRole</key><string>Viewer</string><key>LSHandlerRank</key><string>Alternate</string><key>LSItemContentTypes</key><array><string>public.bzip2-archive</string></array></dict>
+<dict><key>CFBundleTypeName</key><string>XZ Compressed File</string><key>CFBundleTypeRole</key><string>Viewer</string><key>LSHandlerRank</key><string>Alternate</string><key>LSItemContentTypes</key><array><string>org.tukaani.xz-archive</string></array></dict>
 </array>
 <key>UTImportedTypeDeclarations</key><array>
 	<dict>
@@ -62,6 +65,9 @@
 			</array>
 		</dict>
 	</dict>
+<dict><key>UTTypeIdentifier</key><string>org.gnu.gnu-zip-archive</string><key>UTTypeDescription</key><string>GZIP Compressed File</string><key>UTTypeConformsTo</key><array><string>public.archive</string></array><key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>gz</string></array><key>public.mime-type</key><array><string>application/gzip</string></array></dict></dict>
+<dict><key>UTTypeIdentifier</key><string>public.bzip2-archive</string><key>UTTypeDescription</key><string>BZIP2 Compressed File</string><key>UTTypeConformsTo</key><array><string>public.archive</string></array><key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>bz2</string></array><key>public.mime-type</key><array><string>application/x-bzip2</string></array></dict></dict>
+<dict><key>UTTypeIdentifier</key><string>org.tukaani.xz-archive</string><key>UTTypeDescription</key><string>XZ Compressed File</string><key>UTTypeConformsTo</key><array><string>public.archive</string></array><key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>xz</string></array><key>public.mime-type</key><array><string>application/x-xz</string></array></dict></dict>
 </array>
 <key>CFBundleURLTypes</key><array><dict>
 <key>CFBundleURLName</key><string>xyz.isharalakshan.arkiv.finder-action</string>

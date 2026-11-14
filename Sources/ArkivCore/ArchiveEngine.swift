@@ -23,8 +23,8 @@ public enum ArchiveFailure: Error, LocalizedError {
         }
     }
 }
-private struct CompressedTARUnsupported: LocalizedError {
-    var errorDescription: String? { "Compressed TAR exceeds the supported expansion/memory budget or uses an unsupported integrity check." }
+private struct CompressedStreamUnsupported: LocalizedError {
+    var errorDescription: String? { "Compressed stream exceeds the supported expansion/memory budget or uses an unsupported integrity check." }
 }
 public struct ArchiveSnapshot: Sendable {
     public let url: URL
@@ -35,7 +35,8 @@ public struct ArchiveSnapshot: Sendable {
     public internal(set) var metadata: ArchiveMetadata? = nil
     var sourceLease: ArchiveOpenedFileLease? = nil
     var compressedTAR: UnlockedArchive? = nil
-    var backingURL: URL { compressedTAR?.url ?? unlocked?.url ?? url }
+    var standalone: StandaloneStream? = nil
+    var backingURL: URL { standalone?.spool.url ?? compressedTAR?.url ?? unlocked?.url ?? url }
     public var index: ArchiveIndex { ArchiveIndex(entries: entries) }
 }
 func validateArchivePassword(_ password: String?) throws {
@@ -47,7 +48,7 @@ func validateArchivePassword(_ password: String?) throws {
 final class UnlockedArchive: @unchecked Sendable {
     let directory: URL
     let url: URL
-    init() throws {
+    init(filename: String = "contents.tar") throws {
         var root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
         #if os(macOS)
         // Foundation can retain /var or /tmp even after resolving symlinks.
@@ -58,7 +59,7 @@ final class UnlockedArchive: @unchecked Sendable {
         }
         #endif
         directory = root.appendingPathComponent("arkiv-unlocked-" + UUID().uuidString, isDirectory: true)
-        url = directory.appendingPathComponent("contents.tar")
+        url = directory.appendingPathComponent(filename)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
     }
     deinit { try? FileManager.default.removeItem(at: directory) }
@@ -140,7 +141,8 @@ public struct LibArchiveEngine: ArchiveEngine {
     public func inspect(_ url: URL, cancellation: ArchiveCancellation) throws -> ArchiveSnapshot {
         try inspect(url, cancellation: cancellation, password: nil)
     }
-    public func inspect(_ url: URL, cancellation: ArchiveCancellation, password: String?) throws -> ArchiveSnapshot {
+    public func inspect(_ url: URL, cancellation: ArchiveCancellation, password: String?,
+                        progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> ArchiveSnapshot {
         try validateArchivePassword(password)
         let stamp = try SourceStamp(url)
         var compressedTAR: UnlockedArchive?
@@ -160,11 +162,33 @@ public struct LibArchiveEngine: ArchiveEngine {
             unlocked = session
         }
         if compression != 0 {
-            let spool = try UnlockedArchive()
-            let code = arkiv_decompress_tar(url.path, spool.url.path, limits.max_bytes, cancellation.pointer)
+            let spool = try UnlockedArchive(filename: "contents.decoded")
+            let receiver = ProgressReceiver(progress)
+            let code = arkiv_decompress_stream_progress(sevenURL.path, spool.url.path, limits.max_bytes, cancellation.pointer, { context, files, bytes in
+                guard let context else { return }
+                Unmanaged<ProgressReceiver>.fromOpaque(context).takeUnretainedValue().callback(.init(files: files, bytes: bytes))
+            }, Unmanaged.passUnretained(receiver).toOpaque())
             if code == 2 { throw ArchiveFailure.cancelled }
-            if code == 8 { throw CompressedTARUnsupported() }
-            guard code == 0 else { throw ArchiveFailure.message("Compressed TAR is damaged, unsupported, or exceeds decompression limits.") }
+            if code == 8 { throw CompressedStreamUnsupported() }
+            guard code == 0 else { throw ArchiveFailure.message("Compressed stream is damaged, unsupported, or exceeds decompression limits.") }
+            let tar = arkiv_tar_candidate(spool.url.path)
+            guard tar >= 0 else { throw ArchiveFailure.message("The decoded data is unavailable.") }
+            if tar == 0 {
+                guard try SourceStamp(url) == stamp else { throw ArchiveFailure.message("Compressed file changed while reading. Reopen it.") }
+                let decodedStamp = try SourceStamp(spool.url)
+                let name = try StandaloneStream.outputName(for: url)
+                let codec = StandaloneStream.codecName(compression)
+                let entry = ArchiveEntry(id: 0, path: name, size: Int64(decodedStamp.size), kind: .file,
+                                         metadata: .init(compressionMethod: codec))
+                var snapshot = ArchiveSnapshot(url: url, entries: [entry], stamp: stamp, unlocked: nil)
+                snapshot.standalone = StandaloneStream(spool: spool, stamp: decodedStamp, entry: entry)
+                snapshot.metadata = ArchiveMetadata(url: url, physicalSize: stamp.size, entries: [entry], format: codec, methods: codec)
+                if cancellation.isCancelled { throw ArchiveFailure.cancelled }
+                return snapshot
+            }
+            guard arkiv_tar_terminated(spool.url.path) != 0 else {
+                throw ArchiveFailure.message("The compressed TAR has missing or invalid termination blocks.")
+            }
             compressedTAR = spool
         }
         let backing = compressedTAR?.url ?? unlocked?.url ?? url
@@ -241,9 +265,16 @@ public struct LibArchiveEngine: ArchiveEngine {
         guard try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
         }
-        let fresh = try inspect(snapshot.backingURL, cancellation: cancellation)
-        guard fresh.entries.map({ ArchiveEntry(id:$0.id,path:$0.path,size:$0.size,kind:$0.kind) }) == snapshot.entries.map({ ArchiveEntry(id:$0.id,path:$0.path,size:$0.size,kind:$0.kind) }) else {
-            throw ArchiveFailure.message("Archive contents changed. Reopen it.")
+        if let standalone = snapshot.standalone {
+            guard snapshot.entries == [standalone.entry], ids == nil || ids == [0],
+                  try SourceStamp(standalone.spool.url) == standalone.stamp else {
+                throw ArchiveFailure.message("The decoded file or selection changed. Reopen it.")
+            }
+        } else {
+            let fresh = try inspect(snapshot.backingURL, cancellation: cancellation)
+            guard fresh.entries.map({ ArchiveEntry(id:$0.id,path:$0.path,size:$0.size,kind:$0.kind) }) == snapshot.entries.map({ ArchiveEntry(id:$0.id,path:$0.path,size:$0.size,kind:$0.kind) }) else {
+                throw ArchiveFailure.message("Archive contents changed. Reopen it.")
+            }
         }
         let manager = FileManager.default
         let staging = parent.appendingPathComponent(".arkiv-" + UUID().uuidString, isDirectory: true)
@@ -265,7 +296,20 @@ public struct LibArchiveEngine: ArchiveEngine {
                 ArchiveExtractionWarning(path: String(cString: path), reason: String(cString: reason)))
         }
         let result: Int32
-        if let ids {
+        if let standalone = snapshot.standalone {
+            var physical = staging.standardizedFileURL
+            #if os(macOS)
+            if physical.path.hasPrefix("/var/") || physical.path.hasPrefix("/tmp/") {
+                physical = URL(fileURLWithPath: "/private" + physical.path)
+            }
+            #endif
+            result = arkiv_copy_regular(standalone.spool.url.path, physical.path, standalone.entry.path,
+                                        limits.max_bytes, cancellation.pointer, callback, context)
+            guard result == 0 || result == 2 else { throw ArchiveFailure.message("The decoded file could not be safely extracted.") }
+            guard try SourceStamp(standalone.spool.url) == standalone.stamp else {
+                throw ArchiveFailure.message("The decoded file changed. Output discarded.")
+            }
+        } else if let ids {
             result = ids.sorted().withUnsafeBufferPointer { buffer in
                 let extract = includeHardlinkDependencies ? arkiv_extract_promised : arkiv_extract_with_warnings
                 return extract(snapshot.backingURL.path, staging.path, buffer.baseAddress, buffer.count,
@@ -279,6 +323,7 @@ public struct LibArchiveEngine: ArchiveEngine {
         guard try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed during extraction. Output discarded.")
         }
+        if cancellation.isCancelled { throw ArchiveFailure.cancelled }
         let destination = parent.appendingPathComponent("Arkiv Extracted " + UUID().uuidString, isDirectory: true)
         try manager.moveItem(at: staging, to: destination)
         return ArchiveExtractionReport(url: destination, warnings: receiver.warnings)
@@ -305,12 +350,16 @@ extension LibArchiveEngine {
         let stamp = try SourceStamp(url)
         if arkiv_compression_kind(url.path) != 0 {
             do {
-                let inspected = try inspect(url, cancellation: cancellation)
+                let inspected = try inspect(url, cancellation: cancellation, password: nil, progress: progress)
+                if inspected.standalone != nil {
+                    guard try SourceStamp(url) == stamp else { throw ArchiveFailure.message("Compressed file changed during testing.") }
+                    return ArchiveIntegrityResult(state: .ok, detail: "The complete single-file stream was decoded within limits and its compression checksums verified.")
+                }
                 let result = try test(inspected.backingURL, cancellation: cancellation, progress: progress)
                 guard try SourceStamp(url) == stamp else { throw ArchiveFailure.message("Archive changed during testing.") }
                 return ArchiveIntegrityResult(state: result.state, detail: "Compressed-stream checksum and bounded decompression verified. " + result.detail)
             } catch ArchiveFailure.cancelled { throw ArchiveFailure.cancelled }
-              catch let error as CompressedTARUnsupported { return ArchiveIntegrityResult(state: .unsupportedMethod, detail: error.localizedDescription) }
+              catch let error as CompressedStreamUnsupported { return ArchiveIntegrityResult(state: .unsupportedMethod, detail: error.localizedDescription) }
               catch { return ArchiveIntegrityResult(state: .corrupt, detail: error.localizedDescription) }
         }
         let receiver = ProgressReceiver(progress)

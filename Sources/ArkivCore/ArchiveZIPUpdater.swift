@@ -27,7 +27,7 @@ public struct ArchiveZIPUpdater: Sendable {
         return url
     }
     public func canAdd(to snapshot: ArchiveSnapshot) -> Bool {
-        guard snapshot.unlocked == nil, snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), (try? SourceStamp(snapshot.url)) == snapshot.stamp else { return false }
+        guard snapshot.standalone == nil, snapshot.unlocked == nil, snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), (try? SourceStamp(snapshot.url)) == snapshot.stamp else { return false }
         var error = [CChar](repeating: 0, count: 256)
         guard let transaction = arkiv_zip_begin(canonical(snapshot.url).path, &error, error.count) else { return false }
         arkiv_zip_end(transaction)
