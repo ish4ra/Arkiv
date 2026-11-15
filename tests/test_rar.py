@@ -100,6 +100,14 @@ class RARTests(unittest.TestCase):
         crypt=bytes([4,0,0]);header=bytes([len(crypt)])+crypt
         self.t.archive.write_bytes(raw[:8]+struct.pack('<I',zlib.crc32(header))+header)
         self.assertEqual(self.check(),8)
+    def test_sfx_cannot_bypass_envelope_admission(self):
+        for name in ['rar4-stored','rar5-compressed']:
+            self.load(name);raw=self.t.archive.read_bytes()
+            self.t.archive.write_bytes(b'MZ'+b'\0'*(65536-2)+raw)
+            self.assertNotEqual(self.t.listing()[0],0)
+            self.assertNotEqual(self.check(),0)
+            self.assertNotEqual(self.t.extract()[0],0)
+            self.assertEqual(list(self.t.out.iterdir()),[])
     def test_cancellation_during_full_decode(self):
         self.load('rar5-multiple');before=self.t.archive.read_bytes()
         self.assertEqual(self.check(lambda *args:LIB.arkiv_cancel_set(self.t.token)),2)

@@ -53,8 +53,8 @@ static struct archive *reader(const char *path, arkiv_cancel *token) {
     archive_read_support_format_zip(a);
     archive_read_support_format_tar(a);
     archive_read_support_format_7zip(a);
-    archive_read_support_format_rar(a);
-    archive_read_support_format_rar5(a);
+    /* Do not let the bidder discover embedded SFX RAR past envelope admission. */
+    if (version) { archive_read_support_format_rar(a); archive_read_support_format_rar5(a); }
     if (archive_read_open_filename(a, path, 65536) != ARCHIVE_OK) {
         archive_read_free(a); return NULL;
     }
@@ -1095,7 +1095,7 @@ int arkiv_test(const char *path, const char *password, arkiv_limits limits, arki
         if (!a) { result = fail(error,capacity,"Cannot allocate archive reader."); goto integrity_done; }
         archive_read_support_filter_none(a);
         archive_read_support_format_zip_seekable(a); archive_read_support_format_tar(a);
-        archive_read_support_format_rar(a); archive_read_support_format_rar5(a);
+        if (rar_version) { archive_read_support_format_rar(a); archive_read_support_format_rar5(a); }
         if (archive_read_open_fd(a, fd, 65536) != ARCHIVE_OK) result = integrity_error(a, error, capacity);
         struct archive_entry *entry; int status = ARCHIVE_EOF; uint64_t files = 0, bytes = 0;
         char buffer[65536];
