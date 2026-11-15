@@ -249,9 +249,14 @@ public struct LibArchiveEngine: ArchiveEngine {
             }
         }
         let formatName = compression == 0 ? String(cString:detectedFormat) : "TAR (" + [1:"gzip",2:"bzip2",3:"xz",4:"zstd"][compression, default:"unknown"] + ")"
+        let admittedRAR = formatName.uppercased().hasPrefix("RAR")
+        if admittedRAR {
+            methods = Array(Set(collector.entries.compactMap { $0.metadata.compressionMethod })).sorted().joined(separator: ", ")
+            solid = false; dataEncrypted = false; headersEncrypted = false
+        }
         snapshot.metadata = ArchiveMetadata(url:url,physicalSize:stamp.size,entries:collector.entries,
             format:unlocked != nil ? "7z" : (formatName.isEmpty ? nil : formatName),methods:methods,
-            solid:solid,dataEncrypted:dataEncrypted,headersEncrypted:headersEncrypted)
+            solid:solid,dataEncrypted:dataEncrypted,headersEncrypted:headersEncrypted,multipart:admittedRAR ? false : nil)
         if cancellation.isCancelled { throw ArchiveFailure.cancelled }
         guard try SourceStamp(url) == stamp else { throw ArchiveFailure.message("Archive changed while reading metadata. Reopen it.") }
         return snapshot
@@ -340,7 +345,7 @@ public enum SevenZipBackend {
 
 public enum ArchiveIntegrityState: String, Sendable {
     case ok = "OK", warning = "Warning", corrupt = "Corrupt", crcError = "CRC Error"
-    case wrongPassword = "Wrong Password", unsupportedMethod = "Unsupported Method"
+    case wrongPassword = "Wrong Password", unsupportedMethod = "Unsupported Method", missingVolume = "Missing Volume"
 }
 public struct ArchiveIntegrityResult: Sendable {
     public let state: ArchiveIntegrityState
@@ -388,6 +393,8 @@ extension LibArchiveEngine {
         switch code {
         case 0: state = .ok; detail = "All archive entries were decoded and their available checksums verified."
         case 9: state = .warning; detail = "TAR structure and all payload bytes are readable. TAR has no payload checksum; content integrity cannot be confirmed."
+        case 10: state = .missingVolume; detail = "This RAR requires multiple volumes. Multipart RAR is not supported; no volume discovery was attempted."
+        case 11: state = .warning; detail = "All RAR payloads were decoded, but at least one entry has no stored CRC32. Complete content integrity cannot be confirmed."
         case 6: state = .corrupt; detail = "Archive structure or data is damaged."
         case 7: state = .crcError; detail = "An archive checksum does not match the decoded data."
         case 8: state = .unsupportedMethod; detail = "The compression or encryption method is unsupported."

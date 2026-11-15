@@ -19,10 +19,10 @@ public struct ArchiveMetadata: Sendable {
         return Double(physicalSize) / Double(unpackedSize)
     }
     init(url: URL, physicalSize: UInt64, entries: [ArchiveEntry], format: String?, methods: String? = nil,
-         solid: Bool? = nil, dataEncrypted: Bool? = nil, headersEncrypted: Bool? = nil) {
+         solid: Bool? = nil, dataEncrypted: Bool? = nil, headersEncrypted: Bool? = nil, multipart: Bool? = nil) {
         self.url = url; self.physicalSize = physicalSize; self.format = format
         self.compressionMethods = methods; self.solid = solid
-        self.dataEncrypted = dataEncrypted; self.headersEncrypted = headersEncrypted; multipart = nil
+        self.dataEncrypted = dataEncrypted; self.headersEncrypted = headersEncrypted; self.multipart = multipart
         fileCount = entries.filter { $0.kind == .file }.count
         folderCount = entries.filter { $0.kind == .directory }.count
         var total: UInt64 = 0

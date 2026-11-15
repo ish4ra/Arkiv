@@ -7,8 +7,8 @@ These are **fixture results on Linux with libarchive 3.7.4 and in [macOS CI](htt
 | ZIP | Stored and Deflate; nested Unicode paths, empty, corrupt CRC | Default creation: Store/Deflate; [ZIP32 additions](zip-additions.md), [Delete / Rename / Replace File](zip-edits.md) | Test reads data and checks CRC; encryption/multipart/comments deferred |
 | TAR | Regular files, nested paths, symlinks/hardlinks; special entries skipped with warnings | PAX TAR creation; gzip/bzip2/XZ wrappers and aliases; no editing | Test checks structure/readability; warning: no payload checksum |
 | 7z | LZMA/LZMA2; plain/encrypted fixtures and round trips | Create LZMA2; no modification | AES-256 content, optional filenames; full-data/CRC Test; no multipart |
-| RAR5 | One stored upstream fixture, byte-for-byte extraction | Never create RAR | Not implemented |
-| RAR4 | Decoder registered; no fixture validation yet | Not implemented | Not implemented |
+| RAR5 | Stored/compressed, four files, Unicode and safe links; [evidence](rar-compatibility.md) | Never create or modify | Full decoded CRC testing; encrypted/solid/multipart rejected |
+| RAR4 | Store/Normal/Best, hierarchy, empty directories, Unicode; [evidence](rar-compatibility.md) | Never create or modify | Full decoded CRC testing; encrypted/solid/multipart rejected |
 | GZIP / BZIP2 / XZ standalone | One logical regular file, complete bounded checksum validation; Open/Quick Look/drag | Single-file creation, fixed levels 6/9/6; no editing | No encryption; one complete stream only; [limits](standalone-compression.md) |
 | ZSTD / TAR.ZST / TZST | Bounded single standard frame, standalone or actual decoded TAR; optional checksum handled honestly | Single-file ZSTD or shared PAX TAR + ZSTD; no editing | Level 3 with checksum; no external dictionaries/encryption/multipart; [policy](zstandard.md) |
 | All other spec formats | Deferred, not advertised | Not implemented | Not implemented |

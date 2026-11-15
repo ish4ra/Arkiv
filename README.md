@@ -33,13 +33,13 @@ Arkiv only lists a format as supported once it passes automated fixture tests. R
 | **ZSTD / TAR.ZST / TZST** | Standalone or decoded TAR; optional checksum | One file or PAX TAR hierarchy | — | — | [Bounded frame policy](docs/zstandard.md) |
 | **GZIP / BZIP2 / XZ** standalone | One file; bounded checksum validation | One regular file | — | — | Complete stream checks |
 | **TAR**, **tar.gz/tgz**, **tar.bz2/tbz2**, **tar.xz/txz** | Yes; bounded single-stream decoding | TAR, gzip, bzip2, XZ | — | — | Readability; compressed-stream checks² |
-| **RAR5** | Limited³ | Never | — | — | — |
+| **RAR4 / RAR5** | Verified variants³ | Never | — | — | Stored/compressed, read-only |
 
 ¹ Ordinary single-disk ZIP32 archives. Encrypted, ZIP64 and multipart ZIPs are read-only.
 ² TAR has no per-entry content checksum, so a passing test is reported as a warning. Compressed wrappers are validated separately.
-³ Verified against a single stored (uncompressed) RAR5 fixture. Broader RAR5 and RAR4 decoding is not yet verified, and RAR creation is out of scope.
+³ Independent RAR4 Store/Normal/Best and RAR5 stored/compressed fixtures are verified. Encryption, solid and multipart RAR remain unsupported. See the [RAR compatibility matrix](docs/rar-compatibility.md) for exact evidence and limits.
 
-**Not yet verified, so not advertised:** RAR4, RAR5 beyond the stored fixture, ZIPX, disk images and the other formats in the [specification](ARKIV_SPEC.md). No support is claimed until fixture tests pass.
+**Not yet verified, so not advertised:** additional RAR methods/filters, ZIPX, disk images and the other formats in the [specification](ARKIV_SPEC.md). No support is claimed until fixture tests pass.
 
 **Known unsupported:** encrypted ZIP (rejected rather than guessed at), multipart archives, and RAR creation. See [format evidence](docs/archive-formats.md) for details.
 
@@ -155,7 +155,7 @@ The app builds for arm64 by default. Set `ARKIV_ARCH=universal` for both build s
 
 Planned work that is **not** in current builds:
 
-- **Formats:** TAR creation, broader RAR5 and RAR4 verification, multipart archives
+- **Formats:** TAR creation, additional RAR methods/filters, multipart archives
 - **Archive work:** encrypted ZIP after interoperability testing, general multi-selection and update-by-date operations, editing more formats, archive comments
 - **Tools:** checksums, split/combine, benchmark, a command-line companion
 - **App:** A Quick Look extension for archives in Finder remains planned. [Settings](docs/settings.md), [Open Recent](docs/open-recent.md), advanced browser columns and Archive Info are implemented.
@@ -190,3 +190,5 @@ Archive document icons are provided for ZIP, 7z, TAR and RAR when macOS associat
 See [compressed TAR](docs/compressed-tar.md) for stream integrity, temporary-disk limits and read-only compatibility boundaries.
 
 Zstandard is available for single-file `.zst` and compressed TAR (`.tar.zst`, `.tzst`): browse, extract, Test, Open, Quick Look, drag-out and Create Archive/Finder Add to Archive. ZIP remains the creation default. See [ZSTD frame policy, resource limits and testing](docs/zstandard.md).
+
+RAR4/RAR5 Phase 1 now has fixture-backed stored/compressed reading, extraction and full-data integrity testing. RAR remains read-only; encryption, solid and multipart variants are explicitly unsupported in this phase. See the [RAR compatibility matrix](docs/rar-compatibility.md) for verified methods, metadata, security policy and real-Mac checks.

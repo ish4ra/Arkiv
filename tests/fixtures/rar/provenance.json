@@ -1,0 +1,67 @@
+{
+  "rar4-large.rar": {
+    "upstream": "libarchive/test/test_read_format_rar_multi_lzss_blocks.rar.uu",
+    "tag": "v3.7.4",
+    "sha256": "232593586009149311a21c2a3e509ce32c726322a9d971aee6f55676a4caebf1"
+  },
+  "rar4-stored.rar": {
+    "upstream": "libarchive/test/test_read_format_rar.rar.uu",
+    "tag": "v3.7.4",
+    "sha256": "d421b86f6290aefad61b2a36737253b2b30fe27c156bd95abfc230f24fe0307e"
+  },
+  "rar4-normal.rar": {
+    "upstream": "libarchive/test/test_read_format_rar_compress_normal.rar.uu",
+    "tag": "v3.7.4",
+    "sha256": "7d32e2ef511d0ade372345440838165df828197eff4d7816880dafde690cce03"
+  },
+  "rar4-best.rar": {
+    "upstream": "libarchive/test/test_read_format_rar_compress_best.rar.uu",
+    "tag": "v3.7.4",
+    "sha256": "7005b3c6e169ae559f0183c5f0640fdd201b329cf61838c1ca45725949fe0e06"
+  },
+  "rar4-unicode.rar": {
+    "upstream": "libarchive/test/test_read_format_rar_unicode.rar.uu",
+    "tag": "v3.7.4",
+    "sha256": "3dc3d2a8f3f6cbfeeb6f45b3bb09fa7b2bf4b52e10e80df29217fdeaa9dbda45"
+  },
+  "rar4-encrypted-data.rar": {
+    "upstream": "libarchive/test/test_read_format_rar_encryption_data.rar.uu",
+    "tag": "v3.7.4",
+    "sha256": "84ba9afcf0673aab0d1421d931e76a19294b12117483879c4b58598d3d71e83e"
+  },
+  "rar4-encrypted-header.rar": {
+    "upstream": "libarchive/test/test_read_format_rar_encryption_header.rar.uu",
+    "tag": "v3.7.4",
+    "sha256": "67fa99d6f1d07d6dce56da85d22cd6271c16fbc7aad5efc6046b30425cc799b0"
+  },
+  "rar4-volume.rar": {
+    "upstream": "libarchive/test/test_read_format_rar_multivolume.part0001.rar.uu",
+    "tag": "v3.7.4",
+    "sha256": "6c4d7f55cbf0a44aa0cafb283b0fd954ef625c9afc2fbe1cce4f201fc2508c63"
+  },
+  "rar5-compressed.rar": {
+    "upstream": "libarchive/test/test_read_format_rar5_compressed.rar.uu",
+    "tag": "v3.7.4",
+    "sha256": "68f9d7e2662cd5bc5607ba9c6bf1edbf121cf3b08011a7d8643091791750a7c8"
+  },
+  "rar5-multiple.rar": {
+    "upstream": "libarchive/test/test_read_format_rar5_multiple_files.rar.uu",
+    "tag": "v3.7.4",
+    "sha256": "65305723965a55a89b7e120d54807c6ae30b69532712aa20d3934296799e923b"
+  },
+  "rar5-unicode.rar": {
+    "upstream": "libarchive/test/test_read_format_rar5_unicode.rar.uu",
+    "tag": "v3.7.4",
+    "sha256": "062c77fb1d47efbd5a468609a9c283ecb0b4cae43b0f6778935c41a975cedee9"
+  },
+  "rar5-solid.rar": {
+    "upstream": "libarchive/test/test_read_format_rar5_multiple_files_solid.rar.uu",
+    "tag": "v3.7.4",
+    "sha256": "0aa2c652c06304dedd93019663c1d52d5e85055d5fdb8045bfcc4345b90b4a0f"
+  },
+  "rar5-volume.rar": {
+    "upstream": "libarchive/test/test_read_format_rar5_multiarchive.part01.rar.uu",
+    "tag": "v3.7.4",
+    "sha256": "2f3894dc4b8a1bba90830ef1f89f457b0295b6f9030c70febd57283721bc2ce3"
+  }
+}

@@ -1,8 +1,10 @@
 #include "ArkivArchive.h"
+#include "ArkivRAR.h"
 #include "../CArkivSeven/include/ArkivSeven.h"
 #include "vendor/archive.h"
 #include "vendor/archive_entry.h"
 #include <errno.h>
+#include <zlib.h>
 #include <fcntl.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -29,7 +31,7 @@ static int fail(char *error, size_t capacity, const char *message) {
 
 /* Deliberately register only in-process filters and the initial candidate formats.
    Never enable libarchive's external-program filter fallback. */
-static struct archive *reader(const char *path) {
+static struct archive *reader(const char *path, arkiv_cancel *token) {
     /* libarchive accepts a RAR signature alone as an empty archive. Every RAR
        needs an archive header after its 7/8-byte signature; reject truncation. */
     struct stat st;
@@ -41,6 +43,10 @@ static struct archive *reader(const char *path) {
         if (n >= 7 && !memcmp(signature, "Rar!\x1a\x07", 6) &&
             (signature[6] == 0 || signature[6] == 1)) return NULL;
     }
+    int rarfd=open(path,O_RDONLY|O_CLOEXEC|O_NOFOLLOW|O_NONBLOCK),version=0,missing=0;size_t count=0;
+    if(rarfd<0)return NULL;
+    int policy=arkiv_rar_scan(rarfd,(arkiv_limits){100000,20ULL<<30},token,&version,&missing,NULL,&count);
+    close(rarfd);if(policy)return NULL;
     struct archive *a = archive_read_new();
     if (!a) return NULL;
     archive_read_support_filter_none(a);
@@ -81,7 +87,7 @@ static int entry_kind(struct archive_entry *e) {
 int arkiv_list_metadata(const char *path, arkiv_limits limits, arkiv_cancel *token,
               arkiv_entry_callback callback, void *context, char *error, size_t capacity, char *format, size_t format_capacity) {
     if (cancelled(token)) return 2;
-    struct archive *a = reader(path);
+    struct archive *a = reader(path, token);
     if (!a) return fail(error, capacity, "Cannot read archive: unsupported, encrypted, corrupt, or inaccessible.");
     struct archive_entry *e;
     int status, result = 0;
@@ -230,7 +236,7 @@ static int selection_compare(const void *a, const void *b) {
 static int selection_dependencies(const char *path, const int64_t *ids, size_t count,
                                   arkiv_limits limits, arkiv_cancel *token,
                                   int64_t **expanded, size_t *expanded_count, char *error, size_t capacity) {
-    struct archive *a = reader(path);
+    struct archive *a = reader(path, token);
     if (!a) return fail(error, capacity, "Cannot read archive dependencies.");
     struct selection_entry *entries = NULL;
     size_t used = 0; int result = 0, status; struct archive_entry *e;
@@ -306,8 +312,11 @@ static int extract_reporting(int dependencies, const char *path, const char *roo
     }
     int root = open(root_path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (root < 0) { free(expanded); return fail(error, capacity, "Output directory is unavailable or unsafe."); }
-    struct archive *a = reader(path);
+    struct archive *a = reader(path, token);
     if (!a) { free(expanded); close(root); return fail(error, capacity, "Cannot read archive: unsupported, encrypted, corrupt, or inaccessible."); }
+    int rfd=open(path,O_RDONLY|O_NOFOLLOW|O_CLOEXEC|O_NONBLOCK),rv=0,rm=0;size_t rc=0;arkiv_rar_item *ri=NULL;
+    int policy=rfd<0?6:arkiv_rar_scan(rfd,limits,token,&rv,&rm,&ri,&rc);if(rfd>=0)close(rfd);
+    if(policy){free(expanded);archive_read_free(a);close(root);return policy;}
     struct archive_entry *e;
     int status, result = 0;
     uint64_t count = 0, total = 0, files = 0, found = 0;
@@ -316,6 +325,7 @@ static int extract_reporting(int dependencies, const char *path, const char *roo
     while ((status = archive_read_next_header(a, &e)) == ARCHIVE_OK) {
         if (cancelled(token)) { result = 2; break; }
         if (count >= limits.max_entries) { result = fail(error, capacity, "Archive entry limit exceeded."); break; }
+        if(rv && count>=rc){result=6;break;}
         int wanted = selected((int64_t)count++, ids, selected_count);
         if (!wanted) {
             if (archive_read_data_skip(a) != ARCHIVE_OK) { result = fail(error, capacity, "Damaged archive data."); break; }
@@ -353,12 +363,14 @@ static int extract_reporting(int dependencies, const char *path, const char *roo
         }
         int output = open_output(root, name, kind == 2);
         if (output < 0) { result = fail(error, capacity, "Output conflict, unsafe directory, or permission denied."); break; }
+        uint32_t rar_crc=0;uint64_t entry_bytes=0;
         if (kind == 1) {
             for (;;) {
                 if (cancelled(token)) { result = 2; break; }
                 la_ssize_t n = archive_read_data(a, buffer, sizeof(buffer));
                 if (n < 0) { result = fail(error, capacity, "Archive data is corrupt, encrypted, or unsupported (including CRC failure)."); break; }
                 if (!n) break;
+                if(rv){rar_crc=crc32(rar_crc,(const Bytef *)buffer,(uInt)n);entry_bytes+=(uint64_t)n;}
                 if ((uint64_t)n > limits.max_bytes - total) { result = fail(error, capacity, "Expanded size limit exceeded."); break; }
                 size_t offset = 0;
                 while (offset < (size_t)n) {
@@ -371,6 +383,9 @@ static int extract_reporting(int dependencies, const char *path, const char *roo
                 total += (uint64_t)n;
                 if (progress) progress(context, files, total);
             }
+        }
+        if(!result && rv && kind==1 && (entry_bytes!=(uint64_t)size || (ri[count-1].crc>=0 && rar_crc!=(uint32_t)ri[count-1].crc))) {
+            result=7;fail(error,capacity,"RAR payload CRC or size does not match.");
         }
         if (!result && fchmod(output, (archive_entry_perm(e) & 0555) | (kind == 2 ? 0700 : 0600)))
             result = fail(error, capacity, "Cannot set safe output permissions.");
@@ -386,6 +401,7 @@ static int extract_reporting(int dependencies, const char *path, const char *roo
     if (!result && ids && found != selected_count) result = fail(error, capacity, "Selected entries no longer exist in the archive.");
     if (!result) result = finish_hardlinks(root, items, token, progress, context, &files, total, error, capacity);
     free_items(items);
+    free(ri);
     free(expanded);
     archive_read_free(a);
     close(root);
@@ -936,7 +952,7 @@ int arkiv_is_seven(const char *path) {
  return n==6&&!memcmp(b,"7z\xbc\xaf\x27\x1c",6);
 }
 int arkiv_archive_is_tar(const char *path) {
- struct archive *a=reader(path);if(!a)return 0;
+ struct archive *a=reader(path, NULL);if(!a)return 0;
  struct archive_entry *e;int status=archive_read_next_header(a,&e);
  int yes=(status==ARCHIVE_OK||status==ARCHIVE_EOF)&&((archive_format(a)&ARCHIVE_FORMAT_BASE_MASK)==ARCHIVE_FORMAT_TAR);
  archive_read_free(a);return yes;
@@ -954,7 +970,7 @@ int arkiv_archive_candidate(const char *path) {
     (n>=262 && !memcmp(b+257,"ustar",5))) return 1;
  /* Reuse the registered backend bidders for old/empty TAR and SFX ZIP.
     No extension checks, new formats, payload extraction, or external filters. */
- struct archive *a=reader(path);
+ struct archive *a=reader(path, NULL);
  if(!a)return 0;
  struct archive_entry *entry=NULL;
  (void)archive_read_next_header(a,&entry);
@@ -1058,7 +1074,7 @@ int arkiv_test(const char *path, const char *password, arkiv_limits limits, arki
     if (fd < 0) return fail(error, capacity, "Cannot safely open archive.");
     if (fstat(fd, &before) || !S_ISREG(before.st_mode)) { close(fd); return fail(error, capacity, "Choose a regular archive file."); }
     unsigned char signature[6]; ssize_t n = pread(fd, signature, 6, 0);
-    int result = 0;
+    int result = 0;arkiv_rar_item *rar_items=NULL;
     if (n == 6 && !memcmp(signature, "7z\xbc\xaf\x27\x1c", 6)) {
         locale_t utf8 = newlocale(LC_CTYPE_MASK, "en_US.UTF-8", NULL);
         if (!utf8) utf8 = newlocale(LC_CTYPE_MASK, "C.UTF-8", NULL);
@@ -1068,6 +1084,9 @@ int arkiv_test(const char *path, const char *password, arkiv_limits limits, arki
         uselocale(previous); freelocale(utf8);
         if (result == 1) result = 6;
     } else {
+        int rar_version=0,rar_missing=0;size_t rar_count=0;
+        result=arkiv_rar_scan(fd,limits,token,&rar_version,&rar_missing,&rar_items,&rar_count);
+        if(result)goto integrity_done;
         uint64_t zip_entries = UINT64_MAX;
         int is_zip = n >= 4 && !memcmp(signature, "PK", 2);
         if (is_zip) result = integrity_zip_directory(fd, (uint64_t)before.st_size, limits, token, &zip_entries, error, capacity);
@@ -1076,15 +1095,18 @@ int arkiv_test(const char *path, const char *password, arkiv_limits limits, arki
         if (!a) { result = fail(error,capacity,"Cannot allocate archive reader."); goto integrity_done; }
         archive_read_support_filter_none(a);
         archive_read_support_format_zip_seekable(a); archive_read_support_format_tar(a);
+        archive_read_support_format_rar(a); archive_read_support_format_rar5(a);
         if (archive_read_open_fd(a, fd, 65536) != ARCHIVE_OK) result = integrity_error(a, error, capacity);
         struct archive_entry *entry; int status = ARCHIVE_EOF; uint64_t files = 0, bytes = 0;
         char buffer[65536];
         while (!result && (status = archive_read_next_header(a, &entry)) == ARCHIVE_OK) {
             if (cancelled(token)) { result = 2; break; }
-            if (files >= limits.max_entries || !safe_path(archive_entry_pathname_utf8(entry)) || (entry_kind(entry) != 1 && entry_kind(entry) != 2 && !(((archive_format(a)&ARCHIVE_FORMAT_BASE_MASK)==ARCHIVE_FORMAT_TAR) && (entry_kind(entry)==3 || entry_kind(entry)==4)))) {
+            if (files >= limits.max_entries || !safe_path(archive_entry_pathname_utf8(entry)) || (entry_kind(entry) != 1 && entry_kind(entry) != 2 && !(((archive_format(a)&ARCHIVE_FORMAT_BASE_MASK)==ARCHIVE_FORMAT_TAR || rar_version) && (entry_kind(entry)==3 || entry_kind(entry)==4)))) {
                 result = fail(error, capacity, "Archive entry limit or safe path/type policy exceeded."); break;
             }
             if (archive_entry_is_encrypted(entry) > 0) { result = 8; fail(error, capacity, "Encrypted ZIP testing is unsupported."); break; }
+            if(rar_version && files>=rar_count){result=6;break;}
+            uint32_t rar_crc=0;
             int64_t expected = archive_entry_size(entry); uint64_t read_bytes = 0;
             if (expected < 0 || (uint64_t)expected > limits.max_bytes - bytes) {
                 result = fail(error, capacity, "Expanded size limit exceeded."); break;
@@ -1095,10 +1117,12 @@ int arkiv_test(const char *path, const char *password, arkiv_limits limits, arki
                 if (amount < 0) { result = integrity_error(a, error, capacity); break; }
                 if (!amount) break;
                 if ((uint64_t)amount > limits.max_bytes - bytes) { result = fail(error, capacity, "Expanded size limit exceeded."); break; }
+                if(rar_version)rar_crc=crc32(rar_crc,(const Bytef *)buffer,(uInt)amount);
                 bytes += amount; read_bytes += amount;
                 if (progress) progress(context, files, bytes);
             }
             if (!result && read_bytes != (uint64_t)expected) result = 6;
+            if(!result && rar_version && entry_kind(entry)==1 && rar_items[files].crc>=0 && rar_crc!=(uint32_t)rar_items[files].crc)result=7;
             if (!result) { files++; if (progress) progress(context, files, bytes); }
         }
         if (!result && status != ARCHIVE_EOF) result = integrity_error(a, error, capacity);
@@ -1107,10 +1131,13 @@ int arkiv_test(const char *path, const char *password, arkiv_limits limits, arki
             is_zip = 1;
         }
         if (!result && is_zip && files != zip_entries) result = 6;
+        if (!result && rar_version && files != rar_count) result = 6;
+        if (!result && rar_version && rar_missing) result = 11;
         if (!result && (archive_format(a) & ARCHIVE_FORMAT_BASE_MASK) == ARCHIVE_FORMAT_TAR) result = 9;
         archive_read_free(a);
     }
 integrity_done:
+    free(rar_items);
     if (cancelled(token)) result = 2;
     if (fstat(fd, &after) || !create_same_stat(&before, &after)) result = fail(error, capacity, "Archive changed during testing.");
     close(fd); return result;
@@ -1642,14 +1669,20 @@ int arkiv_zip_commit(arkiv_zip_transaction *t,arkiv_cancel *token,char *error,si
 /* Header evidence only. ZIP packed/method fields use the existing conservative
    validated ZIP32 envelope; unsupported layouts keep those fields unknown. */
 int arkiv_entry_metadata(const char *path, arkiv_metadata_callback cb, void *ctx) {
- struct archive *a=reader(path);if(!a)return 1;struct archive_entry *e;unsigned count=0;int r;
+ int rfd=create_open(path),rv=0,missing=0;size_t rc=0;arkiv_rar_item *ri=NULL;
+ if(rfd<0)return 1;
+ int policy=arkiv_rar_scan(rfd,(arkiv_limits){100000,20ULL<<30},NULL,&rv,&missing,&ri,&rc);close(rfd);
+ if(policy)return 1;
+ struct archive *a=reader(path, NULL);if(!a){free(ri);return 1;}struct archive_entry *e;unsigned count=0;int r;
  while((r=archive_read_next_header(a,&e))==ARCHIVE_OK && count++<100000) {
  const char *name=archive_entry_pathname_utf8(e);if(!name||!safe_path(name))break;
  double t=archive_entry_mtime_is_set(e)?(double)archive_entry_mtime(e)+(double)archive_entry_mtime_nsec(e)/1e9:__builtin_nan("");
- cb(ctx,name,-1,t,NULL,-1,-1,(archive_format(a)&ARCHIVE_FORMAT_BASE_MASK)==ARCHIVE_FORMAT_TAR ? (int64_t)archive_entry_mode(e) : -1,-1);
+ if(rv && count<=rc){arkiv_rar_item item=ri[count-1];char method[24];snprintf(method,sizeof(method),"RAR%u m%u",item.version,item.method);
+ cb(ctx,name,item.directory?-1:item.packed,t,item.directory?NULL:method,0,item.directory?-1:item.crc,item.mode,item.attributes);
+ } else cb(ctx,name,-1,t,NULL,-1,-1,(archive_format(a)&ARCHIVE_FORMAT_BASE_MASK)==ARCHIVE_FORMAT_TAR ? (int64_t)archive_entry_mode(e) : -1,-1);
  if(archive_read_data_skip(a)!=ARCHIVE_OK)break;
  }
- archive_read_free(a);if(r!=ARCHIVE_EOF)return 1;
+ archive_read_free(a);free(ri);if(r!=ARCHIVE_EOF || (rv && count!=rc))return 1;
  int fd=create_open(path);if(fd<0)return 1;struct zip_envelope z;
  if(zip_envelope(fd,&z)) {
  uint64_t cursor=z.offset;
