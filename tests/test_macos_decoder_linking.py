@@ -12,6 +12,22 @@ SYSTEM_LIBRARIES = ('libz.1.dylib', 'libbz2.1.0.dylib', 'liblzma.5.dylib')
 
 @unittest.skipUnless(platform.system() == 'Darwin', 'Requires the real macOS SDK/linker')
 class DecoderLinkingTests(unittest.TestCase):
+    def test_zstd_static_api_survives_clang_modules(self):
+        # SwiftPM enables Clang modules on macOS. A generated umbrella module
+        # loses caller-defined ZSTD_STATIC_LINKING_ONLY declarations.
+        sdk = subprocess.check_output(['xcrun', '--sdk', 'macosx', '--show-sdk-path'], text=True).strip()
+        with tempfile.TemporaryDirectory() as directory:
+            for arch in ('arm64', 'x86_64'):
+                subprocess.run(['xcrun', 'clang', '-isysroot', sdk, '-arch', arch,
+                    '-mmacosx-version-min=13.0', '-std=c11', '-Wall', '-Wextra', '-Werror',
+                    '-fmodules', '-fmodules-cache-path=' + directory + '/modules-' + arch,
+                    '-fmodule-map-file=' + str(ROOT / 'Sources/CZstd/include/module.modulemap'),
+                    '-I', str(ROOT / 'Sources/CZstd/include'),
+                    '-I', str(ROOT / 'Sources/CArkiv/include'),
+                    '-I', str(ROOT / 'Sources/CArkiv/vendor/xz'),
+                    '-c', str(ROOT / 'Sources/CArkiv/ArkivCompressedTAR.c'),
+                    '-o', directory + '/bridge-' + arch + '.o'], check=True)
+
     def test_both_slices_ignore_host_library_and_use_system_decoders(self):
         print('::notice title=Arkiv decoder link regression::Resolving SDK', flush=True)
         sdk = subprocess.check_output(['xcrun', '--sdk', 'macosx', '--show-sdk-path'], text=True).strip()

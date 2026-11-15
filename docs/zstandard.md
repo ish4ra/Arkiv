@@ -17,6 +17,8 @@ implementation with its retained BSD notice.
 with its internal header fully inlined, plus public headers for Arkiv callers, not the CLI or an unrelated compression suite. SwiftPM
 compiles this C target into each app slice. It is statically linked; no external
 `libzstd`, Homebrew installation, subprocess, or download is needed at runtime.
+The explicit Clang module map keeps the macro-gated static API headers textual;
+SwiftPM and direct C builds therefore see the same pinned allocator/frame APIs.
 `scripts/vendor-zstd.py` reproduces the source from the pinned archive with SHA256
 `37d7284556b20954e56e1ca85b80226768902e2edabd3b649e9e72c0c9012ee3`.
 `Sources/CZstd/checksums.json` records generated source/header/license hashes.

@@ -1,0 +1,7 @@
+// Zstandard's pinned static API is enabled by a caller macro. Keep these headers
+// textual so Clang modules do not cache the public-only declarations first.
+module CZstd {
+    textual header "zstd.h"
+    textual header "zstd_errors.h"
+    export *
+}
