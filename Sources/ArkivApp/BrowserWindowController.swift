@@ -303,7 +303,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                     self.window?.makeFirstResponder(self.table)
                 case .failure(let error):
                     if ArchivePasswordPrompt.isPasswordFailure(error) {
-                        ArchivePasswordPrompt.ask(archive: url, retry: password != nil, parent: self.window) { [weak self] supplied in
+                        requestArchivePassword(url, password != nil, self.window) { [weak self] supplied in
                             if let supplied { self?.load(url, password: supplied) }
                         }
                     } else { self.present(error) }
