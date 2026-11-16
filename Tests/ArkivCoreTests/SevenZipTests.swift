@@ -100,7 +100,9 @@ final class SevenZipTests: XCTestCase {
         let cancel = ArchiveCancellation()
         XCTAssertThrowsError(try ArchiveCreator().create(.init(sources: [source], destination: root, name: "Cancelled", format: .sevenZip, password: "secret"), cancellation: cancel, progress: { _ in cancel.cancel() }))
         XCTAssertFalse(fm.fileExists(atPath: root.appendingPathComponent("Cancelled.7z").path))
-        XCTAssertThrowsError(try ArchiveCreator().create(.init(sources: [source], destination: root, name: "ZIP", password: "secret"), cancellation: ArchiveCancellation(), progress: { _ in }))
+        let aesZIP = try ArchiveCreator().create(.init(sources: [source], destination: root, name: "ZIP", password: "secret"), cancellation: ArchiveCancellation(), progress: { _ in })
+        XCTAssertThrowsError(try engine.inspect(aesZIP,cancellation:ArchiveCancellation()))
+        XCTAssertEqual(try engine.inspect(aesZIP,cancellation:ArchiveCancellation(),password:"secret").entries.first?.metadata.encrypted,true)
         for password in ["", "bad\0password", String(repeating: "a", count: 1025)] {
             XCTAssertThrowsError(try ArchiveCreator().create(.init(sources: [source], destination: root, name: "Invalid", format: .sevenZip, password: password), cancellation: ArchiveCancellation(), progress: { _ in }))
         }

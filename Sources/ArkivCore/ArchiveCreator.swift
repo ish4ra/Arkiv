@@ -111,7 +111,7 @@ public struct ArchiveCreator: Sendable {
         }
         // Internal ZIP edit staging APIs retain their existing Normal/Store policy.
         if !archiveFolder.isEmpty || replacementRoot != nil || fileMethods != nil {
-            guard request.format == .zip, request.preset == .normal || request.preset == .store else {
+            guard request.format == .zip, request.password == nil, request.preset == .normal || request.preset == .store else {
                 throw ArchiveFailure.message("Creation presets are not supported for archive edit staging.")
             }
         }
@@ -120,8 +120,8 @@ public struct ArchiveCreator: Sendable {
                   fileMethods.count == request.sources.count else { throw ArchiveFailure.message("Invalid replacement compression plan.") }
         }
         try validateArchivePassword(request.password)
-        if request.format != .sevenZip, request.password != nil {
-            throw ArchiveFailure.message("Password protection is available for 7z archives only.")
+        if request.format != .sevenZip && request.format != .zip, request.password != nil {
+            throw ArchiveFailure.message("Password protection is available for ZIP and 7z archives only.")
         }
         func local(_ url: URL) -> Bool {
             url.isFileURL && (url.host == nil || url.host == "" || url.host == "localhost") && url.query == nil && url.fragment == nil

@@ -96,7 +96,7 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
     private let encryption = NSButton(checkboxWithTitle: "Protect with AES-256 password", target: nil, action: nil)
     private let passwords = PasswordEntryView(confirm: true)
     private let filenames = NSButton(checkboxWithTitle: "Encrypt filenames", target: nil, action: nil)
-    private let encryptionNote = NSTextField(wrappingLabelWithString: "ZIP encryption is unavailable. Choose 7z for AES-256.")
+    private let encryptionNote = NSTextField(wrappingLabelWithString: "ZIP uses WinZip AES-256. Filenames remain visible.")
     private var selectedFormat: ArchiveFormat { ArchiveFormat.allCases[format.indexOfSelectedItem] }
     private var destination: URL
     private var finished = false
@@ -195,17 +195,17 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
         compression.isEnabled = !fixedSettings
         compression.selectItem(at: presets.firstIndex(of: .normal)!)
         compression.toolTip = fixedSettings ? "Fixed, bounded compression settings. This format has no encryption." : selectedFormat == .sevenZip ? "LZMA2 compression. Higher presets may need substantially more memory and time." : "Store uses no compression; other presets use Deflate."
-        encryption.isEnabled = selectedFormat == .sevenZip
+        encryption.isEnabled = !fixedSettings
         encryptionNote.isHidden = selectedFormat == .sevenZip
         encryption.isHidden = fixedSettings
-        encryptionNote.stringValue = fixedSettings ? "This format does not support encryption." : "ZIP encryption is unavailable. Choose 7z for AES-256."
-        if selectedFormat != .sevenZip { encryption.state = .off; passwords.clear() }
+        encryptionNote.stringValue = fixedSettings ? "This format does not support encryption." : "ZIP uses WinZip AES-256. Filenames remain visible."
+        if fixedSettings { encryption.state = .off; passwords.clear() }
         changeEncryption()
         updateAdvanced()
     }
     @objc private func changeEncryption() {
-        let enabled = selectedFormat == .sevenZip && encryption.state == .on
-        passwords.isHidden = !enabled; filenames.isHidden = !enabled
+        let enabled = (selectedFormat == .sevenZip || selectedFormat == .zip) && encryption.state == .on
+        passwords.isHidden = !enabled; filenames.isHidden = !enabled || selectedFormat != .sevenZip
         if !enabled { passwords.clear() }
         window?.contentView?.layoutSubtreeIfNeeded()
         if let content = window?.contentView { window?.setContentSize(content.fittingSize) }
@@ -274,7 +274,7 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
         if let window, let parent = window.sheetParent { parent.endSheet(window) }
         sizeCancellation.cancel()
         passwords.clear()
-        close(); complete?(destination, name, preset, selectedFormat, password, filenames.state == .on, selectedFormat == .sevenZip ? selectedOptions : nil)
+        close(); complete?(destination, name, preset, selectedFormat, password, selectedFormat == .sevenZip && filenames.state == .on, selectedFormat == .sevenZip ? selectedOptions : nil)
     }
     deinit { sizeCancellation.cancel() }
     func windowShouldClose(_ sender: NSWindow) -> Bool { cancelCreate(); return false }

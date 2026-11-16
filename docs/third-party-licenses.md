@@ -15,3 +15,5 @@ Compressed TAR uses system zlib, libbz2 and liblzma (no CLI dependency). Vendore
 Zstandard 1.5.7 is statically bundled as the official single-file C library under the BSD 3-clause option. Its BSD license is retained in `licenses/zstd-LICENSE.txt` and packaged in Arkiv.app; embedded xxHash notices are retained in the source. No CLI is bundled. Exact provenance, regeneration and policy: [zstandard.md](zstandard.md).
 
 Expanded RAR fixtures are from the libarchive v3.7.4 BSD test corpus. Per-file source paths and SHA256 are in `tests/fixtures/rar/provenance.json`; full associated notices are in `licenses/rar-compatibility-fixtures.txt`. They are test-only assets, not shipped app resources. No new decoder binary or restricted RAR source was added. See [RAR compatibility](rar-compatibility.md).
+
+ZIP AES uses system libarchive/platform crypto. WinZip interoperability fixtures preserve their BSD corpus notices in `licenses/zip-aes-fixtures.txt`. Pyzipper (MIT) and PyCryptodome (BSD/public-domain portions) are pinned, hash-checked test-only dependencies, not app resources/runtime requirements. See [ZIP AES](zip-aes.md).

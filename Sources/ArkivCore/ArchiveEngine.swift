@@ -34,10 +34,11 @@ public struct ArchiveSnapshot: Sendable {
     public internal(set) var sevenEncryptionPolicy: SevenZipEncryptionPolicy? = nil
     public internal(set) var metadata: ArchiveMetadata? = nil
     var sourceLease: ArchiveOpenedFileLease? = nil
+    var encryptedZIP: UnlockedArchive? = nil
     var compressedTAR: UnlockedArchive? = nil
     var streamChecksum: Bool? = nil
     var standalone: StandaloneStream? = nil
-    var backingURL: URL { standalone?.spool.url ?? compressedTAR?.url ?? unlocked?.url ?? url }
+    var backingURL: URL { standalone?.spool.url ?? encryptedZIP?.url ?? compressedTAR?.url ?? unlocked?.url ?? url }
     public var index: ArchiveIndex { ArchiveIndex(entries: entries) }
 }
 func validateArchivePassword(_ password: String?) throws {
@@ -127,6 +128,7 @@ public struct LibArchiveEngine: ArchiveEngine {
         if result == 4 { throw ArchiveFailure.passwordRequired }
         if result == 5 { throw ArchiveFailure.wrongPassword }
         if result == 2 { throw ArchiveFailure.cancelled }
+        if result == 12 { throw ArchiveFailure.message("ZIP authentication failed. The password or encrypted data may be damaged. No output was published.") }
         if result != 0 { throw ArchiveFailure.message(String(cString: error)) }
     }
     /// Content recognition only. Recognized but malformed containers still need
@@ -150,6 +152,7 @@ public struct LibArchiveEngine: ArchiveEngine {
         var checksum: Int32 = -1
         let compression = arkiv_compression_kind(url.path)
         var unlocked: UnlockedArchive?
+        var encryptedZIP: UnlockedArchive?
         var sevenURL = url.standardizedFileURL
         #if os(macOS)
         // Match creation's trusted system aliases without resolving arbitrary links.
@@ -157,6 +160,18 @@ public struct LibArchiveEngine: ArchiveEngine {
             sevenURL = URL(fileURLWithPath: "/private" + sevenURL.path)
         }
         #endif
+        let zipEncryption = arkiv_zip_encryption(sevenURL.path)
+        if zipEncryption < 0 { throw ArchiveFailure.message("Unsupported or inconsistent ZIP encryption/layout.") }
+        if zipEncryption == 1 {
+            let session = try UnlockedArchive()
+            let receiver = ProgressReceiver(progress)
+            let result = arkiv_unlock_zip_aes(sevenURL.path, session.url.path, password, limits, cancellation.pointer, { context, files, bytes in
+                guard let context else { return }
+                Unmanaged<ProgressReceiver>.fromOpaque(context).takeUnretainedValue().callback(.init(files:files,bytes:bytes))
+            }, Unmanaged.passUnretained(receiver).toOpaque())
+            try check(result, Array("Cannot authenticate and safely read this AES ZIP.\0".utf8).map { CChar(bitPattern:$0) })
+            encryptedZIP = session
+        }
         if arkiv_is_seven(sevenURL.path) != 0 {
             let session = try UnlockedArchive()
             let result = arkiv_unlock_seven(sevenURL.path, session.url.path, password, cancellation.pointer)
@@ -194,7 +209,7 @@ public struct LibArchiveEngine: ArchiveEngine {
             }
             compressedTAR = spool
         }
-        let backing = compressedTAR?.url ?? unlocked?.url ?? url
+        let backing = encryptedZIP?.url ?? compressedTAR?.url ?? unlocked?.url ?? url
         let collector = EntryCollector()
         let context = Unmanaged.passUnretained(collector).toOpaque()
         var error = [CChar](repeating: 0, count: 256)
@@ -218,6 +233,9 @@ public struct LibArchiveEngine: ArchiveEngine {
             let handle = try FileHandle(forReadingFrom:url); defer { try? handle.close() }
             metadataResult = arkiv_seven_entries(handle.fileDescriptor,password,collectEntryMetadata,metadataContext)
         } else { metadataResult = arkiv_entry_metadata(backing.path,collectEntryMetadata,metadataContext) }
+        if encryptedZIP != nil {
+            metadataResult = arkiv_zip_aes_entries(sevenURL.path,collectEntryMetadata,metadataContext)
+        }
         if metadataResult == 0 {
             let counts = Dictionary(grouping:collector.entries,by:{ $0.path.trimmingCharacters(in:CharacterSet(charactersIn:"/")) }).mapValues(\.count)
             collector.entries = collector.entries.map { entry in
@@ -229,6 +247,7 @@ public struct LibArchiveEngine: ArchiveEngine {
         }
         var snapshot = ArchiveSnapshot(url: url, entries: collector.entries, stamp: stamp, unlocked: unlocked)
         snapshot.compressedTAR = compressedTAR
+        snapshot.encryptedZIP = encryptedZIP
         if compressedTAR != nil { snapshot.streamChecksum = checksum == 1 }
         if unlocked != nil, password != nil {
             // Non-secret UI eligibility only. Every edit still asks for a fresh
@@ -248,6 +267,10 @@ public struct LibArchiveEngine: ArchiveEngine {
                 solid = flags & 32 != 0; dataEncrypted = flags & 1 != 0; headersEncrypted = flags & 2 != 0
             }
         }
+        if encryptedZIP != nil {
+            dataEncrypted = true; headersEncrypted = false
+            methods = Array(Set(collector.entries.compactMap { $0.metadata.compressionMethod })).sorted().joined(separator:", ")
+        }
         let formatName = compression == 0 ? String(cString:detectedFormat) : "TAR (" + [1:"gzip",2:"bzip2",3:"xz",4:"zstd"][compression, default:"unknown"] + ")"
         let admittedRAR = formatName.uppercased().hasPrefix("RAR")
         if admittedRAR {
@@ -255,7 +278,7 @@ public struct LibArchiveEngine: ArchiveEngine {
             solid = false; dataEncrypted = false; headersEncrypted = false
         }
         snapshot.metadata = ArchiveMetadata(url:url,physicalSize:stamp.size,entries:collector.entries,
-            format:unlocked != nil ? "7z" : (formatName.isEmpty ? nil : formatName),methods:methods,
+            format:encryptedZIP != nil ? "ZIP (WinZip AES)" : unlocked != nil ? "7z" : (formatName.isEmpty ? nil : formatName),methods:methods,
             solid:solid,dataEncrypted:dataEncrypted,headersEncrypted:headersEncrypted,multipart:admittedRAR ? false : nil)
         if cancellation.isCancelled { throw ArchiveFailure.cancelled }
         guard try SourceStamp(url) == stamp else { throw ArchiveFailure.message("Archive changed while reading metadata. Reopen it.") }
@@ -345,6 +368,7 @@ public enum SevenZipBackend {
 
 public enum ArchiveIntegrityState: String, Sendable {
     case ok = "OK", warning = "Warning", corrupt = "Corrupt", crcError = "CRC Error"
+    case authenticationFailed = "Authentication Failed"
     case wrongPassword = "Wrong Password", unsupportedMethod = "Unsupported Method", missingVolume = "Missing Volume"
 }
 public struct ArchiveIntegrityResult: Sendable {
@@ -395,6 +419,7 @@ extension LibArchiveEngine {
         case 9: state = .warning; detail = "TAR structure and all payload bytes are readable. TAR has no payload checksum; content integrity cannot be confirmed."
         case 10: state = .missingVolume; detail = "This RAR requires multiple volumes. Multipart RAR is not supported; no volume discovery was attempted."
         case 11: state = .warning; detail = "All RAR payloads were decoded, but at least one entry has no stored CRC32. Complete content integrity cannot be confirmed."
+        case 12: state = .authenticationFailed; detail = "ZIP authentication failed. The password or encrypted data may be damaged. No output was published."
         case 6: state = .corrupt; detail = "Archive structure or data is damaged."
         case 7: state = .crcError; detail = "An archive checksum does not match the decoded data."
         case 8: state = .unsupportedMethod; detail = "The compression or encryption method is unsupported."

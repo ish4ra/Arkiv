@@ -1,0 +1,81 @@
+{
+  "winzip_aes128.zip": {
+    "source": "libarchive v3.7.4 test_read_format_zip_winzip_aes128.zip.uu",
+    "password": "password",
+    "sha256": "4cb263afa9f999074643978598f4450e7f408f482dd3adb1a00a7aff6f30e0ac"
+  },
+  "winzip_aes256.zip": {
+    "source": "libarchive v3.7.4 test_read_format_zip_winzip_aes256.zip.uu",
+    "password": "password",
+    "sha256": "447342e5b3b20d05d087e3bc3b89727879fb74734cd84556abc6c5126528dd9e"
+  },
+  "winzip_aes256_stored.zip": {
+    "source": "libarchive v3.7.4 test_read_format_zip_winzip_aes256_stored.zip.uu",
+    "password": "password",
+    "sha256": "ab0101c368b2dac4a652b09338fd53d95d9598d7c39d2195ff063b25d0a3eb39"
+  },
+  "pyzipper-ae1-128-0.zip": {
+    "source": "pyzipper 0.3.6 / pycryptodomex 3.23.0, fixture recipe in tests/test_zip_aes.py",
+    "password": "fixture password",
+    "sha256": "4889d1097bfd1af175bd0eeef4f7d4d8724b2387971aa59ea22afd789f54b065"
+  },
+  "pyzipper-ae1-192-0.zip": {
+    "source": "pyzipper 0.3.6 / pycryptodomex 3.23.0, fixture recipe in tests/test_zip_aes.py",
+    "password": "fixture password",
+    "sha256": "622e45507fd084c14344fc981fe10eb9758fc33be3105550177bbc1d3eb50743"
+  },
+  "pyzipper-ae1-256-0.zip": {
+    "source": "pyzipper 0.3.6 / pycryptodomex 3.23.0, fixture recipe in tests/test_zip_aes.py",
+    "password": "fixture password",
+    "sha256": "6aeb275185e03cc23e2183e36d334c169a230442b4a804120b37a0218f4cbf6e"
+  },
+  "pyzipper-ae1-128-8.zip": {
+    "source": "pyzipper 0.3.6 / pycryptodomex 3.23.0, fixture recipe in tests/test_zip_aes.py",
+    "password": "fixture password",
+    "sha256": "17e79773ccfee7aec1c92b95501e2d630c9d7e78cd3e4aaad7bc96cf77dba569"
+  },
+  "pyzipper-ae1-192-8.zip": {
+    "source": "pyzipper 0.3.6 / pycryptodomex 3.23.0, fixture recipe in tests/test_zip_aes.py",
+    "password": "fixture password",
+    "sha256": "3d422937a516f3997b55a71eb381c7916f5196adfe27a2fcb58a1ca2256732bd"
+  },
+  "pyzipper-ae1-256-8.zip": {
+    "source": "pyzipper 0.3.6 / pycryptodomex 3.23.0, fixture recipe in tests/test_zip_aes.py",
+    "password": "fixture password",
+    "sha256": "5df71556a2b7e2b8291832abd2f580fe4f62f93c2ffe2704991a89a2f978eabb"
+  },
+  "pyzipper-ae2-128-0.zip": {
+    "source": "pyzipper 0.3.6 / pycryptodomex 3.23.0, fixture recipe in tests/test_zip_aes.py",
+    "password": "fixture password",
+    "sha256": "b09b688343a13a9e690041a252be0a41acf2b8ee05c84f0ea44bfdf400ddefff"
+  },
+  "pyzipper-ae2-192-0.zip": {
+    "source": "pyzipper 0.3.6 / pycryptodomex 3.23.0, fixture recipe in tests/test_zip_aes.py",
+    "password": "fixture password",
+    "sha256": "3139cf10d8a38e204cb45ea321ff10e1b14c7133c7f9e3275611c73306f6c16e"
+  },
+  "pyzipper-ae2-256-0.zip": {
+    "source": "pyzipper 0.3.6 / pycryptodomex 3.23.0, fixture recipe in tests/test_zip_aes.py",
+    "password": "fixture password",
+    "sha256": "4ac2370baec3826fed4b2ca2a832936a49c757e5d51e89f3bbe6b3de2c4e802d"
+  },
+  "pyzipper-ae2-128-8.zip": {
+    "source": "pyzipper 0.3.6 / pycryptodomex 3.23.0, fixture recipe in tests/test_zip_aes.py",
+    "password": "fixture password",
+    "sha256": "13c87409bcc35c6df8301a58710bfe9804c0b4debdce29a670db5b05850850e7"
+  },
+  "pyzipper-ae2-192-8.zip": {
+    "source": "pyzipper 0.3.6 / pycryptodomex 3.23.0, fixture recipe in tests/test_zip_aes.py",
+    "password": "fixture password",
+    "sha256": "e52d485441fc42f8b92a735650bd0d9952eda2862ed9b8a61ecedf17d2f42390"
+  },
+  "pyzipper-ae2-256-8.zip": {
+    "source": "pyzipper 0.3.6 / pycryptodomex 3.23.0, fixture recipe in tests/test_zip_aes.py",
+    "password": "fixture password",
+    "sha256": "803e8cd5e73adde70cdb795e1e463834fee793c2c18247a06591640e7f8b8a1c"
+  },
+  "encrypted-directory.zip": {
+    "sha256": "7775cbb3c197b66db8a74241ce134ec760f752e5fb6ef2c3bf58bb7fd6090735",
+    "source": "Generated with pyzipper 0.3.6 / pycryptodomex 3.23.0; AE-2 AES-256 Store, first.txt and encrypted empty/; password fixture password. Regression for libarchive skipping authentication of directories."
+  }
+}

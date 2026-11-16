@@ -7,6 +7,27 @@ import ArkivFinderIntegration
 final class CompressionPresetUITests: XCTestCase {
     private func views(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(views) }
     @MainActor
+    func testZIPAESSetupKeepsZIPAndHidesFilenameEncryption() throws {
+        _ = NSApplication.shared
+        let sheet = CreateArchiveSheet(sources:[URL(fileURLWithPath:"/tmp/input.txt")],encrypted:false)
+        defer { sheet.close() }
+        let all = views(try XCTUnwrap(sheet.window?.contentView))
+        let format = try XCTUnwrap(all.compactMap { $0 as? NSPopUpButton }.first { $0.itemTitles.contains("ZIP (.zip)") })
+        XCTAssertEqual(format.titleOfSelectedItem,"ZIP (.zip)")
+        let protect = try XCTUnwrap(all.compactMap { $0 as? NSButton }.first { $0.title == "Protect with AES-256 password" })
+        XCTAssertTrue(protect.isEnabled);protect.performClick(nil)
+        XCTAssertTrue(try XCTUnwrap(all.compactMap { $0 as? NSButton }.first { $0.title == "Encrypt filenames" }).isHiddenOrHasHiddenAncestor)
+        let fields = all.compactMap { $0 as? NSSecureTextField }
+        fields.forEach { $0.stringValue = "fixture password" }
+        var submitted = false
+        sheet.complete = { _, _, preset, format, password, filenames, options in
+            submitted = true;XCTAssertEqual(format,.zip);XCTAssertEqual(preset,.normal)
+            XCTAssertEqual(password,"fixture password");XCTAssertFalse(filenames);XCTAssertNil(options)
+        }
+        try XCTUnwrap(all.compactMap { $0 as? NSButton }.first { $0.title == "Create" }).performClick(nil)
+        XCTAssertTrue(submitted)
+    }
+    @MainActor
     func testStandaloneFinderSetupNamesAndSelectionRestrictions() throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

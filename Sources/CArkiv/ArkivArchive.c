@@ -95,6 +95,9 @@ int arkiv_list_metadata(const char *path, arkiv_limits limits, arkiv_cancel *tok
     while ((status = archive_read_next_header(a, &e)) == ARCHIVE_OK) {
         if (cancelled(token)) { result = 2; break; }
         if (count >= limits.max_entries) { result = fail(error, capacity, "Archive entry limit exceeded."); break; }
+        /* Encrypted ZIPs enter through authenticated unlock, never the generic
+           listing path (including ZIP64/SFX layouts outside AES admission). */
+        if (archive_entry_is_encrypted(e) > 0) { result = fail(error, capacity, "Encrypted entries require supported authenticated unlock."); break; }
         const char *name = archive_entry_pathname_utf8(e);
         if (!name || !safe_path(name)) { result = fail(error, capacity, "Unsafe or invalid archive path."); break; }
         if (callback && callback(context, (int64_t)count, name, archive_entry_size(e), entry_kind(e))) {
@@ -243,6 +246,7 @@ static int selection_dependencies(const char *path, const int64_t *ids, size_t c
     while ((status = archive_read_next_header(a, &e)) == ARCHIVE_OK) {
         if (cancelled(token)) { result = 2; break; }
         if (used >= limits.max_entries) { result = fail(error, capacity, "Archive entry limit exceeded."); break; }
+        if (archive_entry_is_encrypted(e) > 0) { result = fail(error, capacity, "Encrypted entries require supported authenticated unlock."); break; }
         const char *name = archive_entry_pathname_utf8(e), *target = archive_entry_hardlink(e);
         if (!name) { result = fail(error, capacity, "Invalid archive path."); break; }
         struct selection_entry *next = realloc(entries, (used + 1) * sizeof(*entries));
@@ -326,6 +330,9 @@ static int extract_reporting(int dependencies, const char *path, const char *roo
         if (cancelled(token)) { result = 2; break; }
         if (count >= limits.max_entries) { result = fail(error, capacity, "Archive entry limit exceeded."); break; }
         if(rv && count>=rc){result=6;break;}
+        /* Check even unselected entries: skipping an encrypted item must not
+           turn an unauthenticated mixed archive into a usable selection. */
+        if (archive_entry_is_encrypted(e) > 0) { result = fail(error, capacity, "Encrypted entries require supported authenticated unlock."); break; }
         int wanted = selected((int64_t)count++, ids, selected_count);
         if (!wanted) {
             if (archive_read_data_skip(a) != ARCHIVE_OK) { result = fail(error, capacity, "Damaged archive data."); break; }
@@ -340,7 +347,6 @@ static int extract_reporting(int dependencies, const char *path, const char *roo
             if (archive_read_data_skip(a) != ARCHIVE_OK) { result = fail(error, capacity, "Damaged archive data."); break; }
             continue;
         }
-        if (archive_entry_is_encrypted(e) > 0) { result = fail(error, capacity, "Encrypted extraction is not available yet."); break; }
         int64_t size = archive_entry_size(e);
         if (size < 0 || (uint64_t)size > limits.max_bytes - total) { result = fail(error, capacity, "Expanded size limit exceeded."); break; }
         if (kind == 3 || kind == 4) {
@@ -665,6 +671,8 @@ static int create_walk(struct create_state *s, int fd, const char *path, unsigne
     if (s->progress) s->progress(s->context, s->entries, s->bytes);
     return 0;
 }
+static int zip_encrypted_fd(int fd);
+static int zip_aes_process(int fd,int out,const char *password,arkiv_limits limits,arkiv_cancel *token,arkiv_progress_callback progress,void *context);
 static int seven_cancel(void *token) { return cancelled(token); }
 /* Same-filesystem exclusive publication, shared by containers and standalone streams. */
 static int create_publish(int stagefd, const char *payload, int parentfd, const char *name, const char *suffix,
@@ -684,7 +692,9 @@ static int create_archive(const char *const *sources, size_t count, const char *
                      const char *stage, const char *name, char *published_name, size_t published_capacity, int compression, arkiv_limits limits,
                      arkiv_cancel *token, arkiv_progress_callback progress, void *context,
                      char *error, size_t capacity, int format, const char *password, int headers, const char *prefix, const char *root, int omit_root, const int *methods, int level, uint32_t dictionary, unsigned threads, int solid, uint64_t block) {
-    int seven = format == 1, tar = format >= 2, codec = format - 2;
+    int seven = format == 1, tar = format >= 2, codec = format - 2, aes = format == 0 && password != NULL;
+    if(aes && (!password[0]||strnlen(password,1025)>1024||prefix[0]||root||methods))
+        return fail(error,capacity,"Invalid AES ZIP creation request.");
     if (format < 0 || format > 6 || (tar && (password || prefix[0] || root || methods)))
         return fail(error, capacity, "Invalid TAR creation options.");
     if ((!seven && (dictionary || threads!=2 || solid || block)) || (seven && !arkiv_seven_solid_memory(level,dictionary,threads,0,solid,block)))
@@ -733,10 +743,11 @@ static int create_archive(const char *const *sources, size_t count, const char *
         archive_write_set_format_option(writer, "zip", "compression", compression ? "deflate" : "store") != ARCHIVE_OK ||
         archive_write_set_format_option(writer, "zip", "hdrcharset", "UTF-8") != ARCHIVE_OK ||
         archive_write_set_format_option(writer, "zip", "compression-level", zipLevel) != ARCHIVE_OK ||
+        (aes && (archive_write_set_format_option(writer,"zip","encryption","aes256")!=ARCHIVE_OK || archive_write_set_passphrase(writer,password)!=ARCHIVE_OK)) ||
         archive_write_open_fd(writer, output) != ARCHIVE_OK) goto done;
     struct stat stage_stat;
     if (fstat(stagefd, &stage_stat)) goto done;
-    struct create_state state = { writer, limits, token, progress, context, 0, 0, error, capacity, stage_stat.st_dev, stage_stat.st_ino, omit_root, tar || root != NULL, tar ? &manifest : NULL };
+    struct create_state state = { writer, limits, token, progress, context, 0, 0, error, capacity, stage_stat.st_dev, stage_stat.st_ino, omit_root, tar || aes || root != NULL, (tar || aes) ? &manifest : NULL };
     for (size_t i = 0; i < count; i++) {
         /* Each new root begins in failure state until it is fully written. */
         status = 1;
@@ -760,14 +771,22 @@ static int create_archive(const char *const *sources, size_t count, const char *
     status = 1;
     if (archive_write_close(writer) != ARCHIVE_OK || fsync(output) || lseek(output, 0, SEEK_SET) < 0) goto done;
     archive_write_free(writer); writer = NULL;
+    if(aes) {
+        status=zip_aes_process(output,-1,password,limits,token,progress,context);
+        if(status)goto done;
+        status=1;if(lseek(output,0,SEEK_SET)<0)goto done;
+    }
     verify = archive_read_new();
+    if (verify && aes && archive_read_add_passphrase(verify,password)!=ARCHIVE_OK)goto done;
     if (!verify || archive_read_support_filter_none(verify) != ARCHIVE_OK ||
-        (tar ? archive_read_support_format_tar(verify) : archive_read_support_format_zip(verify)) != ARCHIVE_OK || archive_read_open_fd(verify, output, 65536) != ARCHIVE_OK) goto done;
+        (tar ? archive_read_support_format_tar(verify) : archive_read_support_format_zip(verify)) != ARCHIVE_OK ||
+        (aes && archive_read_set_format_option(verify,"zip","mac-ext",NULL)!=ARCHIVE_OK) ||
+        archive_read_open_fd(verify, output, 65536) != ARCHIVE_OK) goto done;
     struct archive_entry *entry; int r; uint64_t entries = 0, bytes = 0; char buffer[65536];
     while ((r = archive_read_next_header(verify, &entry)) == ARCHIVE_OK) {
         if (++entries > limits.max_entries || (entry_kind(entry) != 1 && entry_kind(entry) != 2)) goto done;
         int sourcefd = -1;
-        if (tar) {
+        if (tar || aes) {
             if (entries > manifest.count) goto done;
             struct create_source *source = &manifest.items[entries-1];
             const char *path = archive_entry_pathname_utf8(entry);
@@ -790,7 +809,7 @@ static int create_archive(const char *const *sources, size_t count, const char *
             if (cancelled(token)) { status = 2; bad = 1; break; }
             if ((uint64_t)n > limits.max_bytes - bytes) { bad = 1; break; }
             bytes += (uint64_t)n;
-            if (tar) {
+            if (tar || aes) {
                 char original[65536]; size_t offset = 0;
                 while (offset < (size_t)n) {
                     ssize_t got = read(sourcefd, original + offset, (size_t)n - offset);
@@ -857,6 +876,8 @@ static int create_archive(const char *const *sources, size_t count, const char *
         /* TAR has no stored content CRC: the shared reader's Warning is expected.
            Payload correctness was separately checked byte-for-byte above. */
         if (integrity != 9) { status = integrity ? integrity : 1; goto done; }
+    }
+    if(tar || aes) {
         for (size_t i = 0; i < manifest.count; i++) {
             if (cancelled(token)) { status = 2; goto done; }
             struct create_source *source = &manifest.items[i]; struct stat st;
@@ -1084,6 +1105,8 @@ int arkiv_test(const char *path, const char *password, arkiv_limits limits, arki
         uselocale(previous); freelocale(utf8);
         if (result == 1) result = 6;
     } else {
+        int aes=zip_encrypted_fd(fd);
+        if(aes) {result=aes<0?8:zip_aes_process(fd,-1,password,limits,token,progress,context);goto integrity_done;}
         int rar_version=0,rar_missing=0;size_t rar_count=0;
         result=arkiv_rar_scan(fd,limits,token,&rar_version,&rar_missing,&rar_items,&rar_count);
         if(result)goto integrity_done;
@@ -1153,7 +1176,7 @@ struct arkiv_zip_transaction {
 static void zip_put16(unsigned char *p, uint16_t v) { p[0]=v; p[1]=v>>8; }
 static void zip_put32(unsigned char *p, uint32_t v) { zip_put16(p,v);zip_put16(p+2,v>>16); }
 /* Reject ambiguous/special layouts; copy every accepted local record and metadata byte unchanged. */
-static int zip_envelope(int fd, struct zip_envelope *z) {
+static int zip_envelope_mode(int fd, struct zip_envelope *z, int aes) {
     struct stat st; unsigned char tail[65557];
     if(fstat(fd,&st)||!S_ISREG(st.st_mode)||st.st_size<22||st.st_size>=UINT32_MAX)return 0;
     size_t n=(uint64_t)st.st_size<sizeof(tail)?(size_t)st.st_size:sizeof(tail);
@@ -1170,21 +1193,45 @@ static int zip_envelope(int fd, struct zip_envelope *z) {
         uint16_t flags=integrity_u16(h+8), method=integrity_u16(h+10), name=integrity_u16(h+28), extra=integrity_u16(h+30);
         uint32_t off=integrity_u32(h+42), compressed=integrity_u32(h+20);
         uint64_t len=46u+name+extra+integrity_u16(h+32);
-        if(!name||flags & ~0x080e || (method!=0&&method!=8)||integrity_u16(h+34)||compressed==UINT32_MAX||integrity_u32(h+24)==UINT32_MAX||
+        if(!name||flags & ~(aes ? 0x080f : 0x080e) || (method!=0&&method!=8&&!(aes&&method==99))||((flags&1)!=0)!=(method==99)||integrity_u16(h+34)||compressed==UINT32_MAX||integrity_u32(h+24)==UINT32_MAX||
            cursor+len>(uint64_t)z->offset+z->size||off!=localEnd||pread(fd,l,30,off)!=30||memcmp(l,"PK\003\004",4)||
            integrity_u16(l+6)!=flags||integrity_u16(l+8)!=method||integrity_u16(l+26)!=name)return 0;
         unsigned char names[65535],localnames[65535];
         if(pread(fd,names,name,cursor+46)!=name||pread(fd,localnames,name,off+30)!=name||memcmp(names,localnames,name))return 0;
+        if(aes&&(flags&1)) {
+            /* libarchive skips data/HMAC initialization for nonregular entries.
+               Reject every stored directory/type hint before password handling;
+               a valid short password verifier is not payload authentication. */
+            uint32_t attrs=integrity_u32(h+38);
+            unsigned type=h[5]==3?(attrs>>16)&S_IFMT:0;
+            if(names[name-1]=='/'||(attrs&0x10)||(type&&type!=S_IFREG))return 0;
+        }
         /* ZIP64, encryption, Unicode path aliases and opaque extras are unsafe to reinterpret.
            Known timestamp/Unix ownership fields are preserved byte-for-byte. */
+        unsigned char aes_fields[2][7]={{0}};int has_aes[2]={0};
         uint16_t lengths[2]={extra,integrity_u16(l+28)};
         uint64_t starts[2]={cursor+46+name,(uint64_t)off+30+name};
         for(int side=0;side<2;side++) {
             unsigned char fields[65535];size_t q=0;
             if(pread(fd,fields,lengths[side],starts[side])!=lengths[side])return 0;
             while(q<lengths[side]) { if(lengths[side]-q<4)return 0;unsigned tag=integrity_u16(fields+q),s=integrity_u16(fields+q+2);
-                if(tag!=0x5455&&tag!=0x7875&&tag!=0x7855&&tag!=0x000a)return 0;
+                if(s>lengths[side]-q-4)return 0;
+                if(aes&&tag==0x9901) {
+                    if(has_aes[side]++||s!=7)return 0;
+                    memcpy(aes_fields[side],fields+q+4,7);
+                } else if(tag!=0x5455&&tag!=0x7875&&tag!=0x7855&&tag!=0x000a)return 0;
                 q+=4+s;if(q>lengths[side])return 0;
+            }
+        }
+        if(aes) {
+            if(has_aes[0]!=(method==99)||has_aes[1]!=has_aes[0])return 0;
+            if(method==99) {
+                unsigned char *v=aes_fields[0];unsigned version=integrity_u16(v),strength=v[4],real=integrity_u16(v+5);
+                if(memcmp(v,aes_fields[1],7)||(version!=1&&version!=2)||v[2]!='A'||v[3]!='E'||strength<1||strength>3||
+                   (real!=0&&real!=8)||compressed<4*strength+16||(version==2&&integrity_u32(h+16)))return 0;
+            }
+            if(flags&8) {
+                for(unsigned b=0;b<3;b++)if(integrity_u32(l+14+4*b)&&integrity_u32(l+14+4*b)!=integrity_u32(h+16+4*b))return 0;
             }
         }
         localEnd=(uint64_t)off+30+name+integrity_u16(l+28)+compressed;
@@ -1199,6 +1246,133 @@ static int zip_envelope(int fd, struct zip_envelope *z) {
     if(cursor!=(uint64_t)z->offset+z->size||localEnd!=z->offset)return 0;
     memcpy(z->end,e,22+z->comment);return 1;
 }
+static int zip_envelope(int fd,struct zip_envelope *z) { return zip_envelope_mode(fd,z,0); }
+
+/* WinZip AES uses the system libarchive codec/platform crypto. No plaintext is
+   exposed to a snapshot until every entry's authentication and decoding passes. */
+static int zip_encrypted_fd(int fd) {
+    unsigned char sig[4];struct stat st;
+    if(pread(fd,sig,4,0)!=4||memcmp(sig,"PK",2)||fstat(fd,&st)||st.st_size<22)return 0;
+    unsigned char tail[65557];size_t n=st.st_size<(off_t)sizeof(tail)?(size_t)st.st_size:sizeof(tail);
+    if(pread(fd,tail,n,st.st_size-n)!=(ssize_t)n)return -1;
+    size_t p=n-22;for(;;){if(!memcmp(tail+p,"PK\005\006",4)&&integrity_u16(tail+p+20)==n-p-22)break;if(!p)return 0;p--;}
+    uint64_t cursor=integrity_u32(tail+p+16);unsigned count=integrity_u16(tail+p+10);
+    if(count==65535||cursor==UINT32_MAX)return 0; // Existing ordinary ZIP64 reader; never AES admission.
+    for(unsigned i=0;i<count;i++) {
+        unsigned char h[46];if(cursor+46>(uint64_t)st.st_size||pread(fd,h,46,cursor)!=46||memcmp(h,"PK\001\002",4))return 0;
+        if((integrity_u16(h+8)&1)||integrity_u16(h+10)==99){struct zip_envelope z;return zip_envelope_mode(fd,&z,1)?1:-1;}
+        cursor+=46u+integrity_u16(h+28)+integrity_u16(h+30)+integrity_u16(h+32);
+    }
+    return 0;
+}
+int arkiv_zip_encryption(const char *path) {int fd=create_open(path);if(fd<0)return -1;int r=zip_encrypted_fd(fd);close(fd);return r;}
+static int zip_aes_error(struct archive *a) {
+    const char *s=archive_error_string(a);if(!s)return 6;
+    if(strstr(s,"Incorrect passphrase"))return 5;
+    if(strstr(s,"Passphrase required"))return 4;
+    if(strstr(s,"Authentication"))return 12;
+    if(strstr(s,"CRC"))return 7;
+    if(strstr(s,"unsupported")||strstr(s,"Unsupported"))return 8;
+    return 6;
+}
+static int name_compare(const void *a,const void *b) {return strcmp(*(char *const *)a,*(char *const *)b);}
+static int zip_aes_process(int fd,int out,const char *password,arkiv_limits limits,arkiv_cancel *token,arkiv_progress_callback progress,void *context) {
+    struct zip_envelope z;struct stat before,after;
+    if(!zip_envelope_mode(fd,&z,1)||fstat(fd,&before)||z.count>limits.max_entries)return 8;
+    char **names=calloc(z.count?z.count:1,sizeof(char*));if(!names)return 8;
+    int result=6;uint64_t cursor=z.offset,total=0,namesBytes=0;
+    struct archive *a=NULL,*writer=NULL;
+    struct tar_output spool={out,0,limits.max_bytes,token};
+    for(unsigned i=0;i<z.count;i++) {
+        if(cancelled(token)){result=2;goto done;}
+        unsigned char h[46];if(pread(fd,h,46,cursor)!=46)goto done;
+        unsigned n=integrity_u16(h+28);uint32_t size=integrity_u32(h+24),attrs=integrity_u32(h+38);
+        if(n>4096||size>limits.max_bytes-total||(namesBytes+=n+1)>(64ULL<<20))goto done;
+        total+=size;names[i]=calloc(n+1,1);if(!names[i])goto done;
+        if(pread(fd,names[i],n,cursor+46)!=n||memchr(names[i],0,n))goto done;
+        if(!(integrity_u16(h+8)&0x800))for(unsigned j=0;j<n;j++)if((unsigned char)names[i][j]>=128)goto done;
+        if(n&&names[i][n-1]=='/')names[i][--n]=0;
+        if(!safe_path(names[i]))goto done;
+        if(h[5]==3) {unsigned type=(attrs>>16)&S_IFMT;if(type&&type!=S_IFREG&&type!=S_IFDIR){result=8;goto done;}}
+        cursor+=46u+integrity_u16(h+28)+integrity_u16(h+30)+integrity_u16(h+32);
+    }
+    qsort(names,z.count,sizeof(char*),name_compare);
+    for(unsigned i=1;i<z.count;i++)if(!strcmp(names[i-1],names[i]))goto done;
+    if(!password){result=4;goto done;}
+    a=archive_read_new();if(!a)goto done;
+    archive_read_support_filter_none(a);archive_read_support_format_zip_seekable(a);
+    /* Authenticate ordinary __MACOSX/._ records too; do not let the macOS
+       reader hide or merge them as resource-fork metadata. */
+    if(archive_read_set_format_option(a,"zip","mac-ext",NULL)!=ARCHIVE_OK||
+       archive_read_add_passphrase(a,password)!=ARCHIVE_OK||lseek(fd,0,SEEK_SET)<0||archive_read_open_fd(a,fd,65536)!=ARCHIVE_OK)goto done;
+    if(out>=0) {
+        writer=archive_write_new();
+        if(!writer||archive_write_set_format_pax_restricted(writer)!=ARCHIVE_OK||archive_write_set_bytes_per_block(writer,512)!=ARCHIVE_OK||
+           archive_write_open(writer,&spool,NULL,create_tar_write,NULL)!=ARCHIVE_OK)goto done;
+    }
+    struct archive_entry *e;uint64_t bytes=0,entries=0;int status;unsigned char buffer[65536];
+    while((status=archive_read_next_header(a,&e))==ARCHIVE_OK) {
+        if(cancelled(token)){result=2;goto done;}
+        const char *name=archive_entry_pathname_utf8(e);int kind=entry_kind(e);int64_t expected=archive_entry_size(e);
+        if(++entries>z.count||!safe_path(name)||(kind!=1&&kind!=2)||expected<0||(uint64_t)expected>limits.max_bytes-bytes)goto done;
+        if(kind!=1&&archive_entry_is_encrypted(e)>0){result=8;goto done;}
+        if(writer&&archive_write_header(writer,e)!=ARCHIVE_OK)goto done;
+        uint64_t actual=0;
+        for(;;) {
+            if(cancelled(token)){result=2;goto done;}
+            la_ssize_t n=archive_read_data(a,buffer,sizeof(buffer));
+            if(n<0){result=zip_aes_error(a);goto done;}if(!n)break;
+            if((uint64_t)n>limits.max_bytes-bytes||(uint64_t)n>(uint64_t)expected-actual)goto done;
+            actual+=n;bytes+=n;
+            if(writer&&archive_write_data(writer,buffer,(size_t)n)!=n)goto done;
+            if(progress)progress(context,entries,bytes);
+        }
+        if(actual!=(uint64_t)expected)goto done;
+        if(writer&&archive_write_finish_entry(writer)!=ARCHIVE_OK)goto done;
+    }
+    if(status!=ARCHIVE_EOF){result=zip_aes_error(a);goto done;}
+    if(entries!=z.count||bytes!=total)goto done;
+    if(writer&&(archive_write_close(writer)!=ARCHIVE_OK||fsync(out)))goto done;
+    result=0;
+done:
+    if(writer)archive_write_free(writer);
+    if(a)archive_read_free(a);
+    for(unsigned i=0;i<z.count;i++)free(names[i]);
+    free(names);
+    if(cancelled(token))result=2;
+    if(fstat(fd,&after)||!create_same_stat(&before,&after))result=6;
+    return result;
+}
+int arkiv_unlock_zip_aes(const char *path,const char *output,const char *password,arkiv_limits limits,arkiv_cancel *token,arkiv_progress_callback progress,void *context) {
+    int in=create_open(path);if(in<0)return 6;
+    int out=open(output,O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);if(out<0){close(in);return 6;}
+    struct stat before,after;int result=6;
+    locale_t utf8=newlocale(LC_CTYPE_MASK,"en_US.UTF-8",NULL);if(!utf8)utf8=newlocale(LC_CTYPE_MASK,"C.UTF-8",NULL);
+    if(utf8&&!fstat(in,&before)) {
+        locale_t previous=uselocale(utf8);result=zip_aes_process(in,out,password,limits,token,progress,context);uselocale(previous);
+        if(lstat(path,&after)||!create_same_stat(&before,&after))result=6;
+    }
+    if(utf8)freelocale(utf8);
+    close(in);close(out);if(result)unlink(output);return result;
+}
+int arkiv_zip_aes_entries(const char *path,arkiv_metadata_callback cb,void *ctx) {
+    int fd=create_open(path);if(fd<0)return 1;struct zip_envelope z;int result=1;
+    if(!zip_envelope_mode(fd,&z,1))goto done;
+    uint64_t cursor=z.offset;
+    for(unsigned i=0;i<z.count;i++) {
+        unsigned char h[46],extra[65535];char name[4097];if(pread(fd,h,46,cursor)!=46)goto done;
+        unsigned n=integrity_u16(h+28),x=integrity_u16(h+30),method=integrity_u16(h+10),version=0;
+        if(n>4096||pread(fd,name,n,cursor+46)!=n||pread(fd,extra,x,cursor+46+n)!=x)goto done;
+        name[n]=0;
+        if(method==99)for(unsigned p=0;p<x;p+=4+integrity_u16(extra+p+2))if(integrity_u16(extra+p)==0x9901){version=integrity_u16(extra+p+4);method=integrity_u16(extra+p+9);}
+        uint32_t attrs=integrity_u32(h+38);
+        cb(ctx,name,integrity_u32(h+20),__builtin_nan(""),method==0?"Store":"Deflate",!!(integrity_u16(h+8)&1),version==2?-1:(int64_t)integrity_u32(h+16),h[5]==3?(int64_t)(attrs>>16):-1,h[5]==3?-1:(int64_t)attrs);
+        cursor+=46u+n+x+integrity_u16(h+32);
+    }
+    result=0;
+done:close(fd);return result;
+}
+
 static arkiv_zip_transaction *rewrite_begin(const char *path,int seven,char *error,size_t cap,const char *password,arkiv_cancel *token) {
     arkiv_zip_transaction *t=calloc(1,sizeof(*t));if(!t)return NULL;
     t->source=t->parent=t->stage=-1;t->seven=seven;

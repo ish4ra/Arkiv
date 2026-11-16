@@ -4,7 +4,7 @@ These are **fixture results on Linux with libarchive 3.7.4 and in [macOS CI](htt
 
 | Format | Browse/extract evidence | Create/modify | Encryption/multipart/comments/integrity command |
 | --- | --- | --- | --- |
-| ZIP | Stored and Deflate; nested Unicode paths, empty, corrupt CRC | Default creation: Store/Deflate; [ZIP32 additions](zip-additions.md), [Delete / Rename / Replace File](zip-edits.md) | Test reads data and checks CRC; encryption/multipart/comments deferred |
+| ZIP | Stored and Deflate; nested Unicode paths, empty, corrupt CRC | Default creation: Store/Deflate; [ZIP32 additions](zip-additions.md), [Delete / Rename / Replace File](zip-edits.md) | Test reads data/checks CRC and WinZip AES authentication; encrypted editing/ZIP64 AES/multipart deferred |
 | TAR | Regular files, nested paths, symlinks/hardlinks; special entries skipped with warnings | PAX TAR creation; gzip/bzip2/XZ wrappers and aliases; no editing | Test checks structure/readability; warning: no payload checksum |
 | 7z | LZMA/LZMA2; plain/encrypted fixtures and round trips | Create LZMA2; no modification | AES-256 content, optional filenames; full-data/CRC Test; no multipart |
 | RAR5 | Stored/compressed, four files, Unicode and safe links; [evidence](rar-compatibility.md) | Never create or modify | Full decoded CRC testing; encrypted/solid/multipart rejected |
@@ -13,15 +13,15 @@ These are **fixture results on Linux with libarchive 3.7.4 and in [macOS CI](htt
 | ZSTD / TAR.ZST / TZST | Bounded single standard frame, standalone or actual decoded TAR; optional checksum handled honestly | Single-file ZSTD or shared PAX TAR + ZSTD; no editing | Level 3 with checksum; no external dictionaries/encryption/multipart; [policy](zstandard.md) |
 | All other spec formats | Deferred, not advertised | Not implemented | Not implemented |
 
-An accepted file extension does not prove a compression method is available. 7z encrypted extraction is supported through the bundled backend; encrypted ZIP remains rejected. ZIPX, solid/multipart RAR and advanced 7z compatibility require dedicated fixtures before support claims. The app initially registers only ZIP/TAR document associations.
+An accepted file extension does not prove a compression method is available. 7z encrypted extraction is supported through the bundled backend; WinZip AES ZIP32 supports Store/Deflate ([policy](zip-aes.md)). ZIPX, solid/multipart RAR and advanced 7z compatibility require dedicated fixtures before support claims. The app initially registers only ZIP/TAR document associations.
 
 ## Creation policy
 
 ZIP is the primary/default creation format for normal macOS use. Store/Deflate
 remain available. 7z is a secondary choice for LZMA2 compression or AES-256 with
 optional filename encryption, and remains available in Finder and Create Archive.
-Compress with Password uses 7z because ZIP AES has not passed interoperability
-validation; Arkiv never silently falls back to ZipCrypto.
+Compress with Password keeps its 7z default; ZIP AES-256 is selectable in setup.
+Arkiv never silently falls back to ZipCrypto.
 
 Read support does not imply write support. Only legally redistributable,
 fixture-verified writers are exposed. RAR/RAR5 are read/browse/extract only within

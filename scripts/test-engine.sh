@@ -2,6 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p .build/engine-tests
+export PYTHONPATH="$PWD/.build/aes-test-deps${PYTHONPATH:+:$PYTHONPATH}"
 python3 scripts/build-sevenzip.py --output .build/sevenzip
 export LD_LIBRARY_PATH="$PWD/.build/sevenzip${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export DYLD_LIBRARY_PATH="$PWD/.build/sevenzip${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
@@ -33,6 +34,7 @@ ARKIV_TEST_LIBRARY="$PWD/$library" ARKIV_SEVEN_LIBRARY="$PWD/.build/sevenzip/$(b
 
 ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_integrity.py -v
 ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_rar.py -v
+ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_zip_aes.py -v
 
 ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_zip_addition.py -v
 

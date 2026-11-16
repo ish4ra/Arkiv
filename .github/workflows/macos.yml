@@ -42,6 +42,8 @@ jobs:
           uname -m
       - name: Build pinned in-process 7z engine
         run: scripts/ci-check.sh sevenzip python3 scripts/build-sevenzip.py
+      - name: Install independent AES ZIP test reader
+        run: python3 -m pip install --target .build/aes-test-deps --require-hashes -r tests/requirements-aes.txt
       - name: Engine security and fixture tests
         run: scripts/ci-check.sh engine scripts/test-engine.sh
       - name: Finder extension metadata regression tests

@@ -28,7 +28,7 @@ Arkiv only lists a format as supported once it passes automated fixture tests. R
 
 | Format | Browse & extract | Create | Edit existing | Encryption | Test Archive |
 | --- | --- | --- | --- | --- | --- |
-| **ZIP** | Store, Deflate | Store, Deflate (default format) | Add, Delete, Rename, Replace File¹ | Not supported | Data and CRC |
+| **ZIP** | Store, Deflate | Store, Deflate (default format) | Add, Delete, Rename, Replace File¹ | WinZip AES-256 creation; AES-128/192/256 reading | Data, CRC and AES authentication |
 | **7z** | LZMA, LZMA2 | LZMA2 | — | AES-256, optional encrypted filenames | Data and CRC |
 | **ZSTD / TAR.ZST / TZST** | Standalone or decoded TAR; optional checksum | One file or PAX TAR hierarchy | — | — | [Bounded frame policy](docs/zstandard.md) |
 | **GZIP / BZIP2 / XZ** standalone | One file; bounded checksum validation | One regular file | — | — | Complete stream checks |
@@ -41,7 +41,7 @@ Arkiv only lists a format as supported once it passes automated fixture tests. R
 
 **Not yet verified, so not advertised:** additional RAR methods/filters, ZIPX, disk images and the other formats in the [specification](ARKIV_SPEC.md). No support is claimed until fixture tests pass.
 
-**Known unsupported:** encrypted ZIP (rejected rather than guessed at), multipart archives, and RAR creation. See [format evidence](docs/archive-formats.md) for details.
+**Known unsupported:** encrypted ZIP editing, ZIP64 AES, legacy ZipCrypto, multipart archives, and RAR creation. See [format evidence](docs/archive-formats.md) for details.
 
 ## Using Arkiv
 
@@ -192,3 +192,5 @@ See [compressed TAR](docs/compressed-tar.md) for stream integrity, temporary-dis
 Zstandard is available for single-file `.zst` and compressed TAR (`.tar.zst`, `.tzst`): browse, extract, Test, Open, Quick Look, drag-out and Create Archive/Finder Add to Archive. ZIP remains the creation default. See [ZSTD frame policy, resource limits and testing](docs/zstandard.md).
 
 RAR4/RAR5 Phase 1 now has fixture-backed stored/compressed reading, extraction and full-data integrity testing. RAR remains read-only; encryption, solid and multipart variants are explicitly unsupported in this phase. See the [RAR compatibility matrix](docs/rar-compatibility.md) for verified methods, metadata, security policy and real-Mac checks.
+
+[WinZip AES ZIP support](docs/zip-aes.md) covers authenticated Store/Deflate reading and AES-256 creation; filenames remain visible and encrypted editing stays disabled.

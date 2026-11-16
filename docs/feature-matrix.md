@@ -9,6 +9,7 @@
 | Standalone GZIP / BZIP2 / XZ | Read, single-row browse, extract, Test, Open/Quick Look/drag and single-file creation; strict checksums/limits; [details](standalone-compression.md) |
 | Create TAR / compressed TAR | PAX TAR; gzip/bzip2/XZ with long/short suffixes in Create Archive / Finder Add to Archive; bounded encoders, byte verification, no encryption or editing; [details](creation.md#tar-and-compressed-tar-creation) |
 | Create ZIP | Store/Deflate, native creation setup, direct Finder multi-selection compression; [details](creation.md) |
+| WinZip AES ZIP Phase 1 | AE-1/AE-2 AES-128/192/256 read/extract/Test/Open/Quick Look; AES-256 Store/Deflate creation; encrypted editing disabled; [policy](zip-aes.md) |
 | Create/read 7z / AES-256 / filename encryption | LZMA2, content/header encryption, native password prompt/retry; [backend and limits](sevenzip.md) |
 | Compression presets | ZIP Store/Fastest/Fast/Normal/Maximum; 7z Fastest/Fast/Normal/Maximum/Ultra; [mappings and limits](compression-presets.md) |
 | 7z advanced creation | Auto or 1–64 MiB dictionary; Auto or up to four threads; optional solid creation with Auto/16–1024 MiB blocks; conservative 2 GiB memory admission; [combinations and limits](sevenzip-advanced.md) |
@@ -16,7 +17,7 @@
 | ZIP Delete / Rename / Replace File / New Folder | Verified transactional edits for eligible ZIP32 archives; [details](zip-edits.md) |
 | ZIP Replace Folder / Update Folder | One selected folder/package in an eligible ZIP: Replace removes old descendants; Update merges matching/new paths and keeps archive-only descendants; native picker, confirmation and atomic verification; [details](zip-edits.md) |
 | ZIP Update Selected Files | Two or more regular files in one ZIP folder; strict same-basename local mapping; Replace All or conservative Replace Older; one verified atomic transaction; [details](zip-edits.md#update-selected-files) |
-| Arbitrary multi-selection mapping / folder update-by-date / ZIP AES | Deferred; no enabled UI claims |
+| Arbitrary multi-selection mapping / folder update-by-date | Deferred; no enabled UI claims |
 | Solid archives / multipart / comments | Deferred compatibility work |
 | RAR4 / RAR5 Phase 1 | Evidence-gated plain single-volume read/extract/Test/Open/Quick Look/drag; [compatibility](rar-compatibility.md); no creation/editing |
 | Integrity test command | ZIP/7z/RAR full-data/CRC checks; TAR structure/readability with explicit checksum warning; native progress/cancellation/password retry |

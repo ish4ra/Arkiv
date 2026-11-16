@@ -28,8 +28,7 @@ existing archive extraction menu. The File menu also offers **Create Archive…*
 
 7z supports AES-256 content encryption and optional header/filename encryption.
 Encrypted 7z archives prompt for a password when opened, allow retry, and use the
-same browser/extractor after unlock. Passwords are not saved. ZIP AES remains
-unavailable; Arkiv never substitutes ZipCrypto. See [backend details](sevenzip.md).
+same browser/extractor after unlock. Passwords are not saved. ZIP supports WinZip AES-256 content encryption (filenames stay visible); [compatibility](zip-aes.md). Arkiv never substitutes ZipCrypto. See [backend details](sevenzip.md).
 
 ## Engine and safety
 
@@ -44,7 +43,7 @@ publishes without replacing any existing item. Failures/cancellation clean the
 private staging area. Existing extraction protections are unchanged.
 
 Creation does not claim resource-fork/xattr/Finder-metadata preservation, archive
-modification, arbitrary filesystem snapshots, or encrypted ZIP creation. Files being
+modification, or arbitrary filesystem snapshots. Files being
 edited during compression can cause creation to fail; retry with stable inputs.
 
 Finder URLs carry only an allowlisted command and bounded local source URLs.
