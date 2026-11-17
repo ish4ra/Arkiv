@@ -41,7 +41,7 @@ Arkiv only lists a format as supported once it passes automated fixture tests. R
 
 **Not yet verified, so not advertised:** additional RAR methods/filters, ZIPX, disk images and the other formats in the [specification](ARKIV_SPEC.md). No support is claimed until fixture tests pass.
 
-**Known unsupported:** encrypted ZIP editing, ZIP64 AES, legacy ZipCrypto, multipart archives, and RAR creation. See [format evidence](docs/archive-formats.md) for details.
+**Known unsupported:** encrypted ZIP editing, ZIP64 AES, legacy ZipCrypto, multipart creation and non-7z multipart archives, and RAR creation. See [format evidence](docs/archive-formats.md) for details.
 
 ## Using Arkiv
 
@@ -194,3 +194,5 @@ Zstandard is available for single-file `.zst` and compressed TAR (`.tar.zst`, `.
 RAR4/RAR5 Phase 1 now has fixture-backed stored/compressed reading, extraction and full-data integrity testing. RAR remains read-only; encryption, solid and multipart variants are explicitly unsupported in this phase. See the [RAR compatibility matrix](docs/rar-compatibility.md) for verified methods, metadata, security policy and real-Mac checks.
 
 [WinZip AES ZIP support](docs/zip-aes.md) covers authenticated Store/Deflate reading and AES-256 creation; filenames remain visible and encrypted editing stays disabled.
+
+Split 7z reading: conventional `.7z.001` sets support browse, Test, extraction, Open/Quick Look and drag-out, including verified encrypted sets. Multipart input remains read-only. See [naming, limits and diagnostics](docs/multipart.md).

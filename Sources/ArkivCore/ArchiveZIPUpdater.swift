@@ -27,7 +27,7 @@ public struct ArchiveZIPUpdater: Sendable {
         return url
     }
     public func canAdd(to snapshot: ArchiveSnapshot) -> Bool {
-        guard snapshot.standalone == nil, snapshot.unlocked == nil, snapshot.encryptedZIP == nil, snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), (try? SourceStamp(snapshot.url)) == snapshot.stamp else { return false }
+        guard snapshot.splitSeven == nil, snapshot.standalone == nil, snapshot.unlocked == nil, snapshot.encryptedZIP == nil, snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), (try? SourceStamp(snapshot.url)) == snapshot.stamp else { return false }
         var error = [CChar](repeating: 0, count: 256)
         guard let transaction = arkiv_zip_begin(canonical(snapshot.url).path, &error, error.count) else { return false }
         arkiv_zip_end(transaction)
@@ -273,7 +273,7 @@ public struct ArchiveZIPUpdater: Sendable {
     }
     private func update(sources: [URL], snapshot: ArchiveSnapshot, folder: String, plan: [UInt8]?, renameNames: [String?]? = nil, replacement: ArchiveEntry? = nil, newFolder: String? = nil, folderReplacement: String? = nil, folderMerge: Bool = false, selectedReplacements: [ArchiveEntry]? = nil, validateAdditionalSources: () throws -> Void = {}, seven: Bool = false, password: String? = nil, cancellation: ArchiveCancellation,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
-        guard snapshot.encryptedZIP == nil, (seven || snapshot.unlocked == nil), snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), try SourceStamp(snapshot.url) == snapshot.stamp else {
+        guard snapshot.splitSeven == nil, snapshot.encryptedZIP == nil, (seven || snapshot.unlocked == nil), snapshot.entries.allSatisfy({ $0.kind == .file || $0.kind == .directory }), try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
         }
         let archive = canonical(snapshot.url)

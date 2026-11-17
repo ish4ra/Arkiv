@@ -41,6 +41,7 @@ public struct SevenZipPolicyInspector: Sendable {
         }
     }
     public func inspect(_ snapshot: ArchiveSnapshot, password: String?, cancellation: ArchiveCancellation) throws -> SevenZipEncryptionPolicy {
+        guard snapshot.splitSeven == nil else { throw ArchiveFailure.message("Split 7z volumes are read-only.") }
         try validateArchivePassword(password)
         if cancellation.isCancelled { throw ArchiveFailure.cancelled }
         guard try SourceStamp(snapshot.url) == snapshot.stamp else {

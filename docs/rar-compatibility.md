@@ -102,3 +102,7 @@ On Intel and Apple Silicon:
 
 System decoder updates may change supported methods; expand claims only after
 independent fixtures and both native CI jobs pass.
+
+## Multipart conventions (not enabled)
+
+Common names include `name.part1.rar`/`part2.rar` and legacy `name.rar`/`name.r00`/`name.r01`. Names alone are not volume evidence. Existing RAR4/RAR5 envelope volume/split flags continue to produce Missing Volume/unsupported admission before decoder registration. Individual RAR volumes contain structured headers and split-file state; they cannot use split-7z byte concatenation. The new descriptor validation/discovery concepts may be reused later, but no RAR sibling discovery, encryption, solid or multipart extraction is enabled here. See [multipart policy](multipart.md).

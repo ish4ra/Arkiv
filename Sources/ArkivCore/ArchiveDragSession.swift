@@ -99,6 +99,7 @@ public final class ArchiveDragSession {
                     cancellation: cancellation, progress: { _ in })
                 extracted = report.url; warnings = report.warnings
             }
+            try snapshot?.validateVolumes(cancellation)
             guard let extracted else { throw ArchiveFailure.message("Extracted output is unavailable.") }
             var error = [CChar](repeating: 0, count: 256)
             let result = arkiv_publish_promised(extracted.path, item.path, parent.path,

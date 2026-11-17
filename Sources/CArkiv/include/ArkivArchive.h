@@ -16,6 +16,13 @@ typedef struct {
 typedef int (*arkiv_entry_callback)(void *, int64_t, const char *, int64_t, int);
 typedef void (*arkiv_warning_callback)(void *, const char *, const char *);
 typedef void (*arkiv_progress_callback)(void *, uint64_t, uint64_t);
+/* Split 7z volume set. Caller owns private output parent. 10 missing, 6 incomplete/corrupt, 8 unsupported. */
+typedef struct arkiv_volumes arkiv_volumes;
+int arkiv_volumes_reconstruct(const char *, const char *, uint64_t, arkiv_cancel *, arkiv_progress_callback, void *, arkiv_volumes **, char *, size_t);
+int arkiv_volumes_validate(arkiv_volumes *, arkiv_cancel *, char *, size_t);
+uint64_t arkiv_volumes_size(arkiv_volumes *);
+void arkiv_volumes_free(arkiv_volumes *);
+
 /* Return 0 success, 1 error, 2 cancellation. Error buffer never contains archive data. */
 int arkiv_list_metadata(const char *, arkiv_limits, arkiv_cancel *, arkiv_entry_callback, void *, char *, size_t, char *, size_t);
 int arkiv_list(const char *, arkiv_limits, arkiv_cancel *, arkiv_entry_callback, void *, char *, size_t);

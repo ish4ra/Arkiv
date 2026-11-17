@@ -8,6 +8,7 @@ public struct ArchiveOpenedFile: Sendable {
     fileprivate let relativePath: String
     fileprivate let source: URL
     fileprivate let stamp: SourceStamp
+    fileprivate var volumes: SplitSevenZip? = nil
 }
 
 /// Owns one extracted source independently of its parent window. Snapshots produced
@@ -103,7 +104,7 @@ public final class ArchiveOpenSession: @unchecked Sendable {
             }
             attempts.insert(attempt)
             return ArchiveOpenedFile(url: root.appendingPathComponent(relative), attempt: attempt,
-                                     relativePath: relative, source: snapshot.url, stamp: snapshot.stamp)
+                                     relativePath: relative, source: snapshot.url, stamp: snapshot.stamp, volumes:snapshot.splitSeven)
         } catch {
             arkiv_open_workspace_discard(workspace, attempt)
             throw error
@@ -120,6 +121,7 @@ public final class ArchiveOpenSession: @unchecked Sendable {
               arkiv_open_workspace_regular(workspace, file.relativePath) != 0 else {
             throw ArchiveFailure.message("The temporary file is no longer available.")
         }
+        try file.volumes?.validate(cancellation)
         guard try SourceStamp(file.source) == file.stamp else {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
         }

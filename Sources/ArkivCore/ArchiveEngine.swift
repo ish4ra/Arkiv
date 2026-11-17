@@ -34,11 +34,13 @@ public struct ArchiveSnapshot: Sendable {
     public internal(set) var sevenEncryptionPolicy: SevenZipEncryptionPolicy? = nil
     public internal(set) var metadata: ArchiveMetadata? = nil
     var sourceLease: ArchiveOpenedFileLease? = nil
+    var splitSeven: SplitSevenZip? = nil
     var encryptedZIP: UnlockedArchive? = nil
     var compressedTAR: UnlockedArchive? = nil
     var streamChecksum: Bool? = nil
     var standalone: StandaloneStream? = nil
     var backingURL: URL { standalone?.spool.url ?? encryptedZIP?.url ?? compressedTAR?.url ?? unlocked?.url ?? url }
+    func validateVolumes(_ cancellation: ArchiveCancellation) throws { try splitSeven?.validate(cancellation) }
     public var index: ArchiveIndex { ArchiveIndex(entries: entries) }
 }
 func validateArchivePassword(_ password: String?) throws {
@@ -139,7 +141,7 @@ public struct LibArchiveEngine: ArchiveEngine {
         let result = arkiv_archive_candidate(url.path)
         if cancellation.isCancelled { throw ArchiveFailure.cancelled }
         guard result >= 0 else { throw ArchiveFailure.message("Cannot read the temporary file.") }
-        return result != 0
+        return result != 0 || SplitSevenZip.matches(url)
     }
     public func inspect(_ url: URL, cancellation: ArchiveCancellation) throws -> ArchiveSnapshot {
         try inspect(url, cancellation: cancellation, password: nil)
@@ -147,6 +149,17 @@ public struct LibArchiveEngine: ArchiveEngine {
     public func inspect(_ url: URL, cancellation: ArchiveCancellation, password: String?,
                         progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> ArchiveSnapshot {
         try validateArchivePassword(password)
+        if SplitSevenZip.matches(url) {
+            let volumes = try SplitSevenZip(url,cancellation:cancellation,progress:progress)
+            let stamp = try SourceStamp(url)
+            let inner = try inspect(volumes.spool.url,cancellation:cancellation,password:password,progress:progress)
+            try volumes.validate(cancellation)
+            var snapshot = ArchiveSnapshot(url:url,entries:inner.entries,stamp:stamp,unlocked:inner.unlocked)
+            snapshot.splitSeven = volumes
+            let m = inner.metadata
+            snapshot.metadata = ArchiveMetadata(url:url,physicalSize:volumes.physicalSize,entries:inner.entries,format:"7z (split volumes)",methods:m?.compressionMethods,solid:m?.solid,dataEncrypted:m?.dataEncrypted,headersEncrypted:m?.headersEncrypted,multipart:true)
+            return snapshot
+        }
         let stamp = try SourceStamp(url)
         var compressedTAR: UnlockedArchive?
         var checksum: Int32 = -1
@@ -293,6 +306,7 @@ public struct LibArchiveEngine: ArchiveEngine {
                                  includeHardlinkDependencies: Bool = false,
                                  cancellation: ArchiveCancellation,
                                  progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> ArchiveExtractionReport {
+        try snapshot.validateVolumes(cancellation)
         if let ids, ids.isEmpty { throw ArchiveFailure.message("Select an entry to extract.") }
         guard try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed since it was opened. Reopen it.")
@@ -352,6 +366,7 @@ public struct LibArchiveEngine: ArchiveEngine {
                 limits, cancellation.pointer, callback, warning, context, &error, error.count)
         }
         try check(result, error)
+        try snapshot.validateVolumes(cancellation)
         guard try SourceStamp(snapshot.url) == snapshot.stamp else {
             throw ArchiveFailure.message("Archive changed during extraction. Output discarded.")
         }
@@ -380,6 +395,16 @@ extension LibArchiveEngine {
     public func test(_ url: URL, cancellation: ArchiveCancellation, password: String? = nil,
                      progress: @escaping @Sendable (ArchiveProgress) -> Void = { _ in }) throws -> ArchiveIntegrityResult {
         try validateArchivePassword(password)
+        if SplitSevenZip.matches(url) {
+            do {
+                let volumes = try SplitSevenZip(url,cancellation:cancellation,progress:progress)
+                let result = try test(volumes.spool.url,cancellation:cancellation,password:password,progress:progress)
+                try volumes.validate(cancellation)
+                return result
+            } catch let failure as VolumeFailure {
+                return ArchiveIntegrityResult(state:failure.code == 10 ? .missingVolume : failure.code == 8 ? .unsupportedMethod : .corrupt,detail:failure.detail)
+            }
+        }
         let stamp = try SourceStamp(url)
         if arkiv_compression_kind(url.path) != 0 {
             do {

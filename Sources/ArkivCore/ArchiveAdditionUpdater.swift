@@ -15,6 +15,7 @@ public enum ArchiveAdditionCapability: Equatable, Sendable {
 public struct ArchiveAdditionUpdater: Sendable {
     public init() {}
     public func capability(for snapshot: ArchiveSnapshot) -> ArchiveAdditionCapability {
+        if snapshot.splitSeven != nil { return .readOnly("Split 7z volumes are read-only.") }
         if snapshot.standalone != nil { return .readOnly("Standalone compressed files cannot be modified. Create a new compressed file instead.") }
         if ArchiveZIPUpdater().canAdd(to: snapshot) { return .zip }
         guard (try? SourceStamp(snapshot.url)) == snapshot.stamp else {
@@ -38,7 +39,7 @@ public struct ArchiveAdditionUpdater: Sendable {
     }
     /// Non-secret UI hint only. Every Add revalidates the pinned original.
     public func canAddEncrypted(_ snapshot: ArchiveSnapshot) -> Bool {
-        guard let policy = snapshot.sevenEncryptionPolicy,
+        guard snapshot.splitSeven == nil, let policy = snapshot.sevenEncryptionPolicy,
               policy.eligibleForFutureEncryptedModification,
               (try? SourceStamp(snapshot.url)) == snapshot.stamp else { return false }
         // Header-only encryption with plain nonempty data cannot be extended

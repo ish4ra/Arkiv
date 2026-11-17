@@ -1,0 +1,21 @@
+{
+  "producer": "Official 7-Zip 26.01 Linux x64, upstream release asset https://github.com/ip7z/7zip/releases/download/26.01/7z2601-linux-x64.tar.xz",
+  "toolSHA256": "8ea0fc8a135e7b848e80a4116fe22dff56c8c4518dde1f43cce67f4e340b437a",
+  "recipe": "tree/資料 🐘.txt = bytes(range(256))*8; tree/empty.txt empty; tree/empty/ directory. 7zz a -t7z -m0=Copy -v1500b store.7z tree; LZMA2 -v128b for lzma2; LZMA2 -v128b -p(public fixture password) -mhe=on/off for encrypted/data-encrypted. Public fixture password: fixture password. Test-only upstream producer, never bundled/invoked by Arkiv.",
+  "sha256": {
+    "data-encrypted.7z.001": "dcf144a7f294b4e32d212ab97895c26cae94d8f89601190e1726ca6c5d8a3138",
+    "data-encrypted.7z.002": "1b46bacd0753717cb10734cdaa33bd11c24959c1082280155e8440ce2b4de380",
+    "data-encrypted.7z.003": "e6182d87e2194c6dc163ff6e87f7072d02ff6b4e40a91ec5f592d554ed4da789",
+    "data-encrypted.7z.004": "f38043e0158af24edf2a06e3425588f54fbf7aa991620220adb4b9a7d3eac66e",
+    "encrypted.7z.001": "092413bb5535de58160c7b97483ee0d01838c8680070949165e238031f64fc4e",
+    "encrypted.7z.002": "9feb3d1debf24d764e870e95a7abe942ff2308d8385949e1b9b0023f0bbafc18",
+    "encrypted.7z.003": "5b9d985c43758ab499887f9907386f3a4792c8702956052c51f1d5fa55fa15b6",
+    "encrypted.7z.004": "f1aa503ef92a7f207e33aec870a20b96ce467afd6e34ac6c297ccf409cf08bb4",
+    "lzma2.7z.001": "ba0a5e5c96aeb6f4513d7a2cf0a5f8c552ee78ba12923c01bb02cf283fbe5c60",
+    "lzma2.7z.002": "fcb8f357d73e0dd7ca1c24ad7bcc11b24f29894081fbd964bd14f09f7674d383",
+    "lzma2.7z.003": "4166292f6e530a106919f20c7362604c455bf79a385013d067c953c357e9b358",
+    "lzma2.7z.004": "25a61c1e7b65632c24e8d0f872362f96fc6aa133b720ad539325d0f98bcbc119",
+    "store.7z.001": "83263d53196c3678e10835d4ceab14f595c1983bf40396b67c22ad713069d1cb",
+    "store.7z.002": "b5876bbe770142ac2a6aeac6d693ea7cc6980a9065b5d21f0b0fdf26d59fd7d8"
+  }
+}

@@ -115,3 +115,7 @@ or failure leaves the original unchanged. Tests compare retained ciphertext and
 exercise both header policies, repeated empty/small/large replacements and stale
 sources. Encrypted solid, mixed-encryption, multipart and unsupported metadata
 remain read-only.
+
+## Split 7z reading
+
+[Multipart Phase 1](multipart.md) reconstructs strict numbered byte volumes into a bounded private file, then reuses this same handler/unlock/CRC path. Original part descriptors remain pinned and revalidated; all multipart editing remains disabled. ZIP AES is now independently implemented by system libarchive; see [ZIP AES](zip-aes.md) rather than the earlier deferred ZIP notes above.

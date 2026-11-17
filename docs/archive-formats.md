@@ -45,3 +45,7 @@ ZIP creation details and validation: [creation.md](creation.md).
 Single-stream gzip/bzip2/XZ TAR reading uses bounded system decoders plus the existing TAR engine. See [evidence and limits](compressed-tar.md). Creation supports the same wrappers and aliases through the shared PAX TAR writer and bounded encoders. Standalone GZIP/BZIP2/XZ is separately supported for one file, without fabricated TAR headers; see [standalone policy](standalone-compression.md). TAR editing remains unavailable.
 
 ZSTD uses the pinned bundled backend rather than system decoders. See [Zstandard](zstandard.md) for frame, memory, checksum and TAR-content detection policy.
+
+## Split 7z input
+
+Consecutive `.7z.001` numbered sets (2–128 parts, 4 GiB packed limit) are reconstructed privately and fully decoded/verified by the existing 7z handler. Copy/LZMA2, AES data/header encryption, browse/extract/Test/Open/Quick Look/drag are fixture-backed; all multipart editing and creation remain unavailable. [Details](multipart.md).
