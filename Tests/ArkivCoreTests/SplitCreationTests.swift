@@ -40,7 +40,7 @@ final class SplitCreationTests: XCTestCase {
     }
     func testPublicationFailureCancellationMutationAndNoOverwrite() throws {
         let fm=FileManager.default
-        for mode in ["collision","cancel","source","destination","lateCollision"] {
+        for mode in ["collision","cancel","source","destination","lateCollision","extra","replaceFirst","changeFirst"] {
             let root=fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             let dest=root.appendingPathComponent("output"), moved=root.appendingPathComponent("moved")
             try fm.createDirectory(at:dest,withIntermediateDirectories:true);defer {try? fm.removeItem(at:root)}
@@ -51,6 +51,9 @@ final class SplitCreationTests: XCTestCase {
             XCTAssertThrowsError(try ArchiveCreator().create(.init(sources:[source],destination:dest,name:"result",format:.sevenZip,split:.init(volumeBytes:128)),cancellation:token,progress:{_ in
                 // Trigger only after an actual exclusive final publication.
                 guard FileManager.default.fileExists(atPath:first.path) else {return}
+                if mode == "extra" {try? Data("foreign".utf8).write(to:dest.appendingPathComponent("result.7z.999"))}
+                if mode == "replaceFirst" {try? FileManager.default.removeItem(at:first);try? Data("foreign".utf8).write(to:first)}
+                if mode == "changeFirst" {if let h=try? FileHandle(forWritingTo:first){try? h.write(contentsOf:Data([0]));try? h.close()}}
                 if mode == "cancel" {token.cancel()}
                 if mode == "source" {try? Data("changed".utf8).write(to:source)}
                 if mode == "lateCollision" {try? Data("foreign".utf8).write(to:second)}
@@ -64,7 +67,8 @@ final class SplitCreationTests: XCTestCase {
                 XCTAssertEqual(try Data(contentsOf:first),Data("foreign".utf8))
                 XCTAssertFalse(fm.fileExists(atPath:moved.appendingPathComponent(first.lastPathComponent).path))
                 XCTAssertTrue(try fm.contentsOfDirectory(atPath:moved.path).isEmpty)
-            } else {XCTAssertFalse(fm.fileExists(atPath:first.path),mode)}
+            } else if mode == "replaceFirst" {XCTAssertEqual(try Data(contentsOf:first),Data("foreign".utf8))}
+            else {XCTAssertFalse(fm.fileExists(atPath:first.path),mode)}
             if mode == "collision" || mode == "lateCollision" {XCTAssertEqual(try Data(contentsOf:second),Data((mode == "collision" ? "existing":"foreign").utf8))}
             XCTAssertFalse(try fm.contentsOfDirectory(atPath:dest.path).contains{$0.hasPrefix(".arkiv-")})
         }

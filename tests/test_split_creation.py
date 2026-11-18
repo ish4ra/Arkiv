@@ -14,7 +14,7 @@ lib.arkiv_create_archive_split.argtypes=[C.POINTER(C.c_char_p),C.c_size_t,C.c_ch
 class SplitCreationTests(unittest.TestCase):
     def run_create(self, root, callback=lambda *_:None, password=None, headers=0, solid=0):
         source=root/'file';source.write_bytes(bytes(range(256))*100)
-        stage=root/'.stage';stage.mkdir(mode=0o700)
+        stage=root/'.stage' # Created exclusively by the split transaction.
         sources=(C.c_char_p*1)(os.fsencode(source));error=C.create_string_buffer(1024)
         result=lib.arkiv_create_archive_split(sources,1,os.fsencode(root),b'.stage',b'result.7z',C.create_string_buffer(512),512,Limits(100000,20<<30),None,Progress(callback),None,error,len(error),password,headers,5,0,2,solid,0,128)
         return result,error.value

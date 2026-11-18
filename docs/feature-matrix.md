@@ -18,7 +18,8 @@
 | ZIP Replace Folder / Update Folder | One selected folder/package in an eligible ZIP: Replace removes old descendants; Update merges matching/new paths and keeps archive-only descendants; native picker, confirmation and atomic verification; [details](zip-edits.md) |
 | ZIP Update Selected Files | Two or more regular files in one ZIP folder; strict same-basename local mapping; Replace All or conservative Replace Older; one verified atomic transaction; [details](zip-edits.md#update-selected-files) |
 | Arbitrary multi-selection mapping / folder update-by-date | Deferred; no enabled UI claims |
-| Multipart creation / RAR multipart / comments | Deferred compatibility work; split 7z reading is described below |
+| Multipart creation | 7z only: verified private splitting, 2–128 parts, 4 GiB packed limit; native creation Advanced controls |
+| RAR multipart / comments | Deferred compatibility work |
 | RAR4 / RAR5 Phase 1 | Evidence-gated plain single-volume read/extract/Test/Open/Quick Look/drag; [compatibility](rar-compatibility.md); no creation/editing |
 | Integrity test command | ZIP/7z/RAR full-data/CRC checks; TAR structure/readability with explicit checksum warning; native progress/cancellation/password retry |
 | Checksums / split-combine / benchmark / CLI | Deferred |
@@ -44,4 +45,4 @@ Compressed TAR: read/browse/extract/Test via bounded gzip/bzip2/XZ decoding; sha
 
 ZSTD standalone (`.zst`) and compressed TAR (`.tar.zst`, `.tzst`) support content-based browse, extract, Test, Open File, Quick Look, drag-out and creation through the existing shared workflows. Standalone creation requires one regular file; TAR creation accepts file/folder selections. Checksum-less frames produce an integrity warning. Editing, dictionaries, concatenated/skippable frames and advanced controls are unavailable. See [verified policy and limits](zstandard.md).
 
-Split 7z Phase 1: verified Copy/LZMA2 and AES-256 header on/off reading through bounded private reconstruction; first/later-volume opening and safe sibling discovery. Multipart editing/creation and RAR multipart remain disabled. [Policy](multipart.md).
+Split 7z Phase 1: verified Copy/LZMA2 and AES-256 header on/off reading through bounded private reconstruction; first/later-volume opening and safe sibling discovery. Split 7z creation uses exact verified encoder bytes; multipart editing and RAR multipart remain disabled. [Policy](multipart.md).

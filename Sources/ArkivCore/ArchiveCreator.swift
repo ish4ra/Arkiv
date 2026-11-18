@@ -195,7 +195,7 @@ public struct ArchiveCreator: Sendable {
         let pointers: [UnsafePointer<CChar>?] = strings.map { UnsafePointer($0) }
         do {
             let stage = destination.appendingPathComponent(".arkiv-create-" + UUID().uuidString, isDirectory: true)
-            try manager.createDirectory(at: stage, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+            if request.split == nil { try manager.createDirectory(at: stage, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700]) }
             // Split cleanup is descriptor-relative in C, including a moved destination.
             defer { if request.split == nil { try? manager.removeItem(at: stage) } }
             let filename = request.name + request.format.fileExtension

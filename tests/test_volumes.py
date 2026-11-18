@@ -37,4 +37,14 @@ class VolumeTests(unittest.TestCase):
   def change(*args):
    replacement=self.root/'replacement';replacement.write_bytes(part.read_bytes());replacement.replace(part)
   self.assertNotEqual(self.reconstruct(callback=change)[0],0)
+ def test_replaced_output_parent_does_not_delete_foreign_spool(self):
+  moved=self.root/'moved';foreign=self.out/'archive.7z'
+  def change(*args):
+   if moved.exists():return
+   self.out.rename(moved);self.out.mkdir();foreign.write_bytes(b'foreign')
+   LIB.arkiv_cancel_set(self.token)
+  handle=C.c_void_p();error=C.create_string_buffer(1024)
+  code=LIB.arkiv_volumes_reconstruct(bytes(self.root/'store.7z.001'),bytes(foreign),4<<30,self.token,I.PROGRESS(change),None,C.byref(handle),error,len(error))
+  self.assertNotEqual(code,0);self.assertEqual(foreign.read_bytes(),b'foreign')
+  self.assertFalse((moved/'archive.7z').exists())
 if __name__=='__main__':unittest.main()

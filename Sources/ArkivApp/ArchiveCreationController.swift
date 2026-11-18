@@ -14,22 +14,22 @@ final class ArchiveCreationController {
         if let setup { setup.window?.makeKeyAndOrderFront(nil); return }
         let sheet = CreateArchiveSheet(sources: sources, encrypted: encrypted)
         setup = sheet
-        sheet.complete = { [weak self] destination, name, preset, format, password, encryptFilenames, options in
+        sheet.complete = { [weak self] destination, name, preset, format, password, encryptFilenames, options, split in
             guard let self else { return }
             self.setup = nil
             guard let destination else { return }
-            do { try self.compress(sources, destination: destination, name: name, format: format, password: password, encryptFilenames: encryptFilenames, preset: preset, sevenZipOptions: options) }
+            do { try self.compress(sources, destination: destination, name: name, format: format, password: password, encryptFilenames: encryptFilenames, preset: preset, sevenZipOptions: options, split: split) }
             catch { NSAlert(error: error).runModal() }
         }
         sheet.present(parent: parent)
     }
 
-    func compress(_ sources: [URL], destination: URL? = nil, name: String? = nil, compression: ZIPCompression? = nil, format: ArchiveFormat = .zip, password: String? = nil, encryptFilenames: Bool = true, preset: CompressionPreset? = nil, sevenZipOptions: SevenZipCreationOptions? = nil) throws {
+    func compress(_ sources: [URL], destination: URL? = nil, name: String? = nil, compression: ZIPCompression? = nil, format: ArchiveFormat = .zip, password: String? = nil, encryptFilenames: Bool = true, preset: CompressionPreset? = nil, sevenZipOptions: SevenZipCreationOptions? = nil, split: SevenZipSplitOptions? = nil) throws {
         guard !isBusy else { throw ArchiveFailure.message("An archive is already being created. Wait or cancel it first.") }
         guard let first = sources.first else { throw ArchiveFailure.message("Select files or folders to compress.") }
         let destination = destination ?? first.deletingLastPathComponent()
         let name = name ?? CreationHandoff.baseName(for: sources)
-        let request = ArchiveCreationRequest(sources: sources, destination: destination, name: name, compression: compression, format: format, password: password, encryptFilenames: encryptFilenames, preset: preset, sevenZipOptions: sevenZipOptions)
+        let request = ArchiveCreationRequest(sources: sources, destination: destination, name: name, compression: compression, format: format, password: password, encryptFilenames: encryptFilenames, preset: preset, sevenZipOptions: sevenZipOptions, split: split)
         isBusy = true
         let operation = FinderOperationWindow(archive: destination.appendingPathComponent(name + format.fileExtension), verb: "Compressing")
         self.operation = operation
@@ -68,12 +68,29 @@ private final class CreationProgressThrottle: @unchecked Sendable {
     }
 }
 
-final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
-    var complete: ((URL?, String, CompressionPreset, ArchiveFormat, String?, Bool, SevenZipCreationOptions?) -> Void)?
+final class CreateArchiveSheet: NSWindowController, NSWindowDelegate, NSTextFieldDelegate {
+    var complete: ((URL?, String, CompressionPreset, ArchiveFormat, String?, Bool, SevenZipCreationOptions?, SevenZipSplitOptions?) -> Void)?
     private let sources: [URL]
     private let advancedToggle = NSButton()
     private let dictionary = NSPopUpButton()
     private let threads = NSPopUpButton()
+    private let split = NSPopUpButton()
+    private let customSplit = NSTextField(string:"100000000")
+    private let splitHint = NSTextField(wrappingLabelWithString:"")
+    private func selectedSplit() throws -> SevenZipSplitOptions? {
+        guard selectedFormat == .sevenZip, split.indexOfSelectedItem > 0 else {return nil}
+        let bytes: UInt64
+        if split.indexOfSelectedItem <= SevenZipSplitOptions.presets.count {
+            bytes = SevenZipSplitOptions.presets[split.indexOfSelectedItem-1]
+        } else {
+            guard let value=UInt64(customSplit.stringValue), !customSplit.stringValue.isEmpty else {
+                throw ArchiveFailure.message("Enter a whole number of bytes for the custom split size.")
+            }
+            bytes=value
+        }
+        let result=SevenZipSplitOptions(volumeBytes:bytes);try result.validate();return result
+    }
+    func controlTextDidChange(_ notification: Notification) {updateAdvanced()}
     private let solid = NSPopUpButton()
     private let solidBlock = NSPopUpButton()
     private let memory = NSTextField(wrappingLabelWithString: "")
@@ -133,7 +150,13 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
         advancedToggle.title = ""; advancedToggle.setAccessibilityLabel("Advanced compression")
         advancedToggle.target = self; advancedToggle.action = #selector(updateAdvanced)
         let disclosure = NSStackView(views:[advancedToggle,NSTextField(labelWithString:"Advanced")]); disclosure.spacing = 6
-        let advancedGrid = NSGridView(views:[[NSTextField(labelWithString:"Dictionary:"),dictionary],[NSTextField(labelWithString:"Threads:"),threads],[NSTextField(labelWithString:"Solid:"),solid],[NSTextField(labelWithString:"Solid block:"),solidBlock]])
+        split.addItems(withTitles:["No splitting","100 MB","650 MB","700 MB","1 GB","2 GB","4 GB","Custom size"])
+        split.setAccessibilityLabel("Split into volumes");split.target=self;split.action = #selector(updateAdvanced)
+        customSplit.setAccessibilityLabel("Custom split size in bytes");customSplit.delegate=self
+        splitHint.font = .systemFont(ofSize:11);splitHint.textColor = .secondaryLabelColor
+        let customRow=NSStackView(views:[NSTextField(labelWithString:"Custom bytes:"),customSplit])
+        let splitFields=NSStackView(views:[split,customRow,splitHint]);splitFields.orientation = .vertical;splitFields.alignment = .leading
+        let advancedGrid = NSGridView(views:[[NSTextField(labelWithString:"Dictionary:"),dictionary],[NSTextField(labelWithString:"Threads:"),threads],[NSTextField(labelWithString:"Solid:"),solid],[NSTextField(labelWithString:"Solid block:"),solidBlock],[NSTextField(labelWithString:"Split into volumes:"),splitFields]])
         advancedGrid.rowSpacing = 8; advancedGrid.columnSpacing = 12
         advancedFields.addArrangedSubview(advancedGrid)
         memory.font = .systemFont(ofSize:11); memory.textColor = .secondaryLabelColor
@@ -245,6 +268,9 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
                 createButton.isEnabled = false
             }
         }
+        customSplit.superview?.isHidden = split.indexOfSelectedItem != 7
+        splitHint.stringValue = "MB = 1,000,000 bytes; GB = 1,000,000,000 bytes. Requires 2–128 parts and at most 4 GiB total. Encoded size is checked before publication. Existing sets are never replaced."
+        do { _ = try selectedSplit() } catch {createButton.isEnabled=false;splitHint.stringValue=error.localizedDescription}
         window?.contentView?.layoutSubtreeIfNeeded()
         if let content = window?.contentView { window?.setContentSize(content.fittingSize) }
     }
@@ -270,11 +296,15 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate {
     }
     @objc private func cancelCreate() { finish(nil, "", .normal) }
     private func finish(_ destination: URL?, _ name: String, _ preset: CompressionPreset, password: String? = nil) {
-        guard !finished else { return }; finished = true
+        guard !finished else { return }
+        let splitOptions: SevenZipSplitOptions?
+        do {splitOptions = destination == nil ? nil : try selectedSplit()}
+        catch {NSAlert(error:error).runModal();return}
+        finished = true
         if let window, let parent = window.sheetParent { parent.endSheet(window) }
         sizeCancellation.cancel()
         passwords.clear()
-        close(); complete?(destination, name, preset, selectedFormat, password, selectedFormat == .sevenZip && filenames.state == .on, selectedFormat == .sevenZip ? selectedOptions : nil)
+        close(); complete?(destination, name, preset, selectedFormat, password, selectedFormat == .sevenZip && filenames.state == .on, selectedFormat == .sevenZip ? selectedOptions : nil, splitOptions)
     }
     deinit { sizeCancellation.cancel() }
     func windowShouldClose(_ sender: NSWindow) -> Bool { cancelCreate(); return false }

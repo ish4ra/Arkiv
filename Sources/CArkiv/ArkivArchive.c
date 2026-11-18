@@ -701,6 +701,49 @@ static int split_sources_valid(struct create_manifest *m, arkiv_cancel *token) {
     }
     return 0;
 }
+static int split_source_order(const void *a,const void *b) {
+    const struct create_source *aa=*(const struct create_source *const *)a,*bb=*(const struct create_source *const *)b;
+    return strcmp(aa->entry,bb->entry);
+}
+/* The encoder may reorder entries. Compare its decoded TAR by exact member name,
+   kind, size and bytes. This encoder does not store source POSIX modes/mtime. */
+static int split_verify_decoded(int fd,struct create_manifest *m,arkiv_cancel *token) {
+    struct create_source **sorted=calloc(m->count,sizeof(*sorted));unsigned char *seen=calloc(m->count,1);
+    struct archive *reader=archive_read_new();int status=1,r=0;size_t count=0;
+    if(!sorted||!seen||!reader)goto done;
+    for(size_t i=0;i<m->count;i++)sorted[i]=&m->items[i];
+    qsort(sorted,m->count,sizeof(*sorted),split_source_order);
+    if(lseek(fd,0,SEEK_SET)<0||archive_read_support_filter_none(reader)!=ARCHIVE_OK||archive_read_support_format_tar(reader)!=ARCHIVE_OK||archive_read_open_fd(reader,fd,65536)!=ARCHIVE_OK)goto done;
+    struct archive_entry *entry;
+    while((r=archive_read_next_header(reader,&entry))==ARCHIVE_OK) {
+        if(cancelled(token))goto done;
+        const char *path=archive_entry_pathname_utf8(entry);if(!path||strlen(path)>4096)goto done;
+        char name[4097];strcpy(name,path);size_t len=strlen(name);if(len&&name[len-1]=='/')name[len-1]=0;
+        struct create_source key={NULL,name,{0}},*keyptr=&key;
+        struct create_source **found=bsearch(&keyptr,sorted,m->count,sizeof(*sorted),split_source_order);
+        if(!found)goto done;
+        struct create_source *source=*found;size_t index=(size_t)(source-m->items);
+        if(seen[index]++)goto done;
+        int directory=S_ISDIR(source->stamp.st_mode);
+        if(entry_kind(entry)!=(directory?2:1)||archive_entry_size(entry)!=(directory?0:source->stamp.st_size))goto done;
+        int input=create_open(source->disk);struct stat st;
+        if(input<0)goto done;
+        int bad=fstat(input,&st)||!create_same_stat(&st,&source->stamp);uint64_t bytes=0;ssize_t n=0;
+        char data[65536],original[65536];
+        while(!bad&&(n=archive_read_data(reader,data,sizeof(data)))>0) {
+            size_t offset=0;
+            while(offset<(size_t)n){ssize_t got=read(input,original+offset,(size_t)n-offset);if(got<=0){bad=1;break;}offset+=(size_t)got;}
+            if(bad||cancelled(token)||memcmp(data,original,(size_t)n)){bad=1;break;}
+            bytes+=(uint64_t)n;
+        }
+        if(n<0||(!directory&&bytes!=(uint64_t)source->stamp.st_size)||fstat(input,&st)||!create_same_stat(&st,&source->stamp))bad=1;
+        close(input);if(bad)goto done;count++;
+    }
+    if(r==ARCHIVE_EOF&&count==m->count)status=0;
+done:
+    if(reader)archive_read_free(reader);
+    free(sorted);free(seen);return status;
+}
 static int split_directory_valid(const char *path,int held) {
     struct stat a,b;int fd=create_open(path);
     int ok=fd>=0&&!fstat(fd,&a)&&!fstat(held,&b)&&S_ISDIR(a.st_mode)&&a.st_dev==b.st_dev&&a.st_ino==b.st_ino;
@@ -775,6 +818,27 @@ static int create_split_publish(int input,int stagefd,int parentfd,const char *p
         pub++;
         if(progress)progress(context,pub,total);
     }
+    /* Drop private hardlinks so the strict reader can validate the published set.
+       A concurrent rename/replacement/addition must not become a successful set. */
+    for(unsigned i=0;i<created;i++){snprintf(part,sizeof(part),"%s.%03u",name,i+1);unlinkat(stagefd,part,0);}
+    created=0;close(check);check=-1;unlinkat(stagefd,"reconstructed.7z",0);
+    arkiv_volumes_free(volumes);volumes=NULL;
+    free(first);first=NULL;
+    if(asprintf(&first,"%s/%s.001",parent,name)<0)goto done;
+    if(!split_directory_valid(parent,parentfd)||!split_directory_valid(stagepath,stagefd))goto done;
+    for(unsigned i=0;i<count;i++) {
+        struct stat now;snprintf(part,sizeof(part),"%s.%03u",name,i+1);
+        if(fstatat(parentfd,part,&now,AT_SYMLINK_NOFOLLOW)||now.st_dev!=part_stats[i].st_dev||now.st_ino!=part_stats[i].st_ino)goto done;
+    }
+    if(arkiv_volumes_reconstruct(first,joined,4ULL<<30,token,NULL,NULL,&volumes,error,cap))goto done;
+    check=openat(stagefd,"reconstructed.7z",O_RDONLY|O_NOFOLLOW|O_CLOEXEC);
+    if(check<0)goto done;
+    for(uint64_t offset=0;offset<total;) {
+        unsigned char other[65536];size_t want=total-offset<sizeof(buffer)?(size_t)(total-offset):sizeof(buffer);
+        if(cancelled(token)||pread(input,buffer,want,(off_t)offset)!=(ssize_t)want||pread(check,other,want,(off_t)offset)!=(ssize_t)want||memcmp(buffer,other,want))goto done;
+        offset+=want;
+    }
+    if(arkiv_volumes_validate(volumes,token,error,cap))goto done;
     if(cancelled(token)||split_sources_valid(manifest,token)||!split_directory_valid(parent,parentfd)||fsync(parentfd))goto done;
     snprintf(published,published_cap,"%s.001",name);status=0;
 done:
@@ -792,6 +856,10 @@ done:
     return status;
 }
 
+static void split_unlink_owned(int dir,const char *name,int fd) {
+    struct stat held,now;
+    if(fd>=0&&!fstat(fd,&held)&&!fstatat(dir,name,&now,AT_SYMLINK_NOFOLLOW)&&held.st_dev==now.st_dev&&held.st_ino==now.st_ino)unlinkat(dir,name,0);
+}
 static int create_archive(const char *const *sources, size_t count, const char *parent,
                      const char *stage, const char *name, char *published_name, size_t published_capacity, int compression, arkiv_limits limits,
                      arkiv_cancel *token, arkiv_progress_callback progress, void *context,
@@ -833,6 +901,7 @@ static int create_archive(const char *const *sources, size_t count, const char *
     struct create_manifest manifest = {0};
     struct tar_output tar_out = { -1, 0, limits.max_bytes < (20ULL << 30) ? limits.max_bytes : (20ULL << 30), token };
     if (parentfd < 0) goto done;
+    if(split_size && mkdirat(parentfd,stage,0700)) goto done;
     stagefd = openat(parentfd, stage, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (stagefd < 0) goto done;
     output = openat(stagefd, initial, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
@@ -943,6 +1012,9 @@ static int create_archive(const char *const *sources, size_t count, const char *
         if (fsync(sevenfd)) goto done;
         status = arkiv_seven_decode(sevenfd, checkfd, password, seven_cancel, token);
         if (status) goto done;
+        if(split_size && split_verify_decoded(checkfd,&manifest,token)) {
+            status=fail(error,capacity,"Created 7z contents do not match the source manifest.");goto done;
+        }
     }
     if (tar && codec) {
         sevenfd = openat(stagefd, payload, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
@@ -1000,6 +1072,15 @@ done:
     free(manifest.items);
     if (verify) archive_read_free(verify);
     if (writer) archive_write_free(writer);
+    if(split_size && stagefd>=0) {
+        split_unlink_owned(stagefd,"archive.zip",output);
+        split_unlink_owned(stagefd,"archive.7z",sevenfd);
+        split_unlink_owned(stagefd,"verify.zip",checkfd);
+        struct stat held,now;
+        if(!fstat(stagefd,&held)&&!fstatat(parentfd,stage,&now,AT_SYMLINK_NOFOLLOW)&&held.st_dev==now.st_dev&&held.st_ino==now.st_ino)
+            unlinkat(parentfd,stage,AT_REMOVEDIR);
+        close(stagefd);stagefd=-1;
+    }
     if (sevenfd >= 0) close(sevenfd);
     if (checkfd >= 0) close(checkfd);
     if (output >= 0) close(output);
