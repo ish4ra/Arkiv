@@ -36,6 +36,15 @@ class SplitCreationTests(unittest.TestCase):
                     command=[tool,'t',str(parts[0])]
                     if password:command+=['-pfixture password'] # Public fixture password only.
                     self.assertEqual(subprocess.run(command,stdout=subprocess.DEVNULL).returncode,0)
+    def test_foreign_staging_collision_is_not_deleted(self):
+        with tempfile.TemporaryDirectory() as t:
+            root=Path(t).resolve();foreign=root/'.stage/reconstructed.7z'
+            def progress(*_):
+                if (root/'.stage/result.7z.001').exists() and not foreign.exists():foreign.write_bytes(b'foreign')
+            result,_=self.run_create(root,progress)
+            self.assertNotEqual(result,0)
+            self.assertEqual(foreign.read_bytes(),b'foreign')
+            self.assertEqual(list(root.glob('result.7z.*')),[])
     @unittest.skipUnless(hasattr(os,'fork'),'POSIX fault isolation')
     def test_write_exhaustion_rolls_back_and_cleans(self):
         with tempfile.TemporaryDirectory() as t:

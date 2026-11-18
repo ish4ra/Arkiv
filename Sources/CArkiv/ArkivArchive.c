@@ -750,6 +750,14 @@ static int split_directory_valid(const char *path,int held) {
     if(fd>=0)close(fd);
     return ok;
 }
+static void split_unlink_identity(int dir,const char *name,const struct stat *owned) {
+    struct stat now;
+    if(!fstatat(dir,name,&now,AT_SYMLINK_NOFOLLOW)&&owned->st_dev==now.st_dev&&owned->st_ino==now.st_ino)unlinkat(dir,name,0);
+}
+static void split_unlink_owned(int dir,const char *name,int fd) {
+    struct stat held,now;
+    if(fd>=0&&!fstat(fd,&held)&&!fstatat(dir,name,&now,AT_SYMLINK_NOFOLLOW)&&held.st_dev==now.st_dev&&held.st_ino==now.st_ino)unlinkat(dir,name,0);
+}
 static int create_split_publish(int input,int stagefd,int parentfd,const char *parent,const char *stage,
     const char *name,uint64_t part_size,struct create_manifest *manifest,arkiv_cancel *token,
     arkiv_progress_callback progress,void *context,char *published,size_t published_cap,char *error,size_t cap) {
@@ -786,6 +794,7 @@ static int create_split_publish(int input,int stagefd,int parentfd,const char *p
         snprintf(part,sizeof(part),"%s.%03u",name,i+1);
         out=openat(stagefd,part,O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);
         if(out<0)goto done;
+        if(fstat(out,&part_stats[i]))goto done;
         created++;
         uint64_t end=total-copied<part_size?total:copied+part_size;
         while(copied<end) {
@@ -820,8 +829,8 @@ static int create_split_publish(int input,int stagefd,int parentfd,const char *p
     }
     /* Drop private hardlinks so the strict reader can validate the published set.
        A concurrent rename/replacement/addition must not become a successful set. */
-    for(unsigned i=0;i<created;i++){snprintf(part,sizeof(part),"%s.%03u",name,i+1);unlinkat(stagefd,part,0);}
-    created=0;close(check);check=-1;unlinkat(stagefd,"reconstructed.7z",0);
+    for(unsigned i=0;i<created;i++){snprintf(part,sizeof(part),"%s.%03u",name,i+1);split_unlink_identity(stagefd,part,&part_stats[i]);}
+    created=0;split_unlink_owned(stagefd,"reconstructed.7z",check);close(check);check=-1;
     arkiv_volumes_free(volumes);volumes=NULL;
     free(first);first=NULL;
     if(asprintf(&first,"%s/%s.001",parent,name)<0)goto done;
@@ -843,23 +852,20 @@ static int create_split_publish(int input,int stagefd,int parentfd,const char *p
     snprintf(published,published_cap,"%s.001",name);status=0;
 done:
     if(out>=0)close(out);
+    split_unlink_owned(stagefd,"reconstructed.7z",check);
     if(check>=0)close(check);
     arkiv_volumes_free(volumes);
     if(status)for(unsigned i=0;i<pub;i++) {
         struct stat now;snprintf(part,sizeof(part),"%s.%03u",name,i+1);
         if(!fstatat(parentfd,part,&now,AT_SYMLINK_NOFOLLOW)&&now.st_dev==part_stats[i].st_dev&&now.st_ino==part_stats[i].st_ino)unlinkat(parentfd,part,0);
     }
-    for(unsigned i=0;i<created;i++){snprintf(part,sizeof(part),"%s.%03u",name,i+1);unlinkat(stagefd,part,0);}
-    unlinkat(stagefd,"reconstructed.7z",0);free(first);free(joined);free(stagepath);
+    for(unsigned i=0;i<created;i++){snprintf(part,sizeof(part),"%s.%03u",name,i+1);split_unlink_identity(stagefd,part,&part_stats[i]);}
+    free(first);free(joined);free(stagepath);
     if(status&&cancelled(token))return 2;
     if(status&&error&&cap&&!error[0])fail(error,cap,"Split creation failed, source/destination changed, or disk space was exhausted. Newly published parts were rolled back.");
     return status;
 }
 
-static void split_unlink_owned(int dir,const char *name,int fd) {
-    struct stat held,now;
-    if(fd>=0&&!fstat(fd,&held)&&!fstatat(dir,name,&now,AT_SYMLINK_NOFOLLOW)&&held.st_dev==now.st_dev&&held.st_ino==now.st_ino)unlinkat(dir,name,0);
-}
 static int create_archive(const char *const *sources, size_t count, const char *parent,
                      const char *stage, const char *name, char *published_name, size_t published_capacity, int compression, arkiv_limits limits,
                      arkiv_cancel *token, arkiv_progress_callback progress, void *context,
