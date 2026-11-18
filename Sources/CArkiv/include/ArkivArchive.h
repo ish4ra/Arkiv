@@ -129,6 +129,9 @@ uint64_t arkiv_seven_creation_memory(unsigned, uint32_t, unsigned, uint64_t);
 int arkiv_create_archive_advanced(const char *const *, size_t, const char *, const char *, const char *, char *, size_t, int,
  arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t, int, const char *, int, int, uint32_t, unsigned);
 uint64_t arkiv_seven_solid_memory(unsigned, uint32_t, unsigned, uint64_t, int, uint64_t);
+int arkiv_create_archive_split(const char *const *, size_t, const char *, const char *, const char *, char *, size_t,
+    arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t,
+    const char *, int, int, uint32_t, unsigned, int, uint64_t, uint64_t);
 int arkiv_create_archive_solid(const char *const *, size_t, const char *, const char *, const char *, char *, size_t, int,
  arkiv_limits, arkiv_cancel *, arkiv_progress_callback, void *, char *, size_t, int, const char *, int, int, uint32_t, unsigned, int, uint64_t);
 int arkiv_seven_metadata(int, const char *, uint32_t *, char *, size_t);
