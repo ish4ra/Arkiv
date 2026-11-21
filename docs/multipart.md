@@ -98,7 +98,9 @@ not be concatenated through this byte-stream reader.
 
 Create Archive (also Finder → Add to Archive) → 7z → Advanced → Split into volumes.
 No splitting remains the default; ZIP remains the default creation format. Direct
-Finder ZIP/7z commands remain unsplit. Presets use **decimal** 100 MB, 650 MB,
+Finder ZIP/7z commands remain unsplit. Custom bytes appears only for Custom size. The
+sheet's collision note changes for split sets: an existing numbered volume stops
+creation; split sets are never auto-renamed (unsplit archives still use “Name (2)”). Presets use **decimal** 100 MB, 650 MB,
 700 MB, 1 GB, 2 GB, 4 GB; Custom size is an exact integer number of bytes.
 A part must be at least 32 bytes; the encoded archive must be larger than that
 part size and no larger than 4 GiB, with 2–128 parts. Encoded size is unknown
