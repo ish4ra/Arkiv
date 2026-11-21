@@ -118,7 +118,7 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate, NSTextFiel
     private let createButton = NSButton(title: "Create", target: nil, action: nil)
     private let buttons = NSStackView()
     private let scroll = NSScrollView()
-    private let document = CreateArchiveFormView()
+    private let formView = CreateArchiveFormView()
     private var grid: NSGridView!
     private var scrollHeight: NSLayoutConstraint!
     private let sizeCancellation = ArchiveCancellation()
@@ -255,12 +255,12 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate, NSTextFiel
         grid.cell(for: hint)?.row?.topPadding = 4
 
         grid.translatesAutoresizingMaskIntoConstraints = false
-        document.addSubview(grid)
+        formView.addSubview(grid)
         NSLayoutConstraint.activate([
-            grid.topAnchor.constraint(equalTo: document.topAnchor, constant: Self.margin),
-            grid.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: Self.margin)
+            grid.topAnchor.constraint(equalTo: formView.topAnchor, constant: Self.margin),
+            grid.leadingAnchor.constraint(equalTo: formView.leadingAnchor, constant: Self.margin)
         ])
-        scroll.documentView = document
+        scroll.documentView = formView
         scroll.drawsBackground = false; scroll.borderType = .noBorder
         scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = false; scroll.autohidesScrollers = true
         scroll.translatesAutoresizingMaskIntoConstraints = false
@@ -320,7 +320,7 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate, NSTextFiel
         let visibleForm = min(formSize.height, max(Self.minimumFormHeight, floor(available - chrome - footer)))
         let scrolls = visibleForm < formSize.height
         let scroller = scrolls && NSScroller.preferredScrollerStyle == .legacy ? NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy) : 0
-        document.frame = NSRect(origin: .zero, size: formSize)
+        formView.frame = NSRect(origin: .zero, size: formSize)
         scrollHeight.constant = visibleForm
         let content = NSSize(width: formSize.width + scroller, height: visibleForm + footer)
         if window.isVisible && window.sheetParent == nil {
