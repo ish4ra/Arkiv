@@ -7,6 +7,7 @@ Without an app path only the repository (Info.plist, iconset sources,
 checksums, branding) is checked; that part needs no macOS tools.
 """
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import plistlib
@@ -220,7 +221,10 @@ def verify_sources(root=SOURCES, decode_limit=1024, pixels=None):
 
 def icns_elements(path):
     """Return [(type, payload)] for every element of an ICNS file."""
-    data = Path(path).read_bytes()
+    return icns_elements_bytes(Path(path).read_bytes(), path)
+
+
+def icns_elements_bytes(data, path='ICNS data'):
     assert data[:4] == b'icns' and struct.unpack('>I', data[4:8])[0] == len(data), f'{path}: bad ICNS header'
     offset, elements = 8, []
     while offset < len(data):
@@ -232,13 +236,17 @@ def icns_elements(path):
 
 
 def verify_icns(icon, iconset, pixels=None):
+    return verify_icns_bytes(Path(icon).read_bytes(), iconset, pixels, icon)
+
+
+def verify_icns_bytes(data, iconset, pixels=None, icon='ICNS data'):
     """Check that every PNG element in a packaged ICNS decodes to exactly the
     committed pixels of the representation it stands for. Returns
-    (element types, PNG elements, PNG elements byte-identical to the source)."""
+    (element types, PNG elements, PNG elements whose IDAT data is the committed PNG's)."""
     pixel_digests = read_manifest(pixels or SOURCES / 'PIXELS.sha256')
     iconset = Path(iconset)
     kinds, png, identical = [], 0, 0
-    for kind, payload in icns_elements(icon):
+    for kind, payload in icns_elements_bytes(data, icon):
         kinds.append(kind)
         if not payload.startswith(b'\x89PNG') or kind not in ICNS_TYPES:
             continue
@@ -246,7 +254,8 @@ def verify_icns(icon, iconset, pixels=None):
         decoded = decode_png(payload, f'{icon}:{kind}')
         assert pixel_digest(*decoded) == pixel_digests[f'{iconset.name}/{source.name}'], f'{icon}: {kind} pixels differ from {source.name}'
         png += 1
-        identical += payload == source.read_bytes()
+        idat = lambda data: b''.join(body for kind, body in png_chunks(data) if kind == b'IDAT')
+        identical += idat(payload) == idat(source.read_bytes())
     return kinds, png, identical
 
 
@@ -262,13 +271,25 @@ def verify_app(app):
     resources = app / 'Contents/Resources'
     packaged = {p.name for p in resources.glob('Arkiv-*.icns')}
     assert packaged == {f'Arkiv-{name}.icns' for name in ICONS}, f'Unexpected document icons: {sorted(packaged)}'
+    spec = importlib.util.spec_from_file_location('package_icons', Path(__file__).resolve().parent / 'package-document-icons.py')
+    packager = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(packager)
+    pixels = read_manifest(SOURCES / 'PIXELS.sha256')
     with tempfile.TemporaryDirectory(prefix='arkiv-icon-verification-') as tmp:
         for name in ICONS:
             icon = resources / f'Arkiv-{name}.icns'
             assert icon.read_bytes()[:4] == b'icns', icon
             kinds, png, identical = verify_icns(icon, SOURCES / f'Arkiv-{name}.iconset')
-            print(f'{icon.name}: {icon.stat().st_size:,} bytes; elements {" ".join(kinds)}; '
-                  f'{png} PNG elements pixel-identical, {identical} byte-identical to the committed PNGs')
+            # The packaged file must be exactly iconutil's output with only
+            # verified IDAT swaps, so its structure is the one Apple's tool writes.
+            plain = Path(tmp) / f'{name}.icns'
+            subprocess.run(['iconutil', '-c', 'icns', str(SOURCES / f'Arkiv-{name}.iconset'), '-o', str(plain)], check=True)
+            expected, _ = packager.splice_icns(plain.read_bytes(), SOURCES / f'Arkiv-{name}.iconset', pixels)
+            assert icon.read_bytes() == expected, f'{icon}: not the deterministic iconutil-based packaging'
+            assert [k for k, _ in icns_elements(icon)] == [k for k, _ in icns_elements(plain)], icon
+            print(f'{icon.name}: {icon.stat().st_size:,} bytes (iconutil alone {plain.stat().st_size:,}); '
+                  f'elements {" ".join(kinds)}; {png} PNG elements pixel-identical, '
+                  f'{identical} carry the committed optimized IDAT data')
             output = Path(tmp) / f'{name}.iconset'
             subprocess.run(['iconutil', '-c', 'iconset', str(icon), '-o', str(output)], check=True)
             assert {p.name for p in output.iterdir()} == {rep_name(pt, s) for pt, s in REPRESENTATIONS}, icon

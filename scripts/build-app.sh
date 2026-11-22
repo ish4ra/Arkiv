@@ -55,11 +55,11 @@ swift scripts/render-icon.swift "$PWD/build/Arkiv.iconset"
 iconutil -c icns build/Arkiv.iconset -o "$app/Contents/Resources/Arkiv.icns"
 stage=document-icons
 # Committed, checksummed Seal Dark iconsets (design/document-icons) are packaged
-# as-is; nothing is rendered at build time.
+# with iconutil; nothing is rendered at build time. iconutil re-encodes PNGs, so
+# the packager keeps iconutil's ICNS and swaps in the committed, losslessly
+# optimized IDAT data where the decoded pixels are verified identical.
 (cd Resources/DocumentIcons && shasum -a 256 -c SHA256SUMS > /dev/null)
-for iconset in Resources/DocumentIcons/Arkiv-*.iconset; do
-  iconutil -c icns "$iconset" -o "$app/Contents/Resources/$(basename "$iconset" .iconset).icns"
-done
+python3 scripts/package-document-icons.py Resources/DocumentIcons "$app/Contents/Resources"
 cp docs/third-party-licenses.md "$app/Contents/Resources/ThirdPartyNotices.txt"
 mkdir -p "$app/Contents/Resources/licenses"
 cp Sources/CArkiv/vendor/bzip2-LICENSE "$app/Contents/Resources/licenses/"
