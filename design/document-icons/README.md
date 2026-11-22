@@ -2,7 +2,8 @@
 
 This folder generates Arkiv's archive document icons. It is **design-time
 only**: the app build packages the committed PNGs in
-`Resources/DocumentIcons` with `iconutil` and never runs anything here.
+`Resources/DocumentIcons` with `iconutil`, keeping their compressed data
+(`scripts/package-document-icons.py`), and never runs anything here.
 Format coverage, registrations and Finder limitations are in
 [docs/document-icons.md](../../docs/document-icons.md).
 

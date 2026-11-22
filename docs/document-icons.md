@@ -129,9 +129,11 @@ milestone 2, ahead of the remaining archive-engine work ([roadmap](roadmap.md)).
   2×) as 8-bit RGBA, non-interlaced PNGs with real transparency and no
   metadata chunks. `SHA256SUMS` lists each file's bytes; `PIXELS.sha256` lists
   each file's decoded pixels (see below).
-* **Build.** `scripts/build-app.sh` checks the checksums and runs Apple's
-  `iconutil` on each iconset. Nothing is rendered at build time, so packaging
-  is deterministic and needs no Node, fonts or browser.
+* **Build.** `scripts/build-app.sh` checks the checksums, then
+  `scripts/package-document-icons.py` runs Apple's `iconutil` on each iconset
+  and keeps the committed compression (below). Nothing is rendered at build
+  time, so packaging is deterministic and needs no Node, fonts, browser or
+  optimizer.
 * **Design source.** `design/document-icons/` (see its README) holds the
   procedural generator and the lossless optimizer. Labels are converted to
   outlines from the vendored Inter Display (OFL), and `node generate.mjs
@@ -152,6 +154,18 @@ representations and the original app icon are unchanged.
 | --- | ---: | ---: | ---: |
 | 110 PNGs | 7,808,654 bytes | 6,334,859 bytes | −1,473,795 (−18.9%) |
 | 1024 px representations (11) | 4,148,952 bytes | 3,191,773 bytes | −23.1% |
+
+**Packaging keeps the compression.** `iconutil` re-encodes every PNG it
+embeds. On `main`, the 11 ICNS files hold 10,368,446 bytes, more than the
+7.81 MB of source PNGs. Recompressing the PNGs alone therefore changed
+nothing in the app. `scripts/package-document-icons.py` lets `iconutil`
+write each ICNS as usual: element types and order, the non-PNG 16/32 pt 1×
+elements (`ic04`, `ic05`) and the `info` element. In each embedded PNG it
+then replaces only the IDAT data with the committed PNG's. It does this only
+when the IHDRs are identical, the committed PNG has no ancillary chunks, and
+the result decodes to iconutil's pixels and to `PIXELS.sha256`. iconutil's
+other chunks are kept exactly. Packaged-app verification rebuilds this from
+the committed iconsets and requires a byte-for-byte match.
 
 Packaged ICNS, app bundle, update ZIP and DMG sizes are measured by the
 informational **Document icon size report** step of both macOS CI jobs, which
