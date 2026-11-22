@@ -47,6 +47,14 @@ SYSTEM_DECLARED = {'org.gnu.gnu-zip-tar-archive': ['tgz'], 'public.tar-bzip2-arc
 GENERIC_EXTENSION = re.compile(r'^(\d+|[a-z]\d{2,}|part\d+)$', re.IGNORECASE)
 REPRESENTATIONS = [(pt, scale) for pt in (16, 32, 128, 256, 512) for scale in (1, 2)]
 SOURCES = Path('Resources/DocumentIcons')
+# Committed PNGs carry only these chunks: no colour profile, gamma or text
+# metadata that could change how macOS renders them.
+PNG_CHUNKS = {b'IHDR', b'IDAT', b'IEND'}
+# ICNS element type -> the iconset representation it holds.
+ICNS_TYPES = {'ic04': 'icon_16x16.png', 'icp4': 'icon_16x16.png', 'ic11': 'icon_16x16@2x.png',
+              'ic05': 'icon_32x32.png', 'icp5': 'icon_32x32.png', 'ic12': 'icon_32x32@2x.png',
+              'ic07': 'icon_128x128.png', 'ic13': 'icon_128x128@2x.png', 'ic08': 'icon_256x256.png',
+              'ic14': 'icon_256x256@2x.png', 'ic09': 'icon_512x512.png', 'ic10': 'icon_512x512@2x.png'}
 
 
 def rep_name(pt, scale):
@@ -84,19 +92,32 @@ def verify_no_generic_extensions(info):
             assert not GENERIC_EXTENSION.match(extension), f'Generic volume extension claimed: .{extension}'
 
 
-def read_png(path):
-    """Return (width, height, rgba bytes) for an 8-bit RGBA, non-interlaced PNG."""
-    data = Path(path).read_bytes()
-    assert data[:8] == b'\x89PNG\r\n\x1a\n', path
-    offset, idat, header = 8, bytearray(), None
+def png_chunks(data):
+    """Yield (type, body) for every chunk of PNG bytes, checking each CRC."""
+    assert data[:8] == b'\x89PNG\r\n\x1a\n', 'not a PNG'
+    offset = 8
     while offset < len(data):
+        assert offset + 12 <= len(data), 'truncated PNG chunk'
         length, kind = struct.unpack('>I4s', data[offset:offset + 8])
         body = data[offset + 8:offset + 8 + length]
+        assert len(body) == length and offset + 12 + length <= len(data), 'truncated PNG chunk'
+        assert struct.unpack('>I', data[offset + 8 + length:offset + 12 + length])[0] == zlib.crc32(kind + body), 'PNG chunk CRC'
+        yield kind, body
+        offset += 12 + length
+
+
+def read_png(path):
+    """Return (width, height, rgba bytes) for an 8-bit RGBA, non-interlaced PNG."""
+    return decode_png(Path(path).read_bytes(), path)
+
+
+def decode_png(data, path='PNG data'):
+    idat, header = bytearray(), None
+    for kind, body in png_chunks(data):
         if kind == b'IHDR':
             header = struct.unpack('>IIBBBBB', body)
         elif kind == b'IDAT':
             idat += body
-        offset += 12 + length
     width, height, depth, color, _, _, interlace = header
     assert depth == 8 and color == 6 and interlace == 0, f'{path}: expected 8-bit RGBA'
     raw, stride, out = zlib.decompress(bytes(idat)), width * 4, bytearray()
@@ -136,8 +157,26 @@ def png_size(path):
     return width, height
 
 
-def verify_transparency(path):
-    width, height, rgba = read_png(path)
+def pixel_digest(width, height, rgba):
+    """Encoder-independent identity of an image: SHA-256 of `WIDTHxHEIGHT\\n` + RGBA bytes.
+
+    Same format as the archived PIXELS.sha256 manifests on
+    archive/document-icon-concepts-v2.
+    """
+    return hashlib.sha256(f'{width}x{height}\n'.encode() + rgba).hexdigest()
+
+
+def read_manifest(path):
+    listed = {}
+    for line in Path(path).read_text().splitlines():
+        digest, relative = line.split('  ', 1)
+        assert relative not in listed, f'{path}: duplicate {relative}'
+        listed[relative] = digest
+    return listed
+
+
+def verify_transparency(path, decoded=None):
+    width, height, rgba = decoded or read_png(path)
     alpha = rgba[3::4]
     for x, y in [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)]:
         assert alpha[y * width + x] == 0, f'{path}: corner ({x},{y}) is not transparent'
@@ -147,15 +186,17 @@ def verify_transparency(path):
     assert 0.08 < transparent < 0.6, f'{path}: unexpected transparent area {transparent:.2f}'
 
 
-def verify_sources(root=SOURCES, decode_limit=1024):
+def verify_sources(root=SOURCES, decode_limit=1024, pixels=None):
+    """Check the committed iconsets. Every representation up to `decode_limit`
+    pixels is decoded and must match the decoded-pixel manifest exactly, so a
+    lossless re-encode passes and any visible or invisible pixel change fails."""
     root = Path(root)
     expected = {f'Arkiv-{name}.iconset' for name in ICONS}
     present = {p.name for p in root.iterdir() if p.is_dir()}
     assert present == expected, f'Iconsets {sorted(present ^ expected)}'
-    listed = {}
-    for line in (root / 'SHA256SUMS').read_text().splitlines():
-        digest, relative = line.split('  ', 1)
-        listed[relative] = digest
+    listed = read_manifest(root / 'SHA256SUMS')
+    pixel_digests = read_manifest(pixels or root / 'PIXELS.sha256')
+    assert set(pixel_digests) == set(listed), 'PIXELS.sha256 must list exactly the committed representations'
     files = set()
     for name in ICONS:
         iconset = root / f'Arkiv-{name}.iconset'
@@ -164,12 +205,49 @@ def verify_sources(root=SOURCES, decode_limit=1024):
         for pt, scale in REPRESENTATIONS:
             path = iconset / rep_name(pt, scale)
             assert png_size(path) == (pt * scale, pt * scale), path
-            if pt * scale <= decode_limit:
-                verify_transparency(path)
             relative = f'{iconset.name}/{path.name}'
+            data = path.read_bytes()
+            kinds = [kind for kind, _ in png_chunks(data)]
+            assert set(kinds) <= PNG_CHUNKS and kinds[0] == b'IHDR' and kinds[-1] == b'IEND', f'{path}: chunks {kinds}'
+            if pt * scale <= decode_limit:
+                decoded = decode_png(data, path)
+                verify_transparency(path, decoded)
+                assert pixel_digest(*decoded) == pixel_digests[relative], f'Pixels differ from PIXELS.sha256: {relative}'
             files.add(relative)
             assert hashlib.sha256(path.read_bytes()).hexdigest() == listed.get(relative), f'Checksum mismatch: {relative}'
     assert files == set(listed), 'SHA256SUMS must list exactly the committed representations'
+
+
+def icns_elements(path):
+    """Return [(type, payload)] for every element of an ICNS file."""
+    data = Path(path).read_bytes()
+    assert data[:4] == b'icns' and struct.unpack('>I', data[4:8])[0] == len(data), f'{path}: bad ICNS header'
+    offset, elements = 8, []
+    while offset < len(data):
+        kind, length = struct.unpack('>4sI', data[offset:offset + 8])
+        assert length >= 8 and offset + length <= len(data), f'{path}: bad ICNS element'
+        elements.append((kind.decode('latin-1'), data[offset + 8:offset + length]))
+        offset += length
+    return elements
+
+
+def verify_icns(icon, iconset, pixels=None):
+    """Check that every PNG element in a packaged ICNS decodes to exactly the
+    committed pixels of the representation it stands for. Returns
+    (element types, PNG elements, PNG elements byte-identical to the source)."""
+    pixel_digests = read_manifest(pixels or SOURCES / 'PIXELS.sha256')
+    iconset = Path(iconset)
+    kinds, png, identical = [], 0, 0
+    for kind, payload in icns_elements(icon):
+        kinds.append(kind)
+        if not payload.startswith(b'\x89PNG') or kind not in ICNS_TYPES:
+            continue
+        source = iconset / ICNS_TYPES[kind]
+        decoded = decode_png(payload, f'{icon}:{kind}')
+        assert pixel_digest(*decoded) == pixel_digests[f'{iconset.name}/{source.name}'], f'{icon}: {kind} pixels differ from {source.name}'
+        png += 1
+        identical += payload == source.read_bytes()
+    return kinds, png, identical
 
 
 def verify_branding():
@@ -188,6 +266,9 @@ def verify_app(app):
         for name in ICONS:
             icon = resources / f'Arkiv-{name}.icns'
             assert icon.read_bytes()[:4] == b'icns', icon
+            kinds, png, identical = verify_icns(icon, SOURCES / f'Arkiv-{name}.iconset')
+            print(f'{icon.name}: {icon.stat().st_size:,} bytes; elements {" ".join(kinds)}; '
+                  f'{png} PNG elements pixel-identical, {identical} byte-identical to the committed PNGs')
             output = Path(tmp) / f'{name}.iconset'
             subprocess.run(['iconutil', '-c', 'iconset', str(icon), '-o', str(output)], check=True)
             assert {p.name for p in output.iterdir()} == {rep_name(pt, s) for pt, s in REPRESENTATIONS}, icon
