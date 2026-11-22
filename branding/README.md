@@ -80,6 +80,8 @@ brand asset. The PNG exports and the original Swift renderer remain authoritativ
 
 ## Archive documents
 
-The separate [document icon family](../docs/document-icons.md) places this exact
-transparent mark on a native document silhouette. It never modifies the app icon
-or these source PNGs. Regenerate during `scripts/build-app.sh` on macOS.
+The separate [document icon family](../docs/document-icons.md) (Seal Dark) uses
+the Tension Seal palette and materials (plum, amber, jade) but never reproduces,
+traces or recolours this mark, and never modifies the app icon or these source
+PNGs. Its artwork is committed in `Resources/DocumentIcons` and generated from
+`design/document-icons`.

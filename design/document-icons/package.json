@@ -1,0 +1,16 @@
+{
+  "name": "arkiv-document-icons",
+  "private": true,
+  "description": "Design-time generator for Arkiv's document icons (C · Seal Dark). Never shipped in or required by the app build.",
+  "type": "module",
+  "engines": { "node": ">=22.0.0" },
+  "scripts": {
+    "generate": "node generate.mjs",
+    "check": "node generate.mjs --check",
+    "board": "node board.mjs previews/production-board.png"
+  },
+  "devDependencies": {
+    "opentype.js": "1.3.4",
+    "playwright": "1.63.0"
+  }
+}
