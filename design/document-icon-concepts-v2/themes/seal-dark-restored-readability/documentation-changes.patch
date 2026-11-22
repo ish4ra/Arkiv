@@ -1,0 +1,66 @@
+diff --git a/design/document-icons/README.md b/design/document-icons/README.md
+index bd45f21..969ecaa 100644
+--- a/design/document-icons/README.md
++++ b/design/document-icons/README.md
+@@ -15,19 +15,27 @@ instructions, on the branch
+ [`archive/document-icon-concepts-v1`](https://github.com/ish4ra/Arkiv/tree/archive/document-icon-concepts-v1/design/document-icon-concepts-v1).
+ `previews/approved-concept-*.webp` are the boards it was approved from.
+ 
+-Production refinements over the approved concept:
++The approved concept is authoritative. At 128 pt and above (and the 64 pt
++preview tier) `seal-dark.mjs` produces the archived concept's artwork
++unchanged. Symbols, shapes, colours and materials are those of
++`design/document-icon-concepts-v1/directions/seal-dark.mjs` on the archive
++branch. The only production differences are:
+ 
+-| Area | Change |
++| Area | Difference from the concept |
+ | --- | --- |
+-| ZIP | Ribbon "ladder" replaced by meshing ribbon teeth, a brass slider and parting tapes |
+-| RAR | Flat slanted bars replaced by a pressed three-layer block with depth, distinct from BZIP2's bands |
+-| TAR.\* | Larger compressor medallion (brass bezel, compressor-hue ring); the page fold takes the compressor hue |
+-| 16 / 32 pt | Brighter sheet, firmer rose rim on dark backgrounds, narrower spine, larger glyph; compressor cues on TAR.\* |
++| 16 / 32 pt only | Slightly brighter sheet and fold, firmer rose rim on dark backgrounds, narrower spine and seam, slightly larger glyph (readability; same symbols and colours) |
+ | Typography | Labels are outlined from vendored Inter Display (OFL-1.1, `fonts/OFL.txt`), so there is no font dependency |
+-| Unchanged | Lacquered aubergine sheet, near-black spine, champagne-brass seam, jade stud and its restrained halo, ivory labels, per-format ribbon glyphs, transparency |
++
++An earlier production pass redrew the ZIP, RAR and compressed-TAR artwork
++(a zipper with a brass slider, an oblique block, and a larger medallion with
++a compressor-tinted fold). Those changes were reverted to the approved
++artwork; do not reintroduce design changes without explicit approval.
+ 
+ `previews/production-board.webp` shows every production icon beside the
+ approved concept, in light and dark, at large and actual small sizes.
++Single-volume archives always use their format's ordinary document icon. The
++split-volume artwork (`svg/7z-volume-*`, `previews/unregistered/`) is kept
++for a future Quick Look thumbnail extension.
+ 
+ ## Files
+ 
+diff --git a/docs/document-icons.md b/docs/document-icons.md
+index 5eadbe4..23cfd5d 100644
+--- a/docs/document-icons.md
++++ b/docs/document-icons.md
+@@ -12,17 +12,17 @@ are pinned by `branding/app-icon-preservation.json`.
+ 
+ | Icon resource | Artwork | Content type (Info.plist) | Finder shows it for |
+ | --- | --- | --- | --- |
+-| `Arkiv-ZIP.icns` | ribbon zip: interlocking teeth, brass slider | `public.zip-archive` | `.zip` |
++| `Arkiv-ZIP.icns` | folded ribbons interlocking between two ribbon tapes | `public.zip-archive` | `.zip` |
+ | `Arkiv-7z.icns` | seven-petal rosette around a jade stud | `org.7-zip.7-zip-archive` (imported) | `.7z` |
+-| `Arkiv-RAR.icns` | pressed three-layer block | `com.rarlab.rar-archive` (imported) | `.rar` (read-only support) |
++| `Arkiv-RAR.icns` | three pressed, offset ribbon layers | `com.rarlab.rar-archive` (imported) | `.rar` (read-only support) |
+ | `Arkiv-TAR.icns` | wound tape spiral | `public.tar-archive` | `.tar` |
+ | `Arkiv-GZIP.icns` | pleated ribbon between brass plates | `org.gnu.gnu-zip-archive` (imported) | `.gz`, including `.tar.gz` |
+ | `Arkiv-BZIP2.icns` | sorted ribbon bands | `public.bzip2-archive` (imported) | `.bz2`, including `.tar.bz2` |
+ | `Arkiv-XZ.icns` | crystal (diamond) ribbon | `org.tukaani.xz-archive` (imported) | `.xz`, including `.tar.xz` |
+ | `Arkiv-ZSTD.icns` | speed Z-fold | `org.zstandard.zstd` (imported) | `.zst`, `.tzst`, including `.tar.zst` |
+-| `Arkiv-TGZ.icns` | tape spiral + GZIP medallion, coral fold | `org.gnu.gnu-zip-tar-archive` (declared by macOS) | `.tgz` |
+-| `Arkiv-TBZ2.icns` | tape spiral + BZIP2 medallion, moss fold | `public.tar-bzip2-archive` (declared by macOS) | `.tbz2`, `.tbz` |
+-| `Arkiv-TXZ.icns` | tape spiral + XZ medallion, iris fold | `org.tukaani.tar-xz-archive` (declared by macOS) | `.txz` |
++| `Arkiv-TGZ.icns` | tape spiral + GZIP medallion | `org.gnu.gnu-zip-tar-archive` (declared by macOS) | `.tgz` |
++| `Arkiv-TBZ2.icns` | tape spiral + BZIP2 medallion | `public.tar-bzip2-archive` (declared by macOS) | `.tbz2`, `.tbz` |
++| `Arkiv-TXZ.icns` | tape spiral + XZ medallion | `org.tukaani.tar-xz-archive` (declared by macOS) | `.txz` |
+ 
+ Every type is registered as **Viewer** with **LSHandlerRank Alternate**.
+ Imported declarations are unchanged from before this family, apart from the
