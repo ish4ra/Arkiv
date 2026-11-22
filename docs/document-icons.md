@@ -154,6 +154,19 @@ representations and the original app icon are unchanged.
 | --- | ---: | ---: | ---: |
 | 110 PNGs | 7,808,654 bytes | 6,334,859 bytes | −1,473,795 (−18.9%) |
 | 1024 px representations (11) | 4,148,952 bytes | 3,191,773 bytes | −23.1% |
+| 11 packaged ICNS | 10,368,446 bytes | 6,359,786 bytes | −4,008,660 (−38.7%) |
+
+Measured by CI on 2026-11-22, same run and runner as the baseline:
+
+| Artifact | arm64 before → after | Universal before → after |
+| --- | ---: | ---: |
+| App bundle (apparent size) | 17.26 → 13.25 MB (−23.2%) | 20.64 → 16.63 MB (−19.4%) |
+| App bundle (allocated, `du`) | 17.50 → 13.50 MB | 20.88 → 16.88 MB |
+| Update archive ZIP (Sparkle payload is the Universal one) | 13.07 → 8.91 MB (−31.8%) | 14.30 → 10.15 MB (−29.1%) |
+| DMG (UDZO) | 13.33 → 9.06 MB (−32.0%) | 14.70 → 10.42 MB (−29.2%) |
+
+The ICNS saving is larger than the PNG saving because iconutil's own
+re-encoding was larger than the source PNGs (below).
 
 **Packaging keeps the compression.** `iconutil` re-encodes every PNG it
 embeds. On `main`, the 11 ICNS files hold 10,368,446 bytes, more than the
@@ -164,8 +177,9 @@ elements (`ic04`, `ic05`) and the `info` element. In each embedded PNG it
 then replaces only the IDAT data with the committed PNG's. It does this only
 when the IHDRs are identical, the committed PNG has no ancillary chunks, and
 the result decodes to iconutil's pixels and to `PIXELS.sha256`. iconutil's
-other chunks are kept exactly. Packaged-app verification rebuilds this from
-the committed iconsets and requires a byte-for-byte match.
+other chunks (on the macOS 15 runners, `sRGB` and `eXIf`) are kept exactly.
+Packaged-app verification rebuilds this from the committed iconsets and
+requires a byte-for-byte match.
 
 Packaged ICNS, app bundle, update ZIP and DMG sizes are measured by the
 informational **Document icon size report** step of both macOS CI jobs, which

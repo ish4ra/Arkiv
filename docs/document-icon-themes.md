@@ -136,10 +136,13 @@ switching is promised for Arkiv's own UI only.
 The 11 bundled icon files held 7.81 MB of PNG data, which is most of the
 increase. The 1024 px representations are 4.15 MB of that (53%).
 
-**After lossless optimization (roadmap milestone 1):** 6.33 MB of PNG data
-(−18.9%), pixel-identical; 1024 px representations 3.19 MB. ICNS, bundle,
-update-archive and DMG sizes come from the CI size report; see
-[document icons](document-icons.md#lossless-optimization).
+**After lossless optimization (roadmap milestone 1, measured in CI):**
+* PNG data: 6.33 MB (−18.9%), pixel-identical; the 1024 px representations are 3.19 MB.
+* Packaged ICNS: 10.37 → 6.36 MB, because iconutil had re-encoded the PNGs larger.
+* Universal update archive: 14.30 → 10.15 MB.
+* DMGs: arm64 9.06 MB, Universal 10.42 MB.
+
+See [document icons](document-icons.md#lossless-optimization).
 
 **Ways to make the default lighter without changing a pixel.** Each needs
 approval, because it changes shipped bytes:
