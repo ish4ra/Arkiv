@@ -8,4 +8,4 @@ Three original object directions were considered before selecting the first impl
 
 `scripts/render-icon.swift` contains original resolution-independent Tension Seal artwork, producing the standard macOS iconset including 16/32/64/128/256/512/1024 pixel rasters. `iconutil` packages it in the app. No Keka shapes, animal, pose, colors, or composition are reused. This is an original first identity, not an SF Symbol placeholder.
 
-Visual approval at actual Dock/Finder sizes and a coherent document-icon family remain a real-Mac follow-up. Do not call that validation complete merely because raster generation succeeds.
+Visual approval at actual Dock/Finder sizes remains a real-Mac follow-up; the coherent document-icon family is described in [document icons](document-icons.md). Do not call that validation complete merely because raster generation succeeds.

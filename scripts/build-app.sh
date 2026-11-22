@@ -53,9 +53,12 @@ cp .build/checkouts/Sparkle/LICENSE "$app/Contents/Resources/Sparkle-LICENSE.txt
 stage=render-icon
 swift scripts/render-icon.swift "$PWD/build/Arkiv.iconset"
 iconutil -c icns build/Arkiv.iconset -o "$app/Contents/Resources/Arkiv.icns"
-swift scripts/render-document-icons.swift "$PWD/build/document-icons"
-for format in ZIP 7z TAR RAR; do
-  iconutil -c icns "build/document-icons/Arkiv-$format.iconset" -o "$app/Contents/Resources/Arkiv-$format.icns"
+stage=document-icons
+# Committed, checksummed Seal Dark iconsets (design/document-icons) are packaged
+# as-is; nothing is rendered at build time.
+(cd Resources/DocumentIcons && shasum -a 256 -c SHA256SUMS > /dev/null)
+for iconset in Resources/DocumentIcons/Arkiv-*.iconset; do
+  iconutil -c icns "$iconset" -o "$app/Contents/Resources/$(basename "$iconset" .iconset).icns"
 done
 cp docs/third-party-licenses.md "$app/Contents/Resources/ThirdPartyNotices.txt"
 mkdir -p "$app/Contents/Resources/licenses"
