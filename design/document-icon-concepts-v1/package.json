@@ -1,0 +1,15 @@
+{
+  "name": "arkiv-document-icon-concepts",
+  "private": true,
+  "description": "Design-time renderer for Arkiv document-icon concepts. Never shipped in the app.",
+  "type": "module",
+  "engines": { "node": ">=22.0.0" },
+  "scripts": {
+    "render": "node render.mjs --out out",
+    "boards": "node boards.mjs",
+    "verify": "node verify-renders.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
