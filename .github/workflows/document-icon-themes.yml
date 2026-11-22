@@ -45,7 +45,7 @@ permissions:
   contents: read
 jobs:
   theme-packs:
-    name: Build theme packs from the archives (Linux, pinned Chromium)
+    name: Build theme packs from the archives (Linux, pinned Playwright)
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
@@ -60,7 +60,9 @@ jobs:
           python-version: '3.13'
       - name: Install pinned design-time tooling (hash-locked)
         run: |
-          (cd design/document-icons && npm ci && npx playwright install --with-deps chromium)
+          (cd design/document-icons && npm ci && npx playwright install-deps chromium)
+          design/document-icon-themes/fetch-headless-shell.sh "$RUNNER_TEMP/headless-shell"
+          echo "ARKIV_THEME_HEADLESS_SHELL=$RUNNER_TEMP/headless-shell/chrome-headless-shell-linux64" >> "$GITHUB_ENV"
           python -m pip install --require-hashes -r design/document-icons/requirements-optimize.txt
       - name: Theme pipeline and publication-safety regressions
         run: python tests/test_document_icon_themes.py -v

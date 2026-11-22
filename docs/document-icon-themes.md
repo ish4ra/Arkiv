@@ -273,13 +273,27 @@ nothing in it is built into the app.
 * Two Strata variations leave their TAR.\* format identical to Strata. The
   inventory lists, for each variation, the formats whose pixels actually differ.
 
-**Determinism:**
-* The CI job "Document icon themes" rebuilds every pack from scratch on Linux,
-  with Playwright 1.63.0 / Chromium 157.0.8103.78 (the archives' toolchain),
-  and requires byte-identical packs and catalogue payload.
-* Verified locally: this toolchain also reproduces the bundled Seal Dark PNGs
-  byte-for-byte (`node design/document-icons/generate.mjs --check`), and all
-  1,824 archive-v1 renders pixel-identically.
+**Determinism and the rendering toolchain:**
+* The CI job "Document icon themes" rebuilds every pack from scratch on a
+  stock Ubuntu runner and requires byte-identical packs and catalogue payload.
+* **The rendering toolchain the archives needed** was Chrome for Testing
+  **157.0.8103.78**'s headless shell, launched with `--font-render-hinting=none
+  --disable-lcd-text --force-color-profile=srgb`. The archives did not record
+  those switches; they came from the original environment's launch wrapper.
+  The first CI run found the gap and failed closed.
+* What changes without each part, found by bisection:
+  * **Without the switches:** archive v1's font-drawn labels rasterize
+    differently.
+  * **With stock Playwright 1.63.0's own 153.0.8010.12 build:** 1,806 of the
+    1,824 v1 references match, but 18 Strata 512 px renders differ.
+* `design/document-icon-themes/fetch-headless-shell.sh` installs the official
+  157.0.8103.78 build, pinned by SHA-256. `render.mjs` checks the version and
+  launches every browser, including the unmodified archived scripts, with the
+  switches.
+* Verified locally with that build: the bundled Seal Dark PNGs regenerate
+  byte-for-byte (`node design/document-icons/generate.mjs --check`), all
+  1,824 archive-v1 renders are pixel-identical, and every pack is
+  byte-identical to `inventory.json`.
 
 ## Distribution
 

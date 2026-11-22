@@ -17,13 +17,25 @@ linked by or bundled with Arkiv.app. The app's runtime side is
 
 ## Build
 
-The same toolchain as `design/document-icons` (Node 22, Playwright 1.63.0
-with Chromium 157.0.8103.78, opentype.js 1.3.4, and the hash-locked oxipng),
-plus both archive commits:
+The same toolchain as `design/document-icons` (Node 22, Playwright 1.63.0,
+opentype.js 1.3.4 and the hash-locked oxipng), plus both archive commits.
+Linux only.
+
+The renders need **Chrome for Testing 157.0.8103.78**'s headless shell,
+launched with `--font-render-hinting=none --disable-lcd-text
+--force-color-profile=srgb`: the build and switches the archived references
+were made with.
+* `fetch-headless-shell.sh` installs that build, pinned by SHA-256.
+* `render.mjs` checks the version and adds the switches to every browser it
+  starts.
+* With other builds or without the switches, some pixels differ, and
+  `build.py` fails.
 
 ```sh
 git fetch origin 7e9b736b123274e28a64727d0e6fde22ca11daf7 8a1b92ae31f5ba4e649022f0cb38ccd9e24647a6
-(cd design/document-icons && npm ci && npx playwright install chromium)
+(cd design/document-icons && npm ci)
+design/document-icon-themes/fetch-headless-shell.sh /tmp/arkiv-headless-shell
+export ARKIV_THEME_HEADLESS_SHELL=/tmp/arkiv-headless-shell/chrome-headless-shell-linux64
 python3.13 -m pip install --require-hashes -r design/document-icons/requirements-optimize.txt
 node design/document-icon-themes/render.mjs --work /tmp/arkiv-theme-work        # about 5 minutes
 python3 design/document-icon-themes/build.py --work /tmp/arkiv-theme-work --out /tmp/arkiv-theme-packs

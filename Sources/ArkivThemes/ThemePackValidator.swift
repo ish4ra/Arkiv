@@ -26,7 +26,7 @@ enum ThemePNG {
         func reject(_ reason: String) -> ThemeError { .packRejected("an image \(reason).") }
         guard data.count > 8 + 25 + 12, data.prefix(8) == signature else { throw reject("is not a PNG") }
         let bytes = [UInt8](data)
-        var offset = 8, kinds: [String] = []
+        var offset = 8, kinds: [String] = [], idat = Data()
         while offset < bytes.count {
             guard offset + 12 <= bytes.count else { throw reject("is truncated") }
             let length = Int(bytes[offset]) << 24 | Int(bytes[offset + 1]) << 16 | Int(bytes[offset + 2]) << 8 | Int(bytes[offset + 3])
@@ -45,6 +45,7 @@ enum ThemePNG {
                 guard h[8] == 8, h[9] == 6, h[10] == 0, h[11] == 0, h[12] == 0 else { throw reject("is not 8-bit RGBA") }
             } else if kind == "IDAT" {
                 guard kinds.last == "IHDR" || kinds.last == "IDAT" else { throw reject("has misplaced data") }
+                idat.append(contentsOf: bytes[(offset + 8)..<crcStart])
             } else if kind == "IEND" {
                 guard length == 0, kinds.last == "IDAT", crcStart + 4 == bytes.count else { throw reject("has data after its end") }
             } else {
@@ -54,6 +55,9 @@ enum ThemePNG {
             offset = crcStart + 4
         }
         guard kinds.last == "IEND" else { throw reject("is truncated") }
+        // ImageIO quietly fills in damaged compressed data, so inflate and check
+        // the image stream itself: exact length, valid row filters, Adler-32.
+        try checkImageData(idat, width: width, height: height)
         guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
               CGImageSourceGetType(source) as String? == UTType.png.identifier, CGImageSourceGetCount(source) == 1,
               let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary),
@@ -67,6 +71,32 @@ enum ThemePNG {
             throw reject("could not be decoded")
         }
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+    }
+
+    static func checkImageData(_ stream: Data, width: Int, height: Int) throws {
+        func reject() -> ThemeError { .packRejected("an image has damaged image data.") }
+        let bytes = [UInt8](stream)
+        guard bytes.count > 6, (UInt16(bytes[0]) << 8 | UInt16(bytes[1])) % 31 == 0, bytes[0] & 0x0F == 8, bytes[1] & 0x20 == 0 else { throw reject() }
+        let raw = Data(bytes[2..<(bytes.count - 4)])
+        guard let inflated = try? (raw as NSData).decompressed(using: .zlib) as Data,
+              inflated.count == (width * 4 + 1) * height else { throw reject() }
+        var a: UInt32 = 1, b: UInt32 = 0, valid = true
+        let stride = width * 4 + 1
+        inflated.withUnsafeBytes { buffer in
+            var index = 0
+            while index < buffer.count {
+                let end = min(index + 5552, buffer.count)
+                while index < end {
+                    let byte = buffer[index]
+                    if index % stride == 0, byte > 4 { valid = false }
+                    a &+= UInt32(byte); b &+= a; index += 1
+                }
+                a %= 65521; b %= 65521
+            }
+        }
+        let n = bytes.count
+        let stored = UInt32(bytes[n - 4]) << 24 | UInt32(bytes[n - 3]) << 16 | UInt32(bytes[n - 2]) << 8 | UInt32(bytes[n - 1])
+        guard valid, stored == (b << 16 | a) else { throw reject() }
     }
 
     private static let table: [UInt32] = (0..<256).map { n -> UInt32 in
@@ -155,6 +185,11 @@ struct ThemePackValidator: Sendable {
         // 3. The extracted tree must be exactly the checked entries.
         let files = try Self.regularFiles(in: extracted)
         guard Set(files.keys) == seen else { throw reject("its extracted contents differ from its listing.") }
+        // ZIP metadata does not always surface POSIX modes, so check what was written.
+        for file in files.keys {
+            let mode = (try FileManager.default.attributesOfItem(atPath: extracted.appendingPathComponent(file).path)[.posixPermissions] as? NSNumber)?.intValue ?? 0
+            guard mode & 0o7111 == 0 else { throw reject("it contains an executable file (\(file)).") }
+        }
 
         if let expected {
             for (name, info) in expected {

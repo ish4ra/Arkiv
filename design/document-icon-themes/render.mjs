@@ -2,7 +2,7 @@
 //
 //   node design/document-icon-themes/render.mjs --work <scratch dir>
 //
-// Design-time / CI only. Uses the pinned Playwright 1.63.0 (Chromium 157) and
+// Design-time / CI only. Uses the pinned Playwright 1.63.0 (its Chrome Headless Shell) and
 // opentype.js 1.3.4 from design/document-icons/package-lock.json; run
 // `npm ci` there first. Nothing here is built into or required by Arkiv.app.
 //
@@ -75,6 +75,38 @@ for (const lock of [path.join(V1, 'package-lock.json'), path.join(V2, 'tooling/p
 }
 fs.symlinkSync(nodeModules, path.join(V1, 'node_modules'));
 fs.symlinkSync(nodeModules, path.join(V2, 'tooling/node_modules'));
+
+// The exact rendering toolchain. The archived references were rendered by
+// Chrome for Testing 157.0.8103.78's headless shell launched with these
+// switches. Without the switches, labels drawn from fonts (archive v1)
+// rasterize differently; with Playwright 1.63.0's own 153.0.8010.12, 18
+// Strata 512 px renders differ. So the version is checked, and every
+// browser below, including those the unmodified archived scripts start, is
+// launched through a wrapper that adds the switches, found through
+// PLAYWRIGHT_BROWSERS_PATH. fetch-headless-shell.sh installs the pinned build.
+export const SWITCHES = ['--font-render-hinting=none', '--disable-lcd-text', '--force-color-profile=srgb'];
+export const BROWSER = 'Google Chrome for Testing 157.0.8103.78';
+const registry = process.env.PLAYWRIGHT_BROWSERS_PATH || path.join(os.homedir(), '.cache/ms-playwright');
+const shell = JSON.parse(fs.readFileSync(path.join(nodeModules, 'playwright-core/browsers.json'), 'utf8'))
+  .browsers.find((b) => b.name === 'chromium-headless-shell');
+const shellDir = `chromium_headless_shell-${shell.revision}`;
+const original = path.resolve(process.env.ARKIV_THEME_HEADLESS_SHELL || path.join(registry, shellDir, 'chrome-headless-shell-linux64'));
+if (process.platform !== 'linux' || !fs.existsSync(path.join(original, 'chrome-headless-shell'))) {
+  fail('Theme renders need the pinned headless shell on Linux: design/document-icon-themes/fetch-headless-shell.sh <dir>, then ARKIV_THEME_HEADLESS_SHELL=<dir>/chrome-headless-shell-linux64');
+}
+const version = spawnSync(path.join(original, 'chrome-headless-shell'), ['--version'], { encoding: 'utf8' }).stdout.trim();
+if (version !== BROWSER) fail(`${version || 'Unknown browser'} found; the archived renders need ${BROWSER} (fetch-headless-shell.sh)`);
+const browsers = path.join(work, 'browsers');
+const wrapped = path.join(browsers, shellDir, 'chrome-headless-shell-linux64');
+fs.mkdirSync(wrapped, { recursive: true });
+for (const marker of ['INSTALLATION_COMPLETE', 'DEPENDENCIES_VALIDATED']) fs.writeFileSync(path.join(browsers, shellDir, marker), '');
+for (const name of fs.readdirSync(original)) {
+  if (name !== 'chrome-headless-shell') fs.symlinkSync(path.join(original, name), path.join(wrapped, name));
+}
+fs.writeFileSync(path.join(wrapped, 'chrome-headless-shell'),
+  `#!/bin/sh\nexec '${path.join(original, 'chrome-headless-shell')}' ${SWITCHES.join(' ')} "$@"\n`, { mode: 0o755 });
+process.env.PLAYWRIGHT_BROWSERS_PATH = browsers;
+console.log(`Rendering with ${version} and ${SWITCHES.join(' ')}`);
 
 // 2. Archived generators, unmodified.
 run(process.execPath, ['render.mjs', '--out', path.join(work, 'v1')], { cwd: V1 });
@@ -155,7 +187,7 @@ function variantsOf(FORMATS, name, pipeline) {
   return pipeline === 'v1' ? { ...fmt, label: fmt.alias, id: `${fmt.id}-alias`, aliasOf: fmt.id } : { ...fmt, label: fmt.alias };
 }
 const allNames = [...config.icons, ...config.extras];
-const report = { variants: {}, extras: {} };
+const report = { browser: version, switches: SWITCHES, variants: {}, extras: {} };
 
 for (const theme of config.themes.filter((t) => t.source.type === 'iteration')) {
   const variant = VARIANTS.find((v) => v.id === theme.source.variant);

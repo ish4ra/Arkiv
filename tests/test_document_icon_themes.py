@@ -84,6 +84,15 @@ class ConfigurationTests(unittest.TestCase):
                           ('manifestBytes', 'manifestBytes'), ('catalogBytes', 'catalogBytes'), ('themes', 'themes'), ('installedBytes', 'installedBytes')]:
             self.assertEqual(swift_int(swift, name), build.LIMITS[key], name)
 
+    def test_rendering_toolchain_is_pinned(self):
+        render = (THEMES / 'render.mjs').read_text()
+        fetch = (THEMES / 'fetch-headless-shell.sh').read_text()
+        self.assertIn("export const BROWSER = 'Google Chrome for Testing 157.0.8103.78';", render)
+        self.assertIn("'--font-render-hinting=none', '--disable-lcd-text', '--force-color-profile=srgb'", render)
+        self.assertIn('version=157.0.8103.78', fetch)
+        self.assertRegex(fetch, r'sha256=[0-9a-f]{64}')
+        self.assertIn('sha256sum -c', fetch)
+
     def test_inventory_page_is_generated_from_the_lock(self):
         build = load('build_theme_packs', THEMES / 'build.py')
         self.assertEqual((ROOT / 'docs/document-icon-theme-inventory.md').read_text(), build.inventory_markdown(INVENTORY))
