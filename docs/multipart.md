@@ -77,7 +77,7 @@ logged or saved. See `tests/fixtures/split-sevenzip/provenance.json` for officia
 upstream 7-Zip 26.01 fixture commands and hashes. The fixture producer is test-only;
 users need no installed CLI, Homebrew or subprocess.
 
-RAR multipart, split ZIP, noncanonical numbering, multipart creation and generic
+RAR multipart, split ZIP, noncanonical numbering, non-7z multipart creation and generic
 split/combine remain unavailable. RAR volumes are structured containers and must
 not be concatenated through this byte-stream reader.
 
@@ -93,3 +93,62 @@ not be concatenated through this byte-stream reader.
    incomplete-input wording, and no successful Test or published partial output.
 5. Replace a part while an archive is open; subsequent extraction/Open/drag must
    fail safely. Cancel reconstruction and check cleanup. Test on Intel and arm64.
+
+## Split creation — Phase 2 development branch
+
+Create Archive (also Finder → Add to Archive) → 7z → Advanced → Split into volumes.
+No splitting remains the default; ZIP remains the default creation format. Direct
+Finder ZIP/7z commands remain unsplit. Custom bytes appears only for Custom size. The
+sheet's collision note changes for split sets: an existing numbered volume stops
+creation; split sets are never auto-renamed (unsplit archives still use “Name (2)”). Presets use **decimal** 100 MB, 650 MB,
+700 MB, 1 GB, 2 GB, 4 GB; Custom size is an exact integer number of bytes.
+A part must be at least 32 bytes; the encoded archive must be larger than that
+part size and no larger than 4 GiB, with 2–128 parts. Encoded size is unknown
+until compression completes, so final admission may reject a large preset or a
+small custom size. 4 GB is 4,000,000,000 bytes, below 4 GiB, but usable only for
+encoded archives above 4 GB. No silent single-part output or setting reduction.
+
+The existing official bundled encoder creates an ordinary LZMA2 7z. Arkiv fully
+decodes it, verifies members by name/type/size and source bytes, streams exact
+encoded bytes into private parts, reconstructs them through Phase 1 and compares
+the byte stream exactly. Presets, dictionary/thread controls, solid options and
+AES-256/header encryption are retained. Creation does not expose Copy; Phase 1
+Copy reading remains supported. Existing 7z creation does not preserve original
+POSIX modes/timestamps; this phase does not invent those metadata guarantees.
+Passwords remain operation-local. 7z CRC checks are not cryptographic authentication.
+
+Source manifests are revalidated before each publication and after it. Destination
+and staging directories are pinned with no-follow descriptors. Numeric set-name
+collisions fail rather than replace or auto-rename a set. Exclusive hardlink
+publication on the same filesystem cannot overwrite an existing file. After all
+links, private links are removed and the final set is reconstructed, byte-compared
+and revalidated again to catch concurrent replacement, truncation or extra parts.
+Rollback removes only matching owned identities, never a substituted foreign file.
+Stage cleanup uses pinned descriptors, including after destination moves.
+
+This is **not crash-atomic publication**. Other processes may briefly observe an
+incomplete set; a crash can leave numbered parts which Phase 1 rejects as incomplete.
+No overwrite is allowed when retrying. Ordinary failure/cancellation rolls back
+owned published parts and staging. Concurrent same-user tampering after the final
+validation boundary cannot be prevented by filesystem APIs.
+
+Splitting uses 64 KiB buffers. Once encoded size is known, available filesystem
+space is checked for two extra encoded copies (parts and reconstruction), but this
+is advisory and cannot reserve space. Initial creation also needs its existing
+intermediate ZIP, verified decoded TAR and final 7z; peak temporary usage can
+therefore substantially exceed input size. Disk/write errors fail safely. The
+4 GiB admission applies to the encoded result; source decoding remains limited to
+20 GiB. Part publication does not duplicate payload disk blocks (hardlinks).
+
+Tests compare private encoded bytes with the exact concatenated parts, exercise
+ciphertext/header on/off and solid creation, simulate write exhaustion, and race
+collisions/cancellation/source/destination changes. Independent upstream 7-Zip
+26.01 tests generated plain and encrypted sets (test-only downloaded tool; archive
+SHA-256 8ea0fc8a135e7b848e80a4116fe22dff56c8c4518dde1f43cce67f4e340b437a).
+
+Real-Mac creation checks: choose a small custom byte size for a small fixture;
+create ordinary/encrypted/header-encrypted/solid sets; open first and later parts;
+Test, extract and byte-compare; Open/Space-preview/drag a generated member; cancel
+and retry; collide with an existing part and confirm it stays intact. Verify the
+7z-only controls and no-splitting default through both File and Finder setup.
+Phase 1 publication remains a prerequisite to merging/releasing this branch.

@@ -7,6 +7,31 @@ import ArkivFinderIntegration
 final class CompressionPresetUITests: XCTestCase {
     private func views(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(views) }
     @MainActor
+    func testSplitControlsAreSevenZipOnlyAndValidateCustomSize() async throws {
+        _ = NSApplication.shared
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data("input".utf8).write(to:file);defer {try? FileManager.default.removeItem(at:file)}
+        let sheet = CreateArchiveSheet(sources:[file],encrypted:false);defer {sheet.close()}
+        let all=views(try XCTUnwrap(sheet.window?.contentView))
+        let format=try XCTUnwrap(all.compactMap{$0 as? NSPopUpButton}.first{$0.itemTitles.contains("ZIP (.zip)")})
+        let split=try XCTUnwrap(all.compactMap{$0 as? NSPopUpButton}.first{$0.itemTitles.contains("No splitting")})
+        XCTAssertTrue(split.isHiddenOrHasHiddenAncestor);XCTAssertEqual(format.titleOfSelectedItem,"ZIP (.zip)")
+        format.selectItem(withTitle:ArchiveFormat.sevenZip.title);_ = format.sendAction(format.action,to:format.target)
+        try XCTUnwrap(all.compactMap{$0 as? NSButton}.first{$0.accessibilityLabel()=="Advanced compression"}).performClick(nil)
+        XCTAssertFalse(split.isHiddenOrHasHiddenAncestor);XCTAssertEqual(split.titleOfSelectedItem,"No splitting")
+        split.selectItem(withTitle:"Custom size");_ = split.sendAction(split.action,to:split.target)
+        let custom=try XCTUnwrap(all.compactMap{$0 as? NSTextField}.first{$0.accessibilityLabel()=="Custom split size in bytes"})
+        custom.stringValue="31";sheet.controlTextDidChange(Notification(name:NSControl.textDidChangeNotification,object:custom))
+        let create=try XCTUnwrap(all.compactMap{$0 as? NSButton}.first{$0.title=="Create"})
+        XCTAssertFalse(create.isEnabled)
+        custom.stringValue="128";sheet.controlTextDidChange(Notification(name:NSControl.textDidChangeNotification,object:custom))
+        for _ in 0..<100 {if create.isEnabled {break};try await Task.sleep(nanoseconds:10_000_000)}
+        XCTAssertTrue(create.isEnabled)
+        var submitted=false
+        sheet.complete={_,_,_,format,_,_,_,split in submitted=true;XCTAssertEqual(format,.sevenZip);XCTAssertEqual(split?.volumeBytes,128)}
+        create.performClick(nil);XCTAssertTrue(submitted)
+    }
+    @MainActor
     func testZIPAESSetupKeepsZIPAndHidesFilenameEncryption() throws {
         _ = NSApplication.shared
         let sheet = CreateArchiveSheet(sources:[URL(fileURLWithPath:"/tmp/input.txt")],encrypted:false)
@@ -20,7 +45,7 @@ final class CompressionPresetUITests: XCTestCase {
         let fields = all.compactMap { $0 as? NSSecureTextField }
         fields.forEach { $0.stringValue = "fixture password" }
         var submitted = false
-        sheet.complete = { _, _, preset, format, password, filenames, options in
+        sheet.complete = { _, _, preset, format, password, filenames, options, _ in
             submitted = true;XCTAssertEqual(format,.zip);XCTAssertEqual(preset,.normal)
             XCTAssertEqual(password,"fixture password");XCTAssertFalse(filenames);XCTAssertNil(options)
         }
@@ -51,7 +76,7 @@ final class CompressionPresetUITests: XCTestCase {
                 XCTAssertEqual(create.isEnabled, eligible)
                 if eligible {
                     var submitted = false
-                    sheet.complete = { destination, name, preset, format, password, _, options in
+                    sheet.complete = { destination, name, preset, format, password, _, options, _ in
                         submitted = true; XCTAssertNotNil(destination)
                         XCTAssertEqual(name, sources[0].lastPathComponent)
                         XCTAssertEqual(format, wanted); XCTAssertEqual(preset, .normal)
@@ -92,7 +117,7 @@ final class CompressionPresetUITests: XCTestCase {
             XCTAssertTrue(encryption.isHiddenOrHasHiddenAncestor)
             XCTAssertTrue(try XCTUnwrap(popups.first { $0.itemTitles.contains("16 MiB block") }).isHiddenOrHasHiddenAncestor)
             var submitted = false
-            sheet.complete = { destination, _, preset, format, password, _, options in
+            sheet.complete = { destination, _, preset, format, password, _, options, _ in
                 submitted = true
                 XCTAssertNotNil(destination)
                 XCTAssertEqual(format, wanted)
@@ -133,7 +158,7 @@ final class CompressionPresetUITests: XCTestCase {
         XCTAssertFalse(block.isEnabled); XCTAssertTrue(create.isEnabled)
         solid.selectItem(withTitle:"On"); XCTAssertTrue(solid.sendAction(solid.action,to:solid.target))
         var submitted = false
-        sheet.complete = { _, _, _, format, _, _, options in
+        sheet.complete = { _, _, _, format, _, _, options, _ in
             submitted = true; XCTAssertEqual(format,.sevenZip)
             XCTAssertEqual(options?.solid,.on(blockBytes:64<<20))
         }
@@ -172,7 +197,7 @@ final class CompressionPresetUITests: XCTestCase {
         XCTAssertTrue(create.isEnabled)
         format.selectItem(at:1); XCTAssertTrue(format.sendAction(format.action,to:format.target))
         var submitted = false
-        sheet.complete = { destination, _, preset, format, _, _, options in
+        sheet.complete = { destination, _, preset, format, _, _, options, _ in
             submitted = true; XCTAssertNotNil(destination); XCTAssertEqual(preset,.normal); XCTAssertEqual(format,.sevenZip)
             XCTAssertEqual(options,SevenZipCreationOptions(dictionaryBytes:64*1024*1024,threads:1))
         }
@@ -203,7 +228,7 @@ final class CompressionPresetUITests: XCTestCase {
                 for _ in 0..<400 where !create.isEnabled { try await Task.sleep(nanoseconds:25_000_000) }
                 XCTAssertTrue(create.isEnabled)
                 var submitted = false
-                sheet.complete = { destination, _, selected, format, password, _, options in
+                sheet.complete = { destination, _, selected, format, password, _, options, _ in
                     submitted = true
                     XCTAssertNotNil(destination)
                     XCTAssertEqual(selected,preset)

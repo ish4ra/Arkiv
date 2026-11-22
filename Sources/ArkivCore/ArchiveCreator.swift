@@ -73,11 +73,13 @@ public struct ArchiveCreationRequest: Sendable {
     public let sources: [URL]
     public let destination: URL
     public let name: String
+    public let split: SevenZipSplitOptions?
     public let sevenZipOptions: SevenZipCreationOptions?
     public let preset: CompressionPreset
     public let compression: ZIPCompression
     public init(sources: [URL], destination: URL, name: String, compression: ZIPCompression? = nil,
-                format: ArchiveFormat = .zip, password: String? = nil, encryptFilenames: Bool = true, preset: CompressionPreset? = nil, sevenZipOptions: SevenZipCreationOptions? = nil) {
+                format: ArchiveFormat = .zip, password: String? = nil, encryptFilenames: Bool = true, preset: CompressionPreset? = nil, sevenZipOptions: SevenZipCreationOptions? = nil, split: SevenZipSplitOptions? = nil) {
+        self.split = split
         self.sevenZipOptions = sevenZipOptions
         self.format = format; self.password = password; self.encryptFilenames = encryptFilenames
         self.sources = sources; self.destination = destination; self.name = name
@@ -97,6 +99,12 @@ public struct ArchiveCreator: Sendable {
     }
     func create(_ request: ArchiveCreationRequest, archiveFolder: String, replacementRoot: String? = nil, omitReplacementRoot: Bool = false, fileMethods: [Int32]? = nil, cancellation: ArchiveCancellation,
                 progress: @escaping @Sendable (ArchiveProgress) -> Void) throws -> URL {
+        if let split = request.split {
+            guard request.format == .sevenZip, archiveFolder.isEmpty, replacementRoot == nil, fileMethods == nil else {
+                throw ArchiveFailure.message("Splitting is available for new 7z archives only.")
+            }
+            try split.validate()
+        }
         let backend = try request.preset.backend(for: request.format)
         guard request.format == .sevenZip || request.sevenZipOptions == nil else {
             throw ArchiveFailure.message("Advanced compression options are available for 7z creation only.")
@@ -187,8 +195,9 @@ public struct ArchiveCreator: Sendable {
         let pointers: [UnsafePointer<CChar>?] = strings.map { UnsafePointer($0) }
         do {
             let stage = destination.appendingPathComponent(".arkiv-create-" + UUID().uuidString, isDirectory: true)
-            try manager.createDirectory(at: stage, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-            defer { try? manager.removeItem(at: stage) }
+            if request.split == nil { try manager.createDirectory(at: stage, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700]) }
+            // Split cleanup is descriptor-relative in C, including a moved destination.
+            defer { if request.split == nil { try? manager.removeItem(at: stage) } }
             let filename = request.name + request.format.fileExtension
             var published = [CChar](repeating: 0, count: 512)
             var error = [CChar](repeating: 0, count: 256)
@@ -222,6 +231,14 @@ public struct ArchiveCreator: Sendable {
                         filename, &published, published.count, request.compression == .store ? 0 : 1,
                         arkiv_limits(max_entries: 100_000, max_bytes: 20 * 1024 * 1024 * 1024),
                         cancellation.pointer, callback, context, &error, error.count, archiveFolder)
+                }
+                if let advanced, let split = request.split {
+                    return arkiv_create_archive_split(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,
+                        filename, &published, published.count,
+                        arkiv_limits(max_entries: 100_000, max_bytes: 20 * 1024 * 1024 * 1024),
+                        cancellation.pointer, callback, context, &error, error.count,
+                        request.password, request.encryptFilenames ? 1 : 0, backend.level, advanced.dictionaryBytes, advanced.threads,
+                        advanced.solid.enabled ? 1 : 0, advanced.solid.blockBytes ?? 0, split.volumeBytes)
                 }
                 if let advanced {
                     return arkiv_create_archive_solid(buffer.baseAddress, buffer.count, destination.path, stage.lastPathComponent,

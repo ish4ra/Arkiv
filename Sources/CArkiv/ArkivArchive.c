@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <unistd.h>
 
 struct arkiv_cancel { atomic_int value; };
@@ -688,11 +689,189 @@ static int create_publish(int stagefd, const char *payload, int parentfd, const 
     }
     return 3;
 }
+/* Private staged parts are verified by the Phase 1 reader before any link is
+   published. Multi-file publication is rollback-safe, not crash-atomic. */
+static int split_sources_valid(struct create_manifest *m, arkiv_cancel *token) {
+    for (size_t i=0;i<m->count;i++) {
+        if (cancelled(token)) return 2;
+        struct stat st; int fd=create_open(m->items[i].disk);
+        int ok=fd>=0&&!fstat(fd,&st)&&create_same_stat(&st,&m->items[i].stamp);
+        if(fd>=0)close(fd);
+        if(!ok)return 1;
+    }
+    return 0;
+}
+static int split_source_order(const void *a,const void *b) {
+    const struct create_source *aa=*(const struct create_source *const *)a,*bb=*(const struct create_source *const *)b;
+    return strcmp(aa->entry,bb->entry);
+}
+/* The encoder may reorder entries. Compare its decoded TAR by exact member name,
+   kind, size and bytes. This encoder does not store source POSIX modes/mtime. */
+static int split_verify_decoded(int fd,struct create_manifest *m,arkiv_cancel *token) {
+    struct create_source **sorted=calloc(m->count,sizeof(*sorted));unsigned char *seen=calloc(m->count,1);
+    struct archive *reader=archive_read_new();int status=1,r=0;size_t count=0;
+    if(!sorted||!seen||!reader)goto done;
+    for(size_t i=0;i<m->count;i++)sorted[i]=&m->items[i];
+    qsort(sorted,m->count,sizeof(*sorted),split_source_order);
+    if(lseek(fd,0,SEEK_SET)<0||archive_read_support_filter_none(reader)!=ARCHIVE_OK||archive_read_support_format_tar(reader)!=ARCHIVE_OK||archive_read_open_fd(reader,fd,65536)!=ARCHIVE_OK)goto done;
+    struct archive_entry *entry;
+    while((r=archive_read_next_header(reader,&entry))==ARCHIVE_OK) {
+        if(cancelled(token))goto done;
+        const char *path=archive_entry_pathname_utf8(entry);if(!path||strlen(path)>4096)goto done;
+        char name[4097];strcpy(name,path);size_t len=strlen(name);if(len&&name[len-1]=='/')name[len-1]=0;
+        struct create_source key={NULL,name,{0}},*keyptr=&key;
+        struct create_source **found=bsearch(&keyptr,sorted,m->count,sizeof(*sorted),split_source_order);
+        if(!found)goto done;
+        struct create_source *source=*found;size_t index=(size_t)(source-m->items);
+        if(seen[index]++)goto done;
+        int directory=S_ISDIR(source->stamp.st_mode);
+        if(entry_kind(entry)!=(directory?2:1)||archive_entry_size(entry)!=(directory?0:source->stamp.st_size))goto done;
+        int input=create_open(source->disk);struct stat st;
+        if(input<0)goto done;
+        int bad=fstat(input,&st)||!create_same_stat(&st,&source->stamp);uint64_t bytes=0;ssize_t n=0;
+        char data[65536],original[65536];
+        while(!bad&&(n=archive_read_data(reader,data,sizeof(data)))>0) {
+            size_t offset=0;
+            while(offset<(size_t)n){ssize_t got=read(input,original+offset,(size_t)n-offset);if(got<=0){bad=1;break;}offset+=(size_t)got;}
+            if(bad||cancelled(token)||memcmp(data,original,(size_t)n)){bad=1;break;}
+            bytes+=(uint64_t)n;
+        }
+        if(n<0||(!directory&&bytes!=(uint64_t)source->stamp.st_size)||fstat(input,&st)||!create_same_stat(&st,&source->stamp))bad=1;
+        close(input);if(bad)goto done;count++;
+    }
+    if(r==ARCHIVE_EOF&&count==m->count)status=0;
+done:
+    if(reader)archive_read_free(reader);
+    free(sorted);free(seen);return status;
+}
+static int split_directory_valid(const char *path,int held) {
+    struct stat a,b;int fd=create_open(path);
+    int ok=fd>=0&&!fstat(fd,&a)&&!fstat(held,&b)&&S_ISDIR(a.st_mode)&&a.st_dev==b.st_dev&&a.st_ino==b.st_ino;
+    if(fd>=0)close(fd);
+    return ok;
+}
+static void split_unlink_identity(int dir,const char *name,const struct stat *owned) {
+    struct stat now;
+    if(!fstatat(dir,name,&now,AT_SYMLINK_NOFOLLOW)&&owned->st_dev==now.st_dev&&owned->st_ino==now.st_ino)unlinkat(dir,name,0);
+}
+static void split_unlink_owned(int dir,const char *name,int fd) {
+    struct stat held,now;
+    if(fd>=0&&!fstat(fd,&held)&&!fstatat(dir,name,&now,AT_SYMLINK_NOFOLLOW)&&held.st_dev==now.st_dev&&held.st_ino==now.st_ino)unlinkat(dir,name,0);
+}
+static int create_split_publish(int input,int stagefd,int parentfd,const char *parent,const char *stage,
+    const char *name,uint64_t part_size,struct create_manifest *manifest,arkiv_cancel *token,
+    arkiv_progress_callback progress,void *context,char *published,size_t published_cap,char *error,size_t cap) {
+    struct stat original,part_stats[128];unsigned count=0,created=0,pub=0;int status=1,out=-1,check=-1;
+    char part[512];char *first=NULL,*joined=NULL,*stagepath=NULL;arkiv_volumes *volumes=NULL;
+    if(fstat(input,&original)||original.st_size<=0||(uint64_t)original.st_size>(4ULL<<30)||part_size<32||part_size>=(4ULL<<30))
+        return fail(error,cap,"Split input or size exceeds the 4 GiB physical limit.");
+    uint64_t total=(uint64_t)original.st_size,n=(total-1)/part_size+1;
+    if(n<2||n>128)return fail(error,cap,"Choose a split size producing 2 to 128 volumes; otherwise choose no splitting.");
+    count=(unsigned)n;
+    struct statvfs space;
+    if(!fstatvfs(stagefd,&space) && space.f_frsize && total*2/space.f_frsize+1>space.f_bavail)
+        return fail(error,cap,"Insufficient temporary space for parts and reconstruction.");
+    if(asprintf(&stagepath,"%s/%s",parent,stage)<0||asprintf(&first,"%s/%s.001",stagepath,name)<0||asprintf(&joined,"%s/reconstructed.7z",stagepath)<0)goto done;
+    if(!split_directory_valid(parent,parentfd)||!split_directory_valid(stagepath,stagefd))goto done;
+    /* Refuse an existing set, including extra or ambiguously numbered parts. */
+    DIR *dir=fdopendir(openat(parentfd,".",O_RDONLY|O_DIRECTORY|O_CLOEXEC));
+    if(!dir)goto done;
+    unsigned visited=0;struct dirent *entry;int collision=0;errno=0;
+    while((entry=readdir(dir))) {
+        if(++visited>100000||cancelled(token)){collision=1;break;}
+        size_t len=strlen(name);
+        if(!strncasecmp(entry->d_name,name,len)&&entry->d_name[len]=='.') {
+            const char *p=entry->d_name+len+1;int numeric=*p!=0;
+            while(*p){if(*p<'0'||*p>'9')numeric=0;p++;}
+            if(numeric){collision=1;break;}
+        }
+    }
+    if(errno)collision=1;
+    closedir(dir);
+    if(collision){fail(error,cap,"An existing volume set conflicts with this name, or its directory cannot be safely scanned.");goto done;}
+    uint64_t copied=0;unsigned char buffer[65536];
+    for(unsigned i=0;i<count;i++) {
+        snprintf(part,sizeof(part),"%s.%03u",name,i+1);
+        out=openat(stagefd,part,O_RDWR|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);
+        if(out<0)goto done;
+        if(fstat(out,&part_stats[i]))goto done;
+        created++;
+        uint64_t end=total-copied<part_size?total:copied+part_size;
+        while(copied<end) {
+            if(cancelled(token))goto done;
+            size_t want=end-copied<sizeof(buffer)?(size_t)(end-copied):sizeof(buffer);
+            if(pread(input,buffer,want,(off_t)copied)!=(ssize_t)want)goto done;
+            size_t offset=0;while(offset<want){ssize_t k=write(out,buffer+offset,want-offset);if(k<=0)goto done;offset+=(size_t)k;}
+            copied+=want;if(progress)progress(context,i+1,copied);
+        }
+        if(fsync(out)||fstat(out,&part_stats[i]))goto done;
+        close(out);out=-1;
+    }
+    status=arkiv_volumes_reconstruct(first,joined,4ULL<<30,token,progress,context,&volumes,error,cap);
+    if(status)goto done;
+    status=1;check=openat(stagefd,"reconstructed.7z",O_RDONLY|O_NOFOLLOW|O_CLOEXEC);
+    if(check<0)goto done;
+    /* Exact comparison to fully decoded/verified original preserves ciphertext,
+       headers, CRCs, hierarchy and encoder settings without another encoder. */
+    for(uint64_t offset=0;offset<total;) {
+        if(cancelled(token))goto done;
+        unsigned char other[65536];size_t want=total-offset<sizeof(buffer)?(size_t)(total-offset):sizeof(buffer);
+        if(pread(input,buffer,want,(off_t)offset)!=(ssize_t)want||pread(check,other,want,(off_t)offset)!=(ssize_t)want||memcmp(buffer,other,want))goto done;
+        offset+=want;
+    }
+    if(arkiv_volumes_validate(volumes,token,error,cap))goto done;
+    for(unsigned i=0;i<count;i++) {
+        if(cancelled(token)||split_sources_valid(manifest,token)||!split_directory_valid(parent,parentfd)||!split_directory_valid(stagepath,stagefd))goto done;
+        snprintf(part,sizeof(part),"%s.%03u",name,i+1);
+        if(linkat(stagefd,part,parentfd,part,0)) {fail(error,cap,"A volume already exists or exclusive publication failed.");goto done;}
+        pub++;
+        if(progress)progress(context,pub,total);
+    }
+    /* Drop private hardlinks so the strict reader can validate the published set.
+       A concurrent rename/replacement/addition must not become a successful set. */
+    for(unsigned i=0;i<created;i++){snprintf(part,sizeof(part),"%s.%03u",name,i+1);split_unlink_identity(stagefd,part,&part_stats[i]);}
+    created=0;split_unlink_owned(stagefd,"reconstructed.7z",check);close(check);check=-1;
+    arkiv_volumes_free(volumes);volumes=NULL;
+    free(first);first=NULL;
+    if(asprintf(&first,"%s/%s.001",parent,name)<0)goto done;
+    if(!split_directory_valid(parent,parentfd)||!split_directory_valid(stagepath,stagefd))goto done;
+    for(unsigned i=0;i<count;i++) {
+        struct stat now;snprintf(part,sizeof(part),"%s.%03u",name,i+1);
+        if(fstatat(parentfd,part,&now,AT_SYMLINK_NOFOLLOW)||now.st_dev!=part_stats[i].st_dev||now.st_ino!=part_stats[i].st_ino)goto done;
+    }
+    if(arkiv_volumes_reconstruct(first,joined,4ULL<<30,token,NULL,NULL,&volumes,error,cap))goto done;
+    check=openat(stagefd,"reconstructed.7z",O_RDONLY|O_NOFOLLOW|O_CLOEXEC);
+    if(check<0)goto done;
+    for(uint64_t offset=0;offset<total;) {
+        unsigned char other[65536];size_t want=total-offset<sizeof(buffer)?(size_t)(total-offset):sizeof(buffer);
+        if(cancelled(token)||pread(input,buffer,want,(off_t)offset)!=(ssize_t)want||pread(check,other,want,(off_t)offset)!=(ssize_t)want||memcmp(buffer,other,want))goto done;
+        offset+=want;
+    }
+    if(arkiv_volumes_validate(volumes,token,error,cap))goto done;
+    if(cancelled(token)||split_sources_valid(manifest,token)||!split_directory_valid(parent,parentfd)||fsync(parentfd))goto done;
+    snprintf(published,published_cap,"%s.001",name);status=0;
+done:
+    if(out>=0)close(out);
+    split_unlink_owned(stagefd,"reconstructed.7z",check);
+    if(check>=0)close(check);
+    arkiv_volumes_free(volumes);
+    if(status)for(unsigned i=0;i<pub;i++) {
+        struct stat now;snprintf(part,sizeof(part),"%s.%03u",name,i+1);
+        if(!fstatat(parentfd,part,&now,AT_SYMLINK_NOFOLLOW)&&now.st_dev==part_stats[i].st_dev&&now.st_ino==part_stats[i].st_ino)unlinkat(parentfd,part,0);
+    }
+    for(unsigned i=0;i<created;i++){snprintf(part,sizeof(part),"%s.%03u",name,i+1);split_unlink_identity(stagefd,part,&part_stats[i]);}
+    free(first);free(joined);free(stagepath);
+    if(status&&cancelled(token))return 2;
+    if(status&&error&&cap&&!error[0])fail(error,cap,"Split creation failed, source/destination changed, or disk space was exhausted. Newly published parts were rolled back.");
+    return status;
+}
+
 static int create_archive(const char *const *sources, size_t count, const char *parent,
                      const char *stage, const char *name, char *published_name, size_t published_capacity, int compression, arkiv_limits limits,
                      arkiv_cancel *token, arkiv_progress_callback progress, void *context,
-                     char *error, size_t capacity, int format, const char *password, int headers, const char *prefix, const char *root, int omit_root, const int *methods, int level, uint32_t dictionary, unsigned threads, int solid, uint64_t block) {
+                     char *error, size_t capacity, int format, const char *password, int headers, const char *prefix, const char *root, int omit_root, const int *methods, int level, uint32_t dictionary, unsigned threads, int solid, uint64_t block, uint64_t split_size) {
     int seven = format == 1, tar = format >= 2, codec = format - 2, aes = format == 0 && password != NULL;
+    if(split_size && (!seven || split_size<32 || split_size>=(4ULL<<30))) return fail(error,capacity,"Invalid split creation settings.");
     if(aes && (!password[0]||strnlen(password,1025)>1024||prefix[0]||root||methods))
         return fail(error,capacity,"Invalid AES ZIP creation request.");
     if (format < 0 || format > 6 || (tar && (password || prefix[0] || root || methods)))
@@ -728,6 +907,7 @@ static int create_archive(const char *const *sources, size_t count, const char *
     struct create_manifest manifest = {0};
     struct tar_output tar_out = { -1, 0, limits.max_bytes < (20ULL << 30) ? limits.max_bytes : (20ULL << 30), token };
     if (parentfd < 0) goto done;
+    if(split_size && mkdirat(parentfd,stage,0700)) goto done;
     stagefd = openat(parentfd, stage, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (stagefd < 0) goto done;
     output = openat(stagefd, initial, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
@@ -747,7 +927,7 @@ static int create_archive(const char *const *sources, size_t count, const char *
         archive_write_open_fd(writer, output) != ARCHIVE_OK) goto done;
     struct stat stage_stat;
     if (fstat(stagefd, &stage_stat)) goto done;
-    struct create_state state = { writer, limits, token, progress, context, 0, 0, error, capacity, stage_stat.st_dev, stage_stat.st_ino, omit_root, tar || aes || root != NULL, (tar || aes) ? &manifest : NULL };
+    struct create_state state = { writer, limits, token, progress, context, 0, 0, error, capacity, stage_stat.st_dev, stage_stat.st_ino, omit_root, tar || aes || split_size || root != NULL, (tar || aes || split_size) ? &manifest : NULL };
     for (size_t i = 0; i < count; i++) {
         /* Each new root begins in failure state until it is fully written. */
         status = 1;
@@ -786,7 +966,7 @@ static int create_archive(const char *const *sources, size_t count, const char *
     while ((r = archive_read_next_header(verify, &entry)) == ARCHIVE_OK) {
         if (++entries > limits.max_entries || (entry_kind(entry) != 1 && entry_kind(entry) != 2)) goto done;
         int sourcefd = -1;
-        if (tar || aes) {
+        if (tar || aes || split_size) {
             if (entries > manifest.count) goto done;
             struct create_source *source = &manifest.items[entries-1];
             const char *path = archive_entry_pathname_utf8(entry);
@@ -809,7 +989,7 @@ static int create_archive(const char *const *sources, size_t count, const char *
             if (cancelled(token)) { status = 2; bad = 1; break; }
             if ((uint64_t)n > limits.max_bytes - bytes) { bad = 1; break; }
             bytes += (uint64_t)n;
-            if (tar || aes) {
+            if (tar || aes || split_size) {
                 char original[65536]; size_t offset = 0;
                 while (offset < (size_t)n) {
                     ssize_t got = read(sourcefd, original + offset, (size_t)n - offset);
@@ -838,6 +1018,9 @@ static int create_archive(const char *const *sources, size_t count, const char *
         if (fsync(sevenfd)) goto done;
         status = arkiv_seven_decode(sevenfd, checkfd, password, seven_cancel, token);
         if (status) goto done;
+        if(split_size && split_verify_decoded(checkfd,&manifest,token)) {
+            status=fail(error,capacity,"Created 7z contents do not match the source manifest.");goto done;
+        }
     }
     if (tar && codec) {
         sevenfd = openat(stagefd, payload, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
@@ -877,7 +1060,7 @@ static int create_archive(const char *const *sources, size_t count, const char *
            Payload correctness was separately checked byte-for-byte above. */
         if (integrity != 9) { status = integrity ? integrity : 1; goto done; }
     }
-    if(tar || aes) {
+    if(tar || aes || split_size) {
         for (size_t i = 0; i < manifest.count; i++) {
             if (cancelled(token)) { status = 2; goto done; }
             struct create_source *source = &manifest.items[i]; struct stat st;
@@ -887,17 +1070,33 @@ static int create_archive(const char *const *sources, size_t count, const char *
             if (!valid) { status = fail(error, capacity, "Source changed during creation."); goto done; }
         }
     }
-    status = create_publish(stagefd,payload,parentfd,name,suffix,published_name,published_capacity,token);
+    status = split_size ? create_split_publish(sevenfd,stagefd,parentfd,parent,stage,name,split_size,&manifest,token,progress,context,published_name,published_capacity,error,capacity) :
+        create_publish(stagefd,payload,parentfd,name,suffix,published_name,published_capacity,token);
 
 done:
     for (size_t i = 0; i < manifest.count; i++) { free(manifest.items[i].disk); free(manifest.items[i].entry); }
     free(manifest.items);
     if (verify) archive_read_free(verify);
     if (writer) archive_write_free(writer);
+    if(split_size && stagefd>=0) {
+        split_unlink_owned(stagefd,"archive.zip",output);
+        split_unlink_owned(stagefd,"archive.7z",sevenfd);
+        split_unlink_owned(stagefd,"verify.zip",checkfd);
+        struct stat held,now;
+        if(!fstat(stagefd,&held)&&!fstatat(parentfd,stage,&now,AT_SYMLINK_NOFOLLOW)&&held.st_dev==now.st_dev&&held.st_ino==now.st_ino)
+            unlinkat(parentfd,stage,AT_REMOVEDIR);
+        close(stagefd);stagefd=-1;
+    }
     if (sevenfd >= 0) close(sevenfd);
     if (checkfd >= 0) close(checkfd);
     if (output >= 0) close(output);
-    if (stagefd >= 0) { unlinkat(stagefd, "archive.zip", 0); unlinkat(stagefd, "archive.7z", 0); unlinkat(stagefd, "verify.zip", 0); unlinkat(stagefd, "archive.tar", 0); unlinkat(stagefd, "archive.compressed", 0); unlinkat(stagefd, "verify.tar", 0); close(stagefd); }
+    if (stagefd >= 0) { unlinkat(stagefd, "archive.zip", 0); unlinkat(stagefd, "archive.7z", 0); unlinkat(stagefd, "verify.zip", 0); unlinkat(stagefd, "archive.tar", 0); unlinkat(stagefd, "archive.compressed", 0); unlinkat(stagefd, "verify.tar", 0);
+        if(split_size) {
+            struct stat held,now;
+            if(!fstat(stagefd,&held)&&!fstatat(parentfd,stage,&now,AT_SYMLINK_NOFOLLOW)&&held.st_dev==now.st_dev&&held.st_ino==now.st_ino)
+                unlinkat(parentfd,stage,AT_REMOVEDIR);
+        }
+        close(stagefd); }
     if (parentfd >= 0) close(parentfd);
     uselocale(previous); freelocale(utf8);
     if (status && cancelled(token)) status = 2;
@@ -909,7 +1108,7 @@ int arkiv_create_zip_files(const char *const *sources, size_t count, const char 
  const char *name, char *published, size_t published_capacity, const int *methods, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity) {
  if (!methods) return fail(error,capacity,"Missing per-file compression methods.");
- return create_archive(sources,count,parent,stage,name,published,published_capacity,1,limits,token,progress,context,error,capacity,0,NULL,0,"",NULL,0,methods,6,0,2,0,0);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,1,limits,token,progress,context,error,capacity,0,NULL,0,"",NULL,0,methods,6,0,2,0,0,0);
 }
 /* Retain each source descriptor and compare full identity/timestamps until commit. */
 struct arkiv_file_pin { int fd; char *path; struct stat stamp; };
@@ -932,41 +1131,48 @@ void arkiv_file_pin_end(arkiv_file_pin *p){if(p){close(p->fd);free(p->path);free
 int arkiv_create_zip_folder(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity, const char *root, int omit_root) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,"",root,omit_root,NULL,compression?6:0,0,2,0,0);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,"",root,omit_root,NULL,compression?6:0,0,2,0,0,0);
 }
 int arkiv_create_zip_at(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity, const char *prefix) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,prefix,NULL,0,NULL,compression?6:0,0,2,0,0);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,prefix,NULL,0,NULL,compression?6:0,0,2,0,0,0);
+}
+int arkiv_create_archive_split(const char *const *sources,size_t count,const char *parent,const char *stage,
+ const char *name,char *published,size_t published_capacity,arkiv_limits limits,arkiv_cancel *token,
+ arkiv_progress_callback progress,void *context,char *error,size_t capacity,const char *password,int headers,
+ int level,uint32_t dictionary,unsigned threads,int solid,uint64_t block,uint64_t split_size) {
+ if(!split_size)return fail(error,capacity,"Split size must be nonzero.");
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,1,limits,token,progress,context,error,capacity,1,password,headers,"",NULL,0,NULL,level,dictionary,threads,solid,block,split_size);
 }
 int arkiv_create_archive_solid(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity,
  int seven, const char *password, int headers, int level, uint32_t dictionary, unsigned threads, int solid, uint64_t block) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers,"",NULL,0,NULL,level,dictionary,threads,solid,block);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers,"",NULL,0,NULL,level,dictionary,threads,solid,block,0);
 }
 int arkiv_create_archive_advanced(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity,
  int seven, const char *password, int headers, int level, uint32_t dictionary, unsigned threads) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers,"",NULL,0,NULL,level,dictionary,threads,0,0);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers,"",NULL,0,NULL,level,dictionary,threads,0,0,0);
 }
 int arkiv_create_archive_preset(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity,
  int seven, const char *password, int headers, int level) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers,"",NULL,0,NULL,level,0,2,0,0);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers,"",NULL,0,NULL,level,0,2,0,0,0);
 }
 int arkiv_create_archive(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity,
  int seven, const char *password, int headers) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers,"",NULL,0,NULL,seven?5:(compression?6:0),0,2,0,0);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,seven,password,headers,"",NULL,0,NULL,seven?5:(compression?6:0),0,2,0,0,0);
 }
 int arkiv_create_zip(const char *const *sources, size_t count, const char *parent, const char *stage,
  const char *name, char *published, size_t published_capacity, int compression, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity) {
- return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,"",NULL,0,NULL,compression?6:0,0,2,0,0);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,compression,limits,token,progress,context,error,capacity,0,NULL,0,"",NULL,0,NULL,compression?6:0,0,2,0,0,0);
 }
 int arkiv_is_seven(const char *path) {
  int fd=create_open(path); if(fd<0)return 0;unsigned char b[6];ssize_t n=read(fd,b,6);close(fd);
@@ -1877,7 +2083,7 @@ int arkiv_create_tar(const char *const *sources, size_t count, const char *paren
  const char *name, char *published, size_t published_capacity, int codec, arkiv_limits limits,
  arkiv_cancel *token, arkiv_progress_callback progress, void *context, char *error, size_t capacity) {
  if (codec < 0 || codec > 4) return fail(error,capacity,"Unsupported TAR compression.");
- return create_archive(sources,count,parent,stage,name,published,published_capacity,1,limits,token,progress,context,error,capacity,codec+2,NULL,0,"",NULL,0,NULL,6,0,2,0,0);
+ return create_archive(sources,count,parent,stage,name,published,published_capacity,1,limits,token,progress,context,error,capacity,codec+2,NULL,0,"",NULL,0,NULL,6,0,2,0,0,0);
 }
 
 /* Recognizable damaged TAR must not fall back to an opaque standalone file. */

@@ -51,3 +51,5 @@ ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_compressed_tar.py -v
 python3 tests/test_macos_decoder_linking.py -v
 
 ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_volumes.py -v
+
+ARKIV_TEST_LIBRARY="$PWD/$library" python3 tests/test_split_creation.py -v

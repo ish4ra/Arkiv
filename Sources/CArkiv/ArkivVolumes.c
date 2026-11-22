@@ -75,7 +75,7 @@ uint64_t arkiv_volumes_size(arkiv_volumes *v){return v?v->total:0;}
 int arkiv_volumes_reconstruct(const char *path,const char *output,uint64_t limit,arkiv_cancel *token,arkiv_progress_callback progress,void *ctx,arkiv_volumes **retained,char *e,size_t cap) {
     *retained=NULL;
     if(limit<32||limit>(4ULL<<30))return error(e,cap,8,"Invalid physical-input budget.");
-    int result=1,out=-1;arkiv_volumes *v=calloc(1,sizeof(*v));if(!v)return 1;
+    int result=1,out=-1,outparent=-1;char *outcopy=NULL,*outleaf=NULL;arkiv_volumes *v=calloc(1,sizeof(*v));if(!v)return 1;
     v->parent=-1;for(unsigned i=0;i<VMAX;i++)v->fds[i]=-1;
     char *copy=strdup(path);if(!copy)goto done;char *leaf=strrchr(copy,'/');
     if(!leaf||!leaf[1]){free(copy);goto done;}*leaf++=0;
@@ -105,7 +105,11 @@ int arkiv_volumes_reconstruct(const char *path,const char *output,uint64_t limit
     if(v->total!=32+offset+size){result=error(e,cap,6,"Incomplete or corrupt split 7z input; final volume may be missing or truncated.");goto done;}
     if(v->count<2){result=error(e,cap,8,"A split archive must contain at least two numbered volumes.");goto done;}
     for(unsigned i=1;i<v->count;i++)if(v->stamps[i].st_size>v->stamps[0].st_size||(i+1<v->count&&v->stamps[i].st_size!=v->stamps[0].st_size)){result=error(e,cap,8,"Inconsistent split volume sizes.");goto done;}
-    out=open(output,O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);if(out<0){result=error(e,cap,1,"Cannot create private volume spool.");goto done;}
+    outcopy=strdup(output);
+    if(!outcopy||(outleaf=strrchr(outcopy,'/'))==NULL||!outleaf[1])goto done;
+    *outleaf++=0;outparent=directory_open(*outcopy?outcopy:"/");
+    if(outparent<0)goto done;
+    out=openat(outparent,outleaf,O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);if(out<0){result=error(e,cap,1,"Cannot create private volume spool.");goto done;}
     uint64_t copied=0;unsigned char buffer[65536];result=0;
     for(unsigned i=0;i<v->count&&!result;i++)for(off_t p=0;p<v->stamps[i].st_size;) {
         if(arkiv_cancel_is_set(token)){result=2;break;}
@@ -119,6 +123,11 @@ int arkiv_volumes_reconstruct(const char *path,const char *output,uint64_t limit
     if(!result)result=arkiv_volumes_validate(v,token,e,cap);
     if(!result){*retained=v;v=NULL;}
 done:
-    if(out>=0){close(out);if(result)unlink(output);}
+    if(out>=0){
+        if(result){struct stat held,now;if(!fstat(out,&held)&&!fstatat(outparent,outleaf,&now,AT_SYMLINK_NOFOLLOW)&&held.st_dev==now.st_dev&&held.st_ino==now.st_ino)unlinkat(outparent,outleaf,0);}
+        close(out);
+    }
+    if(outparent>=0)close(outparent);
+    free(outcopy);
     arkiv_volumes_free(v);return result;
 }

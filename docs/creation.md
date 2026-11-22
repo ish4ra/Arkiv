@@ -173,3 +173,13 @@ protect creation; [policy, metadata and compatibility details](standalone-compre
 ## Zstandard
 
 Create Archive and Finder Add to Archive also offer **ZSTD (.zst)** for exactly one regular file, and **TAR + ZSTD (.tar.zst / .tzst)** for files/folders. Both use the existing transactional creators, level 3, an 8 MiB window, a single codec thread and content checksum; no encryption or advanced controls. ZIP stays the default. See [ZSTD limits and verification](zstandard.md).
+
+## Split 7z creation
+
+The existing 7z Advanced section offers No splitting (default), decimal 100/650/700
+MB and 1/2/4 GB, plus Custom size in bytes. Results must form 2–128 parts within
+4 GiB packed input; unsuitable settings fail before publication. ZIP and direct
+Finder compression defaults are unchanged. All existing 7z compression/encryption
+options flow into the same encoder. See [multipart policy](multipart.md) for exact
+verification, source checks, multi-file rollback, temporary space, metadata limits,
+crash limitations and real-Mac acceptance steps.
