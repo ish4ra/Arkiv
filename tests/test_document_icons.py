@@ -5,12 +5,40 @@ from pathlib import Path
 import plistlib
 import re
 import shutil
+import struct
 import tempfile
 import unittest
+import zlib
 
 spec = importlib.util.spec_from_file_location('icons', 'scripts/verify-document-icons.py')
 icons = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(icons)
+spec = importlib.util.spec_from_file_location('packager', 'scripts/package-document-icons.py')
+packager = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(packager)
+
+# SHA-256 of Resources/DocumentIcons/PIXELS.sha256: the decoded pixels of build
+# 26501's refined Seal Dark icons, byte-identical to the manifest preserved on
+# archive/document-icon-concepts-v2 (themes/seal-dark-refined-26501). Changing
+# it means changing the artwork, which needs an approved design change.
+PIXELS_26501 = '53e7df26242c7e331dc07cd6b26b1eaa126ebc60c8ef34f8b56fb6ad7cafbf57'
+
+
+def encode_png(width, height, rgba, level=9, extra=()):
+    """Minimal stdlib PNG encoder (filter 0) for synthetic lossless re-encodes."""
+    def chunk(kind, body):
+        return struct.pack('>I', len(body)) + kind + body + struct.pack('>I', zlib.crc32(kind + body))
+    stride = width * 4
+    raw = b''.join(b'\0' + rgba[y * stride:(y + 1) * stride] for y in range(height))
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0))
+            + b''.join(chunk(kind, body) for kind, body in extra)
+            + chunk(b'IDAT', zlib.compress(raw, level)) + chunk(b'IEND', b''))
+
+
+def resum(root):
+    """Rewrite SHA256SUMS so only the pixel and layout checks can reject a change."""
+    lines = [f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(root)}' for p in root.glob('*.iconset/*.png')]
+    (root / 'SHA256SUMS').write_text('\n'.join(sorted(lines, key=lambda line: line[66:])) + '\n')
 
 
 class DocumentIconTests(unittest.TestCase):
@@ -99,6 +127,148 @@ class DocumentIconTests(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 icons.verify_sources(root, decode_limit=0)
 
+    def test_pixels_are_build_26501(self):
+        manifest = icons.SOURCES / 'PIXELS.sha256'
+        self.assertEqual(hashlib.sha256(manifest.read_bytes()).hexdigest(), PIXELS_26501)
+        self.assertEqual(set(icons.read_manifest(manifest)), set(icons.read_manifest(icons.SOURCES / 'SHA256SUMS')))
+
+    def test_lossless_reencode_passes_but_any_pixel_change_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / 'DocumentIcons'
+            shutil.copytree(icons.SOURCES, root)
+            target = root / 'Arkiv-ZIP.iconset/icon_32x32.png'
+            width, height, rgba = icons.read_png(target)
+            # A different encoder (filter 0, zlib level 1) with identical pixels is accepted.
+            target.write_bytes(encode_png(width, height, rgba, level=1))
+            resum(root)
+            icons.verify_sources(root)
+            # One channel of one pixel, even a fully transparent one, is rejected.
+            for index in (0, len(rgba) // 2 + 1):
+                changed = bytearray(rgba)
+                changed[index] ^= 1
+                target.write_bytes(encode_png(width, height, bytes(changed)))
+                resum(root)
+                with self.assertRaisesRegex(AssertionError, 'Pixels differ'):
+                    icons.verify_sources(root)
+
+    def test_png_metadata_chunks_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / 'DocumentIcons'
+            shutil.copytree(icons.SOURCES, root)
+            target = root / 'Arkiv-7z.iconset/icon_16x16.png'
+            width, height, rgba = icons.read_png(target)
+            for extra in [(b'gAMA', struct.pack('>I', 45455)), (b'iCCP', b'x\0\0'), (b'tEXt', b'k\0v')]:
+                target.write_bytes(encode_png(width, height, rgba, extra=[extra]))
+                resum(root)
+                with self.assertRaisesRegex(AssertionError, 'chunks'):
+                    icons.verify_sources(root, decode_limit=0)
+
+    def test_pixel_manifest_must_cover_every_representation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / 'DocumentIcons'
+            shutil.copytree(icons.SOURCES, root)
+            manifest = root / 'PIXELS.sha256'
+            manifest.write_text(''.join(manifest.read_text().splitlines(keepends=True)[1:]))
+            with self.assertRaises(AssertionError):
+                icons.verify_sources(root, decode_limit=0)
+
+    def test_icns_png_elements_checked_against_pixels(self):
+        iconset = icons.SOURCES / 'Arkiv-TAR.iconset'
+        types = {'ic07': 'icon_128x128.png', 'ic13': 'icon_128x128@2x.png', 'ic11': 'icon_16x16@2x.png'}
+        def icns(elements):
+            body = b''.join(kind.encode() + struct.pack('>I', len(data) + 8) + data for kind, data in elements)
+            return b'icns' + struct.pack('>I', len(body) + 8) + body
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'Arkiv-TAR.icns'
+            elements = [(kind, (iconset / name).read_bytes()) for kind, name in types.items()]
+            path.write_bytes(icns(elements + [('is32', b'\0' * 12)]))
+            self.assertEqual(icons.verify_icns(path, iconset), (['ic07', 'ic13', 'ic11', 'is32'], 3, 3))
+            width, height, rgba = icons.read_png(iconset / 'icon_128x128.png')
+            path.write_bytes(icns([('ic07', encode_png(width, height, rgba))]))
+            self.assertEqual(icons.verify_icns(path, iconset), (['ic07'], 1, 0), 'Re-encoded but pixel-identical')
+            path.write_bytes(icns([('ic07', (iconset / 'icon_256x256.png').read_bytes())]))
+            with self.assertRaises(AssertionError):
+                icons.verify_icns(path, iconset)
+            path.write_bytes(icns(elements)[:-3])
+            with self.assertRaises(AssertionError):
+                icons.verify_icns(path, iconset)
+
+    # Packaging ------------------------------------------------------------------
+    def iconutil_like(self, name, extra=((b'sRGB', b'\0'), (b'pHYs', struct.pack('>IIB', 5669, 5669, 1)))):
+        """A PNG shaped like an iconutil re-encode: same pixels, ancillary chunks, weak Deflate."""
+        width, height, rgba = icons.read_png(icons.SOURCES / 'Arkiv-ZIP.iconset' / name)
+        return encode_png(width, height, rgba, level=1, extra=extra)
+
+    def icns(self, elements):
+        body = b''.join(kind.encode() + struct.pack('>I', len(data) + 8) + data for kind, data in elements)
+        return b'icns' + struct.pack('>I', len(body) + 8) + body
+
+    def test_packaging_swaps_only_verified_idat_data(self):
+        iconset = icons.SOURCES / 'Arkiv-ZIP.iconset'
+        pixels = icons.read_manifest(icons.SOURCES / 'PIXELS.sha256')
+        argb = b'\0\0\0\0ARGB' + bytes(range(64))
+        info = b'bplist00' + bytes(20)
+        plain = self.icns([('ic12', self.iconutil_like('icon_32x32@2x.png')), ('ic04', argb),
+                           ('ic07', self.iconutil_like('icon_128x128.png')), ('info', info)])
+        packaged, report = packager.splice_icns(plain, iconset, pixels)
+        self.assertLess(len(packaged), len(plain))
+        self.assertEqual([r[0] for r in report], ['ic12', 'ic07'])
+        before, after = dict(icons.icns_elements_bytes(plain)), dict(icons.icns_elements_bytes(packaged))
+        self.assertEqual(list(before), list(after), 'Element types and order are iconutil\'s')
+        self.assertEqual(after['ic04'], argb)
+        self.assertEqual(after['info'], info)
+        for kind, name in [('ic12', 'icon_32x32@2x.png'), ('ic07', 'icon_128x128.png')]:
+            theirs, ours = list(icons.png_chunks(before[kind])), list(icons.png_chunks(after[kind]))
+            self.assertEqual([c for c in theirs if c[0] != b'IDAT'], [c for c in ours if c[0] != b'IDAT'],
+                             'IHDR, colour metadata and other chunks are preserved exactly')
+            committed = [body for k, body in icons.png_chunks((iconset / name).read_bytes()) if k == b'IDAT']
+            self.assertEqual([body for k, body in ours if k == b'IDAT'], committed)
+            self.assertEqual(icons.decode_png(after[kind]), icons.decode_png(before[kind]))
+        self.assertEqual(packager.splice_icns(plain, iconset, pixels), (packaged, report), 'Deterministic')
+        # Packaged-app verification rebuilds without decoding; for a valid build
+        # it must reproduce exactly the bytes the fully checked build wrote.
+        self.assertEqual(packager.splice_icns(plain, iconset, pixels, verify_pixels=False), (packaged, report))
+        self.assertEqual(icons.verify_icns_bytes(packaged, iconset), (['ic12', 'ic04', 'ic07', 'info'], 2, 2))
+
+    def test_packaging_keeps_iconutil_element_when_unsafe(self):
+        iconset = icons.SOURCES / 'Arkiv-ZIP.iconset'
+        pixels = icons.read_manifest(icons.SOURCES / 'PIXELS.sha256')
+        width, height, rgba = icons.read_png(iconset / 'icon_128x128.png')
+        changed = bytearray(rgba)
+        changed[len(changed) // 2] ^= 1
+        cases = {
+            'different pixels': encode_png(width, height, bytes(changed), level=1),
+            'wrong representation': self.iconutil_like('icon_256x256.png'),
+            'already smaller': (iconset / 'icon_128x128.png').read_bytes(),
+        }
+        for label, payload in cases.items():
+            plain = self.icns([('ic07', payload)])
+            packaged, _ = packager.splice_icns(plain, iconset, pixels)
+            self.assertEqual(packaged, plain, label)
+        # If the checked build kept iconutil's element because pixels differed,
+        # the decode-free rebuild differs from it, so verification fails closed.
+        plain = self.icns([('ic07', cases['different pixels'])])
+        self.assertNotEqual(packager.splice_icns(plain, iconset, pixels, verify_pixels=False)[0],
+                            packager.splice_icns(plain, iconset, pixels)[0])
+        wrong_manifest = dict(pixels, **{'Arkiv-ZIP.iconset/icon_128x128.png': '0' * 64})
+        plain = self.icns([('ic07', self.iconutil_like('icon_128x128.png'))])
+        self.assertEqual(packager.splice_icns(plain, iconset, wrong_manifest)[0], plain)
+
+    def test_optimizer_is_pinned_lossless_and_deterministic(self):
+        source = Path('design/document-icons/optimize.py').read_text()
+        for setting in ['optimize_alpha=False', 'bit_depth_reduction=False', 'color_type_reduction=False',
+                        'palette_reduction=False', 'grayscale_reduction=False', 'interlace=None',
+                        'strip=oxipng.StripChunks.none()', 'timeout=None', "OXIPNG_VERSION = '9.1.1'"]:
+            self.assertIn(setting, source)
+        requirements = Path('design/document-icons/requirements-optimize.txt').read_text()
+        self.assertIn('pyoxipng==9.1.1', requirements)
+        self.assertEqual(requirements.count('--hash=sha256:'), 3)
+        generator = Path('design/document-icons/generate.mjs').read_text()
+        self.assertIn("optimize('--reproduce', tmp)", generator)
+        self.assertIn("optimize('--record-pixels', RES)", generator)
+        for path in ['Package.swift', 'Package.resolved', 'scripts/build-app.sh']:
+            self.assertNotIn('oxipng', Path(path).read_text(), 'Optimization is design-time only')
+
     def test_png_decoder_detects_opaque_corners(self):
         width, height, rgba = icons.read_png(icons.SOURCES / 'Arkiv-7z.iconset/icon_32x32.png')
         self.assertEqual((width, height), (32, 32))
@@ -123,8 +293,9 @@ class DocumentIconTests(unittest.TestCase):
     def test_build_and_packaged_verification_hooks(self):
         build = Path('scripts/build-app.sh').read_text()
         self.assertIn('shasum -a 256 -c SHA256SUMS', build)
-        self.assertIn('Resources/DocumentIcons/Arkiv-*.iconset', build)
-        self.assertIn('iconutil -c icns "$iconset"', build)
+        self.assertIn('python3 scripts/package-document-icons.py Resources/DocumentIcons "$app/Contents/Resources"', build)
+        self.assertIn("['iconutil', '-c', 'icns', str(iconset)", Path('scripts/package-document-icons.py').read_text())
+        self.assertIn('not the deterministic iconutil-based packaging', Path('scripts/verify-document-icons.py').read_text())
         self.assertIn('swift scripts/render-icon.swift', build, 'App icon still comes from its original renderer')
         self.assertNotIn('render-document-icons.swift', build)
         for tool in ['node ', 'npm ', 'npx ', 'playwright']:

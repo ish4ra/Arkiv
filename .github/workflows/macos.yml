@@ -31,8 +31,10 @@ jobs:
         run: |
           python3 tests/test_updates.py -v
           python3 tests/test_update_channel.py -v
-      - name: Document icon registration and branding regressions
+      - name: Document icon registration, pixel identity and branding regressions
         run: python3 tests/test_document_icons.py -v
+      - name: CI reliability regressions (pipefail matching, PlugInKit retries)
+        run: python3 tests/test_ci_reliability.py -v
       - name: Check for tracked signing material
         run: python3 scripts/check-update-secrets.py
       - name: Toolchain and backend
@@ -80,6 +82,15 @@ jobs:
           scripts/ci-check.sh dmg scripts/build-dmg.sh
       - name: Package ZIP alternative
         run: ditto -c -k --sequesterRsrc --keepParent build/Arkiv.app "build/Arkiv-${ARKIV_ARCH}.zip"
+      - name: Document icon size report (informational, compared with main)
+        # Measurement only: it never changes build outputs, so it cannot block the build.
+        continue-on-error: true
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          mkdir -p build/size-baseline
+          git archive FETCH_HEAD Resources/DocumentIcons | tar -x -C build/size-baseline
+          python3 scripts/measure-document-icons.py --label main --baseline build/size-baseline/Resources/DocumentIcons --app build/Arkiv.app --zip "build/Arkiv-${ARKIV_ARCH}.zip"
+          rm -rf build/size-baseline
       - name: Extract actual packaged ZIP with Arkiv and verify app
         run: |
           ARKIV_PACKAGE_ZIP="$PWD/build/Arkiv-${ARKIV_ARCH}.zip" ARKIV_PACKAGE_OUTPUT="$PWD/build/extracted-package" scripts/ci-check.sh package-extract swift test --filter PackageExtractionTests -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
@@ -108,6 +119,33 @@ jobs:
           name: Arkiv-${{ matrix.architecture }}-development
           path: build/Arkiv-${{ matrix.architecture }}.zip
           if-no-files-found: error
+
+  icon-optimization-reproducibility:
+    # Design-time tooling check; nothing here is built into the app.
+    name: Icon optimization reproducibility (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      # Build 26501's unoptimized Playwright renders of the refined Seal Dark icons.
+      # Update this pin only together with an approved artwork change.
+      SOURCE_RENDERS: 84320dfa4ba81522dd71c63beb046b0b656819ad
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install pinned design-time optimizer (hash-locked)
+        run: python -m pip install --require-hashes -r design/document-icons/requirements-optimize.txt
+      - name: Reproduce committed icons byte-for-byte from build 26501 renders
+        run: |
+          git fetch --no-tags --depth=1 origin "$SOURCE_RENDERS"
+          mkdir -p build/icon-renders
+          git archive FETCH_HEAD Resources/DocumentIcons | tar -x -C build/icon-renders
+          python design/document-icons/optimize.py --reproduce build/icon-renders/Resources/DocumentIcons
 
   publish-development-update:
     name: Publish signed development update

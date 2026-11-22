@@ -19,20 +19,20 @@
 | ZIP Update Selected Files | Two or more regular files in one ZIP folder; strict same-basename local mapping; Replace All or conservative Replace Older; one verified atomic transaction; [details](zip-edits.md#update-selected-files) |
 | Arbitrary multi-selection mapping / folder update-by-date | Deferred; no enabled UI claims |
 | Multipart creation | 7z only: verified private splitting, 2–128 parts, 4 GiB packed limit; native creation Advanced controls |
-| RAR multipart / comments | Deferred compatibility work |
+| RAR multipart / comments | Deferred compatibility work; RAR multipart reading is roadmap milestone 5, split ZIP milestone 6 ([roadmap](roadmap.md)) |
 | RAR4 / RAR5 Phase 1 | Evidence-gated plain single-volume read/extract/Test/Open/Quick Look/drag; [compatibility](rar-compatibility.md); no creation/editing |
 | Integrity test command | ZIP/7z/RAR full-data/CRC checks; TAR structure/readability with explicit checksum warning; native progress/cancellation/password retry |
 | Checksums / split-combine / benchmark / CLI | Deferred |
 | Finder integration | Sandboxed Finder Sync **Arkiv** submenu (user enablement required; home folder only): Open, Extract Here, Extract to folder, Extract To and Test Archive for one ZIP/7z/uncompressed TAR, plus Add to Archive and ZIP/7z/password compression for normal items; [details](finder-sync.md). AppKit Services fallback for one ZIP/uncompressed TAR; [details](finder-integration.md). Extension registration and the direct menu were confirmed on a real M1 Mac; broader interactive acceptance pending |
 | Drag out | Native lazy file promises; selected files/folders to Finder; [details](drag-out.md) |
 | Drag in | Native Finder file URLs into writable ZIPs; current folder or folder-row destination |
-| Document icon themes | Planned for the final UI-customization milestone: the bundled Seal Dark (build 26501) family stays the default; optional themes download on demand, outside the app bundle; [plan](document-icon-themes.md). Not implemented |
-| Lightweight size optimisations | Planned, separate tasks: pixel-identical lossless icon recompression (≈7.81 → 6.43 MB), duplicate-representation investigation, signed Sparkle delta updates with full-update fallback, real-Mac size/launch/memory measurements; [details](document-icon-themes.md#planned-optimisation-tasks-not-implemented). Not implemented |
+| Document icon themes | Planned as roadmap milestones 2 (downloadable theme packs) and 3 (native Appearance Settings), ahead of the remaining archive-engine work; [roadmap](roadmap.md). The bundled Seal Dark (build 26501) family stays the default; optional themes download on demand, outside the app bundle; [plan](document-icon-themes.md). Not implemented |
+| Lightweight size optimisations | Lossless icon recompression implemented (in review): the 110 PNGs go from 7,808,654 to 6,334,859 bytes (−18.9%) and the packaged ICNS from 10,368,446 to 6,359,786 bytes, with every decoded pixel verified identical; Universal update archive 14.30 → 10.15 MB, DMG 14.70 → 10.42 MB; [details](document-icons.md#lossless-optimization). Duplicate-representation elimination investigated and deferred pending real-Mac compatibility evidence. Signed Sparkle delta updates and real-Mac size/launch/memory measurements remain planned |
 | ZIP/TAR associations | Viewer/alternate registration implemented; real-Mac validation pending |
 | Open regular internal file | Selective extraction into an owned temporary copy; default macOS application; [details](open-files.md) |
 | Quick Look | Native single regular-file preview using the existing owned Open-file session; Space or Quick Look menu |
 | Nested archives | Single regular entry opens in a new window after content inspection; [details](nested-archives.md) |
-| Icon / document icons | Original procedural app icon generated and packaged in macOS CI, visual validation pending; document family deferred |
+| Icon / document icons | Original procedural app icon generated and packaged in macOS CI, visual validation pending; Seal Dark document icons bundled ([details](document-icons.md)) |
 | Advanced columns | Packed Size, Ratio, Modified, Method, Encrypted, stored CRC32 and Attributes implemented; unknown evidence stays blank |
 | Open Recent | Native AppKit recent-document storage and File menu; successful normal archives only; nested/private temporary archives excluded |
 | Settings | Implemented: native General/Updates/Finder tabs, persisted appearance (default Dark), clear recents, Sparkle controls and existing Finder setup; see [Settings](settings.md) |

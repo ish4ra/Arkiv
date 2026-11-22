@@ -153,17 +153,27 @@ The app builds for arm64 by default. Set `ARKIV_ARCH=universal` for both build s
 
 ## Roadmap
 
-Planned work that is **not** in current builds:
+The owner's current order (details in [roadmap](docs/roadmap.md)):
 
-- **Formats:** TAR creation, additional RAR methods/filters, multipart archives
+1. Lossless icon optimization and CI reliability (in review)
+2. Downloadable document icon theme packs
+3. Native Appearance Settings and UI customization
+4. Safe Finder and Quick Look customization feasibility
+5. RAR multipart reading
+6. Split ZIP support
+7. Remaining archive-engine features
+
+The full queue is preserved. Planned work that is **not** in current builds:
+
+- **Formats:** additional RAR methods/filters, RAR multipart (milestone 5), split ZIP (milestone 6) and other multipart archives. TAR creation, listed here earlier, is implemented.
 - **Archive work:** encrypted ZIP after interoperability testing, general multi-selection and update-by-date operations, editing more formats, archive comments
 - **Tools:** checksums, split/combine, benchmark, a command-line companion
 - **App:** A Quick Look extension for archives in Finder remains planned. [Settings](docs/settings.md), [Open Recent](docs/open-recent.md), advanced browser columns and Archive Info are implemented.
 - **Distribution:** Developer ID signing and notarization, and the final app icon
-- **Customization (final UI milestone, after the major archive-engine work):** Settings → Appearance → Document Icon Theme. The bundled Seal Dark family stays the default; every other preserved design becomes an optional, signed, download-on-demand theme stored outside the app bundle. See [document icon themes](docs/document-icon-themes.md).
+- **Customization (milestones 2–4, no longer after the archive-engine work):** downloadable theme packs, then Settings → Appearance → Document Icon Theme and native UI customization, then a Finder/Quick Look feasibility study. The bundled refined Seal Dark family (build 26501) stays the default; every other preserved design becomes an optional, signed, download-on-demand theme stored outside the app bundle. See [document icon themes](docs/document-icon-themes.md).
 - **Lightweight by design:** bundle only what the default experience needs, download optional content on demand, and add no background services or new runtime frameworks.
 
-The full plan is in [`ARKIV_SPEC.md`](ARKIV_SPEC.md) and its current status in the [feature matrix](docs/feature-matrix.md).
+The full plan is in [`ARKIV_SPEC.md`](ARKIV_SPEC.md), the execution order in the [roadmap](docs/roadmap.md) and its current status in the [feature matrix](docs/feature-matrix.md).
 
 ## Documentation
 

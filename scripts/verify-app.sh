@@ -6,6 +6,7 @@ cd "$(dirname "$0")/.."
 app=${1:?Usage: verify-app.sh /path/to/Arkiv.app arm64|x86_64|universal}
 architecture=${2:-arm64}
 fail() { echo "::error title=Arkiv app verification::$1" >&2; exit 1; }
+source scripts/verification-helpers.sh
 [[ -d "$app" && ! -L "$app" ]] || fail 'App bundle is missing or is a symlink.'
 binary="$app/Contents/MacOS/Arkiv"
 [[ -x "$binary" ]] || fail 'App executable is missing or not executable.'
@@ -31,14 +32,11 @@ case "$architecture" in
 esac
 # Check each slice, not just the host architecture: a native test can pass while
 # a Universal slice accidentally links a runner-local compression library.
+# Output is captured first and matched without a pipeline (see
+# verification-helpers.sh); a failing otool still stops the script via set -e.
 for arch in $actual; do
   libraries=$(otool -arch "$arch" -L "$binary")
-  for library in libz.1.dylib libbz2.1.0.dylib liblzma.5.dylib; do
-    printf '%s\n' "$libraries" | grep -Fq $'\t/usr/lib/'"$library (" || fail "Missing system decoder $library in $arch slice."
-  done
-  if printf '%s\n' "$libraries" | grep -Eq '/usr/local/|/opt/|libzstd'; then
-    fail "App $arch slice depends on a non-system host library."
-  fi
+  verify_slice_libraries "$arch" "$libraries"
 done
 seven="$app/Contents/Frameworks/libArkivSeven.dylib"
 [[ -s "$seven" && ! -L "$seven" ]] || fail 'Bundled 7z engine is missing.'
@@ -48,7 +46,8 @@ case "$architecture" in
   *) lipo "$seven" -verify_arch "$architecture" ;;
 esac
 codesign --verify --strict --all-architectures "$seven"
-otool -L "$binary" | grep -q '@rpath/libArkivSeven.dylib' || fail 'App does not link its bundled 7z engine.'
+links=$(otool -L "$binary")
+text_contains F "$links" '@rpath/libArkivSeven.dylib' || fail 'App does not link its bundled 7z engine.'
 framework="$app/Contents/Frameworks/Sparkle.framework"
 [[ -L "$framework/Versions/Current" && -s "$framework/Sparkle" ]] || fail "Sparkle framework or symlinks missing."
 [[ -s "$app/Contents/Resources/Sparkle-LICENSE.txt" ]] || fail "Sparkle license missing."

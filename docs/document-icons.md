@@ -118,23 +118,93 @@ Build 26501's refined Seal Dark family is the permanent default and the only
 bundled document-icon family. Every other design is preserved on
 [`archive/document-icon-concepts-v1`](https://github.com/ish4ra/Arkiv/tree/archive/document-icon-concepts-v1/design/document-icon-concepts-v1) and
 [`archive/document-icon-concepts-v2`](https://github.com/ish4ra/Arkiv/tree/archive/document-icon-concepts-v2/design/document-icon-concepts-v2).
-A future, download-on-demand theme feature is planned in
-[document icon themes](document-icon-themes.md).
+A download-on-demand theme feature is planned in
+[document icon themes](document-icon-themes.md). It is now roadmap
+milestone 2, ahead of the remaining archive-engine work ([roadmap](roadmap.md)).
 
 ## Pipeline
 
 * **Committed artwork.** `Resources/DocumentIcons/Arkiv-<name>.iconset/` holds
   all ten macOS representations per icon (16, 32, 128, 256, 512 pt at 1× and
-  2×) as 8-bit RGBA PNGs with real transparency. `SHA256SUMS` lists each file.
-* **Build.** `scripts/build-app.sh` checks the checksums and runs Apple's
-  `iconutil` on each iconset. Nothing is rendered at build time, so packaging
-  is deterministic and needs no Node, fonts or browser.
+  2×) as 8-bit RGBA, non-interlaced PNGs with real transparency and no
+  metadata chunks. `SHA256SUMS` lists each file's bytes; `PIXELS.sha256` lists
+  each file's decoded pixels (see below).
+* **Build.** `scripts/build-app.sh` checks the checksums, then
+  `scripts/package-document-icons.py` runs Apple's `iconutil` on each iconset
+  and keeps the committed compression (below). Nothing is rendered at build
+  time, so packaging is deterministic and needs no Node, fonts, browser or
+  optimizer.
 * **Design source.** `design/document-icons/` (see its README) holds the
-  procedural generator. Labels are converted to outlines from the vendored
-  Inter Display (OFL), and `node generate.mjs --check` reproduces every
-  committed PNG byte-for-byte. It is design-time only.
+  procedural generator and the lossless optimizer. Labels are converted to
+  outlines from the vendored Inter Display (OFL), and `node generate.mjs
+  --check` re-renders, optimizes and reproduces every committed PNG
+  byte-for-byte. It is design-time only and adds nothing to the app.
 * **Concept archive.** The five explored families, surface studies and original
   boards are preserved on the `archive/document-icon-concepts-v1` branch.
+
+## Lossless optimization
+
+The bundled PNGs are build 26501's renders, recompressed losslessly with a
+pinned optimizer (oxipng 9.1.1 via hash-locked pyoxipng, level 6, libdeflate
+level 12, with every colour-type, bit-depth, palette and alpha reduction
+disabled). The artwork, colours, proportions, symbols, transparency, sizes,
+representations and the original app icon are unchanged.
+
+| | Build 26501 | Optimized | Change |
+| --- | ---: | ---: | ---: |
+| 110 PNGs | 7,808,654 bytes | 6,334,859 bytes | −1,473,795 (−18.9%) |
+| 1024 px representations (11) | 4,148,952 bytes | 3,191,773 bytes | −23.1% |
+| 11 packaged ICNS | 10,368,446 bytes | 6,359,786 bytes | −4,008,660 (−38.7%) |
+
+Measured by CI on 2026-11-22, same run and runner as the baseline:
+
+| Artifact | arm64 before → after | Universal before → after |
+| --- | ---: | ---: |
+| App bundle (apparent size) | 17.26 → 13.25 MB (−23.2%) | 20.64 → 16.63 MB (−19.4%) |
+| App bundle (allocated, `du`) | 17.50 → 13.50 MB | 20.88 → 16.88 MB |
+| Update archive ZIP (Sparkle payload is the Universal one) | 13.07 → 8.91 MB (−31.8%) | 14.30 → 10.15 MB (−29.1%) |
+| DMG (UDZO) | 13.33 → 9.06 MB (−32.0%) | 14.70 → 10.42 MB (−29.2%) |
+
+The ICNS saving is larger than the PNG saving because iconutil's own
+re-encoding was larger than the source PNGs (below).
+
+**Packaging keeps the compression.** `iconutil` re-encodes every PNG it
+embeds. On `main`, the 11 ICNS files hold 10,368,446 bytes, more than the
+7.81 MB of source PNGs. Recompressing the PNGs alone therefore changed
+nothing in the app. `scripts/package-document-icons.py` lets `iconutil`
+write each ICNS as usual: element types and order, the non-PNG 16/32 pt 1×
+elements (`ic04`, `ic05`) and the `info` element. In each embedded PNG it
+then replaces only the IDAT data with the committed PNG's. It does this only
+when the IHDRs are identical, the committed PNG has no ancillary chunks, and
+the result decodes to iconutil's pixels and to `PIXELS.sha256`. iconutil's
+other chunks (on the macOS 15 runners, `sRGB` and `eXIf`) are kept exactly.
+Packaged-app verification rebuilds this from the committed iconsets and
+requires a byte-for-byte match.
+
+Packaged ICNS, app bundle, update ZIP and DMG sizes are measured by the
+informational **Document icon size report** step of both macOS CI jobs, which
+compares this build with `main` in the same run.
+
+**Pixel equivalence.** `PIXELS.sha256` holds, for every representation, the
+SHA-256 of its decoded `WIDTHxHEIGHT\n` + 8-bit RGBA bytes. It is
+byte-identical to the manifest recorded for this theme on
+`archive/document-icon-concepts-v2`, and the test suite pins its hash. CI
+decodes all 110 PNGs with a standard-library decoder and requires an exact
+match, including the colour channels of fully transparent pixels. Packaged-app
+verification parses each ICNS and checks every embedded PNG against the same
+manifest.
+
+**Reproducibility.** The optimizer uses no timeout and its result does not
+depend on thread count or machine speed. A dedicated CI job re-optimizes
+build 26501's renders on both macOS architectures and requires
+byte-identical output.
+
+**Not done: duplicate representations.** 128 pt @2x is identical to 256 pt
+@1x, and 256 pt @2x to 512 pt @1x, in all 11 families (22 pairs, 1.48 MB
+after optimization). ICNS has no way to reference one image from two slots,
+and omitting a slot changes what Icon Services is asked to pick from. This is
+deferred until it is shown on real Macs; see the
+[investigation](document-icon-themes.md#duplicate-representation-investigation-deferred).
 
 ## Automated checks
 
@@ -144,7 +214,9 @@ update payload, via `verify-app.sh`) cover:
 * registrations, roles and ranks, alias mappings and imported declarations
 * no generic numeric or volume extension claims
 * complete iconsets with exact pixel sizes, transparent corners, opaque centres and anti-aliased edges
-* checksum integrity, decoding of each packaged ICNS back into all ten representations
+* checksum integrity and exact decoded-pixel identity with `PIXELS.sha256`
+* only IHDR/IDAT/IEND chunks in each PNG
+* decoding of each packaged ICNS back into all ten representations, and pixel identity of its embedded PNGs
 * exactly the expected icon set in the bundle, and preservation of the original app icon
 
 ## Delivery
