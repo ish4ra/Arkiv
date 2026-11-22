@@ -7,6 +7,9 @@ import plistlib
 import sys
 
 FEED = 'https://raw.githubusercontent.com/ish4ra/Arkiv/updates/appcast.xml'
+# Optional document-icon themes: a separate signed catalogue on its own branch,
+# verified with a dedicated Ed25519 key. It is never Sparkle's feed or key.
+THEME_CATALOG = 'https://raw.githubusercontent.com/ish4ra/Arkiv/document-icon-themes/catalog.json'
 
 
 def configured(source, env):
@@ -23,6 +26,14 @@ def configured(source, env):
         if len(base64.b64decode(key, validate=True)) != 32:
             raise ValueError('SPARKLE_PUBLIC_ED_KEY must encode a 32-byte public key')
         info['SUPublicEDKey'] = key
+    theme_key = env.get('ARKIV_THEME_PUBLIC_ED_KEY', '').strip()
+    if theme_key:
+        if len(base64.b64decode(theme_key, validate=True)) != 32:
+            raise ValueError('ARKIV_THEME_PUBLIC_ED_KEY must encode a 32-byte public key')
+        if theme_key == key:
+            raise ValueError('The document-icon theme key must not be the Sparkle update key')
+        info['ArkivDocumentIconThemePublicEDKey'] = theme_key
+        info['ArkivDocumentIconThemeCatalogURL'] = THEME_CATALOG
     return info
 
 

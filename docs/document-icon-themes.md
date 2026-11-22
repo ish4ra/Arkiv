@@ -1,128 +1,385 @@
-# Document icon themes (planned, not implemented)
+# Document icon themes
 
-**Status:** roadmap only. The owner moved this ahead of the remaining
-archive-engine work ([roadmap](roadmap.md)): downloadable theme packs are
-milestone 2, native Appearance Settings and UI customization milestone 3, and
-the safe Finder / Quick Look customization feasibility study milestone 4.
-Nothing described here is in current builds: no theme downloading, switching
-or settings UI exists yet.
+**Status:** downloadable theme packs and **Settings → Appearance → Document
+Icon Theme** are implemented (roadmap milestone 2, in review). Selected themes
+apply **inside Arkiv's own windows**. Finder and Quick Look keep the bundled
+Seal Dark icons; changing them safely is unproven and remains milestone 4.
+No production theme packs or signed catalogue are published yet; that needs
+the maintainer steps under [provisioning](#provisioning-maintainer).
 
-## Decisions already made
+## What users get
 
-* **Default:** the refined C · Seal Dark family shipped in build 26501 (`main`
-  at `84320df`, `Resources/DocumentIcons`) is the permanent default. It is the
-  only document-icon family bundled in Arkiv.app.
-* **Optional themes:** every other preserved design is downloaded only when a
-  user asks for it. The preserved designs are:
-  * A · Folio, A · Folio Dark, B · Strata, C · Seal
-  * C · Seal Dark: Aubergine concept, Wine, Noir
-  * C · Seal Dark: restored readability candidate
-  * superseded variants, if wanted as variants
-* **Source of truth for all artwork:** the archive branches
-  [`archive/document-icon-concepts-v1`](https://github.com/ish4ra/Arkiv/tree/archive/document-icon-concepts-v1/design/document-icon-concepts-v1) and
-  [`archive/document-icon-concepts-v2`](https://github.com/ish4ra/Arkiv/tree/archive/document-icon-concepts-v2/design/document-icon-concepts-v2) (see their `ARCHIVE.md`).
-* **Previews:** use the actual preserved artwork, rendered by the archived
-  generators. No simplified previews, invented icons or mock-ups.
-* **App icon:** the Tension Seal app icon is not themed and is not changed.
+* **Seal Dark** (the refined C · Seal Dark family from build 26501) is bundled,
+  always available, and cannot be removed. It is the default.
+* **20 optional themes**, each downloaded only when the user asks:
+  * the explored families and surface studies: A · Folio, Folio Dark, B · Strata, C · Seal Original
+  * the Seal Dark studies: Original Aubergine, Wine, Noir, and Restored Readability
+  * Classic, the pre-redesign icons
+  * all 11 superseded intermediate variations, each listed under its family
 
-## Planned user experience
+  The [inventory](document-icon-theme-inventory.md) gives each theme's source,
+  coverage, download size and installed size.
+* All artwork is the preserved artwork, rendered by the archived generators
+  and verified against the archived pixel manifests. Nothing is redrawn,
+  mocked up or simplified, and previews are the themes' own files.
 
-**Settings → Appearance → Document Icon Theme**, as a native AppKit pane:
+## Settings → Appearance → Document Icon Theme
 
-* Browse available themes, with previews of their real artwork (the 11
-  shipped formats at 128 pt, plus 32 / 16 pt samples).
-* Show download size and installed size per theme, and which are installed.
-* Download individual themes with progress and **Cancel**.
-* Select any installed theme. **Restore Default** returns to the bundled
-  family, which can never be removed.
-* Remove unused themes to reclaim disk space.
-* Installed themes work fully offline. The catalogue is fetched only while the
-  pane is open.
-* An interrupted or failed download never changes the active theme, and leaves
-  nothing half-installed.
+A native AppKit pane (`Sources/ArkivApp/DocumentIconThemePane.swift`):
+
+* **Theme list:** "Included with Arkiv" first, then each family. Variations
+  follow their family and are labelled as variations.
+* **Row status, in text and never by colour alone:** In use, Bundled,
+  Available with its download size, Downloading %, Installing, Installed,
+  Update available.
+* **Detail view:**
+  * name, family, kind and parent
+  * which formats a variation changes
+  * coverage notes (Classic)
+  * 11 previews of the theme's own 128 px artwork
+  * download and installed sizes
+* **Actions:**
+  * **Download**, with a progress bar and **Cancel**
+  * **Apply**
+  * **Remove**: removing the theme in use asks first, then switches to Seal Dark
+  * **Restore Default**
+  * **Refresh Catalogue**
+* **States:**
+  * verified catalogue
+  * offline, showing the last verified catalogue
+  * rejected or failed catalogue
+  * not configured (a build without a theme key; installed themes keep working)
+* **Boundary note, shown in the pane:** downloaded themes apply inside Arkiv;
+  Finder and Quick Look keep the bundled Seal Dark document icons until a
+  safe, supported way exists. Arkiv never modifies its app bundle, archives
+  or default apps.
+
+## Where a theme applies
+
+| Surface | State |
+| --- | --- |
+| Archive rows inside Arkiv (nested archives such as `inner.zip`) | **Implemented.** 16 pt artwork of the selected theme; other files keep their system icons |
+| Window title-bar proxy icon of an open archive | **Implemented** |
+| Archive Info | **Implemented** (64 pt) |
+| Finder document icons (icon, list, column views, Get Info) | **Not changed.** Finder reads `CFBundleTypeIconFile` from the signed bundle; there is no supported way to point it elsewhere |
+| Quick Look thumbnails | **Not implemented.** An opt-in, bundled `QLThumbnailProvider` remains the candidate (milestone 4); packs already carry the TAR.\* and volume artwork it would need |
+| Per-file custom icons | **Rejected.** They would write into users' files |
+
+Formats map to icons exactly as in `Resources/Info.plist`, using the last
+extension: `name.tar.gz` gets GZIP, `.tgz` gets TGZ and `.tzst` gets ZSTD.
+Generic numeric suffixes such as `.7z.001` are never claimed. Theme changes
+apply immediately to every open window, through the
+`ArkivDocumentIconThemeDidChange` notification; no restart is needed. A
+partial theme (Classic) falls back to the system icon for the formats it never
+had.
 
 ## Architecture
 
-**Storage, outside the signed bundle.** Arkiv.app is never modified at
-runtime, so code signatures and Sparkle's update verification are unaffected.
+```
+Sources/ArkivThemes/                  macOS-only module; CryptoKit, ImageIO, AppKit (system frameworks)
+  ThemeModels.swift                   limits, icon names, catalogue and manifest types
+  CatalogVerifier.swift               envelope, Ed25519 verification, validation, rollback
+  ThemeDownloader.swift               bounded URLSession download, streamed SHA-256
+  ThemePackValidator.swift            entry allowlist, hardened extraction, manifest and PNG checks
+  ThemeStore.swift                    storage layout, atomic publication, selection, recovery
+  DocumentIconThemeManager.swift      catalogue, downloads, install, apply, remove, previews
+  DocumentIconProvider.swift          icons for Arkiv's UI, lazy and cost-bounded
+Sources/ArkivApp/DocumentIconThemePane.swift   the Settings pane
+```
+
+**Storage, outside the signed bundle:**
 
 ```
 ~/Library/Application Support/Arkiv/DocumentIconThemes/
-    catalog.json              last verified catalogue (optional cache)
-    <theme-id>/<version>/     installed, verified, read-only to the app's logic
-    .staging/<uuid>/          in-progress downloads; never read as a theme
+    catalog.json        last verified catalogue envelope
+    <id>/<version>/     installed, verified files (read-only)
+    .staging/<uuid>/    downloads being verified; never read as a theme
+    .trash/<uuid>/      replaced or removed themes being deleted
+~/Library/Caches/Arkiv/DocumentIconThemePreviews/<id>-<version>/   verified preview packs (purgeable)
 ```
 
-If the Quick Look route below is adopted, installed themes live in an App
-Group container that the sandboxed extension can read. The layout is the same.
+The selection is `Arkiv.DocumentIconTheme` (`{id, version}`) in Arkiv's
+UserDefaults; when absent, the bundled theme is used. The App Group container
+needed by a future sandboxed Quick Look extension would hold the same layout.
 
-**Catalogue and integrity**
-* A versioned JSON catalogue, signed with a dedicated Ed25519 theme key (not
-  Sparkle's update key) and verified with CryptoKit. CryptoKit is a system
-  framework, so this adds no new dependency.
-* Each entry lists:
-  * theme id, version, minimum app version and licence/provenance note
-  * pack URL, pack size and pack SHA-256
-  * every file with its path, byte size, SHA-256 and expected pixel size
-  * preview images, with their own checksums
-* The catalogue is accepted only if the signature verifies and the version is
-  not older than the cached one, which blocks rollback.
+### Catalogue
 
-**Pack format**
-* A ZIP using the Store method. PNG data is already compressed, and Deflate
-  saves under 1%.
-* Contents: `Arkiv-<NAME>.iconset/icon_<pt>x<pt>[@2x].png` for the 11 shipped
-  types, deduplicated (see sizes below), plus preview PNGs.
-* Extraction uses Arkiv's own hardened extraction engine with a strict
-  allowlist: exact expected file names only, no directories beyond the
-  iconsets, no links, at most 128 files, at most 2 MiB per file, and a total
-  limit below 16 MiB. The download is aborted beyond the size declared in the
-  catalogue.
-* Every file's SHA-256 is checked, and each PNG is decoded with ImageIO to
-  confirm the expected dimensions, RGBA format and transparent corners, before
-  the staged folder is atomically renamed into place.
+Hosted on the single-file `document-icon-themes` branch:
+`https://raw.githubusercontent.com/ish4ra/Arkiv/document-icon-themes/catalog.json`.
+This is not Sparkle's `updates` branch.
 
-**Never execute downloaded content.** Packs contain only PNG data and
-metadata. Anything else rejects the pack.
+```json
+{"schema": 1, "keyID": "<first 8 bytes of SHA-256(public key), hex>",
+ "payload": "<base64 of the catalogue JSON>", "signature": "<base64 Ed25519>"}
+```
 
-**Interruption and recovery**
-* Downloads use a background-free `URLSession` task tied to the pane, with
-  resume data where the server supports it.
-* Stale `.staging` folders are removed the next time the pane opens or a
-  download starts. This is never done at launch.
-* The active selection is a theme id and version in `UserDefaults`. If that
-  folder is missing or fails verification, Arkiv silently uses the bundled
-  default.
+* The signature covers `"Arkiv document icon theme catalogue v1\n"` followed
+  by the exact payload bytes. It is made with a **dedicated Ed25519 theme key**
+  and verified by **CryptoKit** (`Curve25519.Signing`). Several public keys can
+  be configured, for rotation.
+* Only the public key is in the app (`ArkivDocumentIconThemePublicEDKey` in
+  Info.plist, from the `ARKIV_THEME_PUBLIC_ED_KEY` build variable). The build
+  refuses a theme key equal to Sparkle's.
+* The payload lists, per theme:
+  * id, version, name, family, kind, parent, summary, coverage and extras
+  * minimum app build, licence and provenance (archive branch, commit, source file)
+  * the pack URL, size, SHA-256, installed size and file count
+  * the preview pack URL, size, SHA-256 and every preview file's size, SHA-256 and dimensions
+* **Accepted only if:**
+  * the envelope has exactly its four keys and a 64-byte signature, from a configured key
+  * the schema is known and the default theme is `seal-dark`
+  * ids are unique, lowercase and hyphenated
+  * text is bounded and free of control characters
+  * every URL is HTTPS under `https://github.com/ish4ra/Arkiv/releases/download/`, with no query
+  * sizes are within the limits below
+  * coverage names only the 11 known icons and 8 known extras
+  * every preview matches the coverage
+* **Rollback:** a catalogue older than the highest version ever verified is
+  rejected. That version is also kept in UserDefaults, so deleting the cache
+  file does not reopen rollback. A different payload with the same version is
+  rejected as equivocation.
+* **Last-known-good:** the verified envelope is cached and re-verified on
+  every read. If the network fails, the cached catalogue is shown as offline.
+  A rejected catalogue is never shown as offline.
 
-**Runtime cost, with a target of none for users who never open the pane**
-* No launch-time work, background agent, login item, timer or network access.
-* Previews load lazily in the pane only, through an `NSCache` bounded by cost,
-  and are released when the pane closes.
-* Unselected themes are never read.
-* Theme updates are independent of app updates: a new catalogue version can
-  ship a new pack without a new Arkiv build.
+### Packs
 
-## Where a theme can apply
+`<id>-<version>.arkivtheme` is a ZIP using the Store method, with fixed
+timestamps, mode 0444 and a fixed entry order. It contains:
 
-| Surface | Feasibility | Notes |
-| --- | --- | --- |
-| Inside Arkiv's own windows (archive rows, Archive Info) | **Feasible** | Arkiv draws these itself and can use the selected theme's PNGs. |
-| Finder document icons (Get Info, icon / list / column views) | **Not possible through supported means** | Finder takes document-type icons from `CFBundleTypeIconFile` inside the signed app bundle. No supported API points them at files outside the bundle. Changing the bundle would break its signature and Sparkle's verification. |
-| Finder via a Quick Look thumbnail extension | **Possible, unproven** | A bundled, signed `QLThumbnailProvider` could draw the selected theme's artwork as a file thumbnail. See the caveats below. |
-| Per-file custom icons | **Rejected** | Writes metadata into users' files and changes their ctime. Never used. |
+* `theme.json`: id, version, name, licence, and for every covered icon and
+  extra all ten representations, each mapped to a stored file with its size,
+  SHA-256, dimensions and decoded-pixel hash
+* `Arkiv-<NAME>.iconset/icon_<pt>x<pt>[@2x].png` for the 11 icons
+* `extras/Arkiv-<NAME>.iconset/…` for TAR.GZ, TAR.BZ2, TAR.XZ, TAR.ZST,
+  TZST, `7z-volume`, `RAR-volume-future` and `ZIP-volume-future`
 
-Caveats for the Quick Look route:
-* It needs an App Group shared with the sandboxed extension.
-* Thumbnails replace icons for every file of a covered type, even when Arkiv
-  is not the default app, so this must be opt-in.
-* Finder caches thumbnails, and Arkiv must not reset that cache, so a theme
-  change may not appear on existing files until macOS refreshes them.
-* Finder shows thumbnails only where icon previews are enabled.
-* The same extension is the planned home for the preserved split-volume
-  artwork (`.7z.001` …) and for TAR.\* artwork on double suffixes.
+Byte-identical representations (128 pt @2x = 256 pt, 256 pt @2x = 512 pt)
+are stored once. The manifest still lists all ten representations of every
+icon. The preview pack holds each covered icon's 128 px file, byte-identical
+to the one in the pack.
 
-It needs a real-Mac prototype before any promise is made. Until then, theme
-switching is promised for Arkiv's own UI only.
+### Download and installation
+
+1. Download only after the user clicks Download, with an ephemeral
+   `URLSession` (no cookies or cache).
+   * The response must be HTTP 200.
+   * Redirects are followed only to HTTPS `github.com`,
+     `objects.githubusercontent.com` or `release-assets.githubusercontent.com`.
+   * The transfer stops as soon as it would exceed the signed size.
+   * The data is hashed while it streams into `.staging/<uuid>/`.
+   * Progress is reported, and Cancel stops it.
+2. Size and SHA-256 must equal the signed catalogue. The staged file is hashed
+   again before it is parsed.
+3. Entry list check (`LibArchiveEngine.inspect`): ZIP signature; at most 256
+   entries; regular files only, so no links, folders, devices or encrypted
+   entries; no executable, setuid or setgid bits; an exact path allowlist
+   derived from the theme's coverage; no duplicate or case-folded duplicate
+   paths; at most 2 MiB per file and 16 MiB in total.
+4. Extraction with Arkiv's hardened extraction engine into the staging folder.
+   The extracted tree must equal the checked list, with no links.
+5. Manifest check: same id, version and coverage as the catalogue; every
+   representation present; the exact file list; dimensions matching each
+   representation; each file's size and SHA-256; installed size equal to the
+   catalogue's.
+6. Image check for every PNG:
+   * signature, IHDR first, 8-bit RGBA, non-interlaced
+   * only IHDR, IDAT and IEND chunks, each with a valid CRC, and nothing after IEND
+   * exact dimensions
+   * a single ImageIO image, fully decoded
+7. Files are made read-only. The folder is published with one `rename(2)`; an
+   existing copy of the same version is first moved to `.trash`.
+8. A newer version replaces the older one. If the older version was in use,
+   the selection moves to the new one.
+
+Any failure discards the staging folder; the theme in use never changes.
+Downloaded content is never executed: packs hold only PNG data and one JSON
+manifest.
+
+### Using installed themes
+
+* Nothing is read at launch.
+* The provider resolves the selection the first time an icon is drawn, and
+  loads only the representations for the requested size.
+* Every read re-checks the file's size and SHA-256 against the manifest. A
+  missing or damaged theme falls back to Seal Dark, and Settings reports it.
+* Images are held in a cost-bounded `NSCache` (96 images, 12 MiB), emptied when
+  the selection changes.
+* Previews are loaded only for the theme being shown, cached in a separate
+  bounded cache (24 MiB), and released when the pane closes.
+
+**Recovery.** When the pane opens, and no download is running, stale
+`.staging` and `.trash` folders are removed. Theme folders without a valid
+manifest, with a file list that differs from the manifest, or that are links
+are ignored. Nothing is cleaned up at launch.
+
+### Limits (enforced in the app and the pipeline)
+
+| | Limit |
+| --- | --- |
+| Catalogue envelope | 1 MiB, at most 128 themes |
+| Pack download | 16 MiB (largest pack today: 8.86 MB) |
+| Installed theme | 16 MiB |
+| Preview pack | 2 MiB |
+| Files per pack | 256 (today: 137) |
+| Single file | 2 MiB (largest: a 1024 px representation, under 0.5 MB) |
+| Manifest | 256 KiB |
+
+## Theme-pack pipeline (design-time and CI only)
+
+`design/document-icon-themes/` (see its README) builds every pack from the
+archive commits pinned in `themes.json`. It never uses a branch tip, and
+nothing in it is built into the app.
+
+1. `render.mjs` extracts both archives with `git archive` and runs the
+   archived generators **unmodified**:
+   * v1 `render.mjs`
+   * v2 `iterations/render-iterations.mjs`
+   * v2 `reproduce.mjs seal-dark-restored-readability` (0 of 175 files may differ)
+
+   It then renders what the archives define but never rendered at every size:
+   * each variation's formats, through its parent family's own pipeline, from
+     the exact archived source substitutions (read from the archived script,
+     not retyped)
+   * the unregistered artwork of the two v2 Seal Dark themes
+
+   Self-checks:
+   * every variation, re-rendered at the archived script's sizes, must be
+     byte-identical to its output
+   * the extras' 512 px renders must be byte-identical to the preserved previews
+2. `build.py`:
+   * decodes every representation with the repository's standard-library
+     decoder and requires its pixels to equal the archived manifest
+     (`reference/v1-pixels.sha256`, the restored theme's `PIXELS.sha256`, or
+     `Resources/DocumentIcons/PIXELS.sha256`)
+   * renders an unaffected control icon from the unpatched parent source,
+     which must equal the parent's archived pixels
+   * requires every variation to change at least one icon
+   * recompresses with the pinned lossless optimizer used for the bundled
+     icons, then re-checks every pixel
+   * deduplicates, then writes the packs, preview packs and the unsigned
+     catalogue payload
+   * compares everything with the committed lock, `inventory.json`
+3. `scripts/document-icon-theme-catalog.swift` signs and verifies the payload
+   with CryptoKit.
+
+**Variations:**
+* A variation is its parent family plus the archived variant artwork for the
+  formats the archive records for it; nothing else changes.
+* Three variations (`folio-xs-glyph-unit-60`, `seal-layout-v0`,
+  `seal-layout-v0.5-large-glyph`) change layout code that every format shares.
+  The archive records their artwork only for specific formats, so only those
+  formats use it.
+* Two Strata variations leave their TAR.\* format identical to Strata. The
+  inventory lists, for each variation, the formats whose pixels actually differ.
+
+**Determinism:**
+* The CI job "Document icon themes" rebuilds every pack from scratch on Linux,
+  with Playwright 1.63.0 / Chromium 157.0.8103.78 (the archives' toolchain),
+  and requires byte-identical packs and catalogue payload.
+* Verified locally: this toolchain also reproduces the bundled Seal Dark PNGs
+  byte-for-byte (`node design/document-icons/generate.mjs --check`), and all
+  1,824 archive-v1 renders pixel-identically.
+
+## Distribution
+
+* **Packs:** GitHub release `document-icon-themes-v<catalogue version>`. It is
+  created as a prerelease, with `--latest=false`, so it can never become the
+  repository's Latest release. Assets are immutable: an existing release is
+  never overwritten, and unchanged packs keep their earlier URLs.
+* **Catalogue:** the `document-icon-themes` branch, holding exactly one file,
+  `catalog.json`. It advances with plumbing commits and a normal push; it is
+  never force-pushed. Its version must increase.
+* **Independence from app updates:**
+  * Sparkle reads only `updates/appcast.xml`, whose single item must reference
+    `releases/download/dev-<build>/Arkiv-universal.zip`
+    (`scripts/update_channel.py`).
+  * The theme tag namespace never overlaps `dev-*` or `development-updates`,
+    and the publisher refuses those names.
+  * Theme releases therefore cannot change Sparkle's build selection, the
+    development feed, existing tags or signed app updates. Arkiv updates
+    continue only through the signed Sparkle in-app updater.
+* **Publishing** is the manual `publish` job of
+  `.github/workflows/document-icon-themes.yml`: `workflow_dispatch` with
+  `publish: true`, on `main` only, in the protected `document-icon-themes`
+  environment. In order, it:
+  1. signs with the theme key
+  2. verifies the signature, and the published catalogue it replaces
+  3. checks that the version increases and every asset matches the signed
+     size and SHA-256
+  4. uploads the assets, and requires each to download back byte-identical
+  5. only then advances the catalogue branch
+
+## Provisioning (maintainer)
+
+None of this has been done; there is no production theme key yet. CI signs
+only with throwaway keys generated per job.
+
+1. On a trusted Mac, outside any repository, create the dedicated key:
+
+   ```bash
+   swift scripts/document-icon-theme-catalog.swift test-key ~/arkiv-theme-key
+   ```
+
+   Despite the subcommand's name, this is an ordinary Ed25519 key pair:
+   `theme-test-signing.key` (private, base64 seed) and `theme-test-signing.pub`.
+   Store the private key in your password manager, never in the repository,
+   and never reuse Sparkle's key (the tools refuse it).
+2. In GitHub, Settings → Environments → **New environment**
+   `document-icon-themes`: add **required reviewers**, restrict it to `main`,
+   and add the secret `ARKIV_THEME_PRIVATE_ED_KEY` (the private key file's
+   contents).
+3. In Settings → Secrets and variables → Actions → **Variables**, add the
+   repository variable `ARKIV_THEME_PUBLIC_ED_KEY` (the public key). Builds made
+   after this embed it, which enables downloads in Settings.
+4. Delete the local key file once it is stored.
+5. To publish: Actions → **Document icon themes** → Run workflow on `main` with
+   **publish** checked, then approve the deployment after reviewing the
+   inventory and screenshots of that run.
+6. Rotation: add the new public key alongside the old one (the verifier
+   accepts any configured key), ship a build, then sign with the new key.
+
+## Remaining real-Mac acceptance
+
+Automated CI covers verification, installation, removal, failure handling and
+rendering of the pane. These need a person at a Mac:
+
+1. Open Settings, then the Appearance tab. The window grows, the catalogue
+   loads, and previews appear only for the selected theme. Other tabs stay compact.
+2. Download a theme, watch the progress and Cancel it; download it again, then
+   Apply. Open archives update immediately: the rows of nested archives, the
+   title-bar proxy icon, and Archive Info.
+3. Quit and relaunch: the theme persists; Finder still shows Seal Dark.
+4. Turn Wi-Fi off and reopen the pane: an offline notice, installed themes
+   still apply, and previews of themes not downloaded are unavailable.
+5. Remove the theme in use: the confirmation appears and Arkiv returns to Seal Dark.
+6. Check VoiceOver labels and keyboard navigation in the list and buttons, in
+   light and dark appearance, and at 1× and 2×.
+7. Visually compare each theme's 16, 32 and 128 pt rendering in Arkiv with the
+   archived review boards.
+8. Measure installed size (`du -sh ~/Library/Application\ Support/Arkiv/DocumentIconThemes`)
+   and confirm that `/Applications/Arkiv.app` and its signature are unchanged
+   (`codesign --verify --deep --strict`) after installing themes.
+
+## Runtime cost
+
+* **At launch: none.** No theme code runs, nothing is read and nothing is
+  requested. `DocumentIconProvider` is created lazily on first use.
+* **No background agents, timers, login items or services.**
+* **Network:** only while the Appearance tab is shown (one catalogue request
+  of about 78 KB), plus user-started downloads and the preview pack (80–133 kB)
+  of a theme the user selects.
+* **Disk:** only what the user downloads.
+* **Bundle:** no artwork was added. The new Swift code is the only bundle
+  increase; see [size](#size-impact).
+
+## Size impact
+
+* Optional artwork is never bundled. The bundle keeps exactly the 11 Seal Dark
+  ICNS files, and packaged-app verification enforces that.
+* The only increase is compiled Swift: the ArkivThemes module and the Settings
+  pane. CI's informational size report step measures the app bundle, the
+  update archive and the DMG.
 
 ## Size baseline (measured 2026-11-22)
 
@@ -163,13 +420,7 @@ The document icons are read by Finder and Icon Services, not by Arkiv at
 launch, so no launch or memory cost is expected. That expectation is
 unverified.
 
-**Optional theme-pack sizes** (11 icons × 10 representations; full table in
-the [v2 `ARCHIVE.md`](https://github.com/ish4ra/Arkiv/blob/archive/document-icon-concepts-v2/design/document-icon-concepts-v2/ARCHIVE.md)): about 2.7–6.5 MB per theme after deduplication and
-lossless optimisation, for example:
-* Folio 2.70 MB
-* Seal 3.76 MB
-* Seal Dark Aubergine, Wine and Noir about 5.7–5.9 MB
-* Strata 6.47 MB
+**Optional theme-pack sizes:** measured per pack in the [inventory](document-icon-theme-inventory.md) (0.54–8.86 MB per pack, with extras and every representation).
 
 ## Optimisation tasks
 

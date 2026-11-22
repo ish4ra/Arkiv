@@ -1,5 +1,6 @@
 import AppKit
 import ArkivPresentation
+import ArkivThemes
 
 extension AppAppearance {
     /// nil opts back into the system appearance. This changes Arkiv only.
@@ -12,18 +13,26 @@ extension AppAppearance {
     }
 }
 
-final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTabViewDelegate {
     private let preferences: AppPreferences
     private let recents: RecentArchives
     private let updates: UpdateController
     private let showFinder: () -> Void
+    private let makeThemeManager: @MainActor () -> DocumentIconThemeManager
+    private var themePaneStorage: DocumentIconThemePane?
+    private let tabs = NSTabView()
+    static let appearanceTab = "Appearance"
+    private static let compactSize = NSSize(width: 520, height: 330)
+    private static let appearanceSize = NSSize(width: 820, height: 640)
     let appearancePicker = NSPopUpButton(frame: .zero, pullsDown: false)
     let automaticChecks = NSButton(checkboxWithTitle: "Automatically check for updates", target: nil, action: nil)
     private let updateStatus = NSTextField(wrappingLabelWithString: "")
 
-    init(preferences: AppPreferences, recents: RecentArchives, updates: UpdateController, showFinder: @escaping () -> Void) {
+    init(preferences: AppPreferences, recents: RecentArchives, updates: UpdateController, showFinder: @escaping () -> Void,
+         themeManager: @escaping @MainActor () -> DocumentIconThemeManager = { DocumentIconThemeManager(environment: .standard(), provider: .shared) }) {
         self.preferences = preferences; self.recents = recents
         self.updates = updates; self.showFinder = showFinder
+        self.makeThemeManager = themeManager
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 330),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Settings"
@@ -31,7 +40,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.tabbingMode = .disallowed
         super.init(window: window)
         window.delegate = self
-        let tabs = NSTabView()
         tabs.translatesAutoresizingMaskIntoConstraints = false
         let content = window.contentView!
         content.addSubview(tabs)
@@ -61,6 +69,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             note("Get Arkiv actions when you right-click files in Finder. Enable Arkiv Finder yourself in macOS extension settings; Arkiv cannot grant this approval."),
             button("Finder Integration…", #selector(openFinder(_:))),
             note("The direct Arkiv menu covers items in your home folder. For other locations, use Finder’s Services submenu. The setup window shows current status and the manual settings path.")])
+        // Appearance → Document Icon Theme. Its view and theme manager are created
+        // only when the tab is first shown; nothing here runs at launch.
+        let appearance = NSTabViewItem(identifier: Self.appearanceTab)
+        appearance.label = Self.appearanceTab
+        appearance.view = NSView()
+        tabs.addTabViewItem(appearance)
+        tabs.delegate = self
         updates.onSettingsChange = { [weak self] in self?.refresh() }
         window.center()
         refresh()
@@ -72,7 +87,42 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
     }
-    func windowDidBecomeKey(_ notification: Notification) { refresh() }
+    func windowDidBecomeKey(_ notification: Notification) { refresh(); activateThemePaneIfShown() }
+    func windowWillClose(_ notification: Notification) { themePaneStorage?.deactivate() }
+
+    /// The document icon theme pane, created on first use.
+    var themePane: DocumentIconThemePane {
+        if let pane = themePaneStorage { return pane }
+        let pane = DocumentIconThemePane(manager: makeThemeManager())
+        themePaneStorage = pane
+        if let item = tabs.tabViewItems.first(where: { $0.identifier as? String == Self.appearanceTab }) { item.view = pane }
+        return pane
+    }
+    var isThemePaneLoaded: Bool { themePaneStorage != nil }
+
+    func showAppearance() {
+        if let item = tabs.tabViewItems.first(where: { $0.identifier as? String == Self.appearanceTab }) { tabs.selectTabViewItem(item) }
+    }
+
+    func tabView(_ tabView: NSTabView, willSelect tabViewItem: NSTabViewItem?) {
+        if tabViewItem?.identifier as? String == Self.appearanceTab { _ = themePane }
+    }
+    func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+        let appearance = tabViewItem?.identifier as? String == Self.appearanceTab
+        resize(to: appearance ? Self.appearanceSize : Self.compactSize)
+        if appearance { activateThemePaneIfShown() } else { themePaneStorage?.deactivate() }
+    }
+    private func activateThemePaneIfShown() {
+        guard window?.isVisible == true, tabs.selectedTabViewItem?.identifier as? String == Self.appearanceTab else { return }
+        themePane.activate()
+    }
+    private func resize(to size: NSSize) {
+        guard let window else { return }
+        let frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
+        var origin = window.frame.origin
+        origin.y += window.frame.height - frame.height
+        window.setFrame(NSRect(origin: origin, size: frame.size), display: true, animate: window.isVisible)
+    }
     func refresh() {
         appearancePicker.selectItem(at: AppAppearance.allCases.firstIndex(of: preferences.appearance) ?? 2)
         automaticChecks.isEnabled = updates.automaticChecks != nil

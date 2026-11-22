@@ -118,9 +118,11 @@ Build 26501's refined Seal Dark family is the permanent default and the only
 bundled document-icon family. Every other design is preserved on
 [`archive/document-icon-concepts-v1`](https://github.com/ish4ra/Arkiv/tree/archive/document-icon-concepts-v1/design/document-icon-concepts-v1) and
 [`archive/document-icon-concepts-v2`](https://github.com/ish4ra/Arkiv/tree/archive/document-icon-concepts-v2/design/document-icon-concepts-v2).
-A download-on-demand theme feature is planned in
-[document icon themes](document-icon-themes.md). It is now roadmap
-milestone 2, ahead of the remaining archive-engine work ([roadmap](roadmap.md)).
+Every other preserved design is an optional, signed, download-on-demand
+theme (roadmap milestone 2, in review): Settings → Appearance → Document Icon
+Theme. Downloaded themes apply inside Arkiv; Finder keeps these bundled icons.
+See [document icon themes](document-icon-themes.md) and the
+[inventory](document-icon-theme-inventory.md).
 
 ## Pipeline
 

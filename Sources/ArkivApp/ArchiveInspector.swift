@@ -3,7 +3,7 @@ import ArkivCore
 
 /// Snapshot-only inspector; showing it performs no extraction or password lookup.
 final class ArchiveInspector: NSWindowController {
-    init(metadata: ArchiveMetadata) {
+    init(metadata: ArchiveMetadata, icon: NSImage? = nil) {
         let panel = NSPanel(contentRect:NSRect(x:0,y:0,width:520,height:360),styleMask:[.titled,.closable],backing:.buffered,defer:false)
         super.init(window:panel)
         panel.title = "Archive Info"
@@ -19,7 +19,18 @@ final class ArchiveInspector: NSWindowController {
         grid.column(at:0).xPlacement = .trailing
         let done = NSButton(title:"Done",target:self,action:#selector(dismissInspector))
         done.keyEquivalent = "\r"
-        let content = NSStackView(views:[grid,done]); content.orientation = .vertical
+        var top: NSView = grid
+        if let icon {
+            // The selected document icon theme's artwork for this format.
+            let image = NSImageView(image:icon)
+            image.imageScaling = .scaleProportionallyUpOrDown
+            image.setAccessibilityElement(false)
+            image.widthAnchor.constraint(equalToConstant:64).isActive = true
+            image.heightAnchor.constraint(equalToConstant:64).isActive = true
+            let row = NSStackView(views:[image,grid]); row.alignment = .top; row.spacing = 16
+            top = row
+        }
+        let content = NSStackView(views:[top,done]); content.orientation = .vertical
         content.alignment = .trailing; content.spacing = 18
         content.edgeInsets = NSEdgeInsets(top:20,left:20,bottom:20,right:20)
         panel.contentView = content; panel.setContentSize(content.fittingSize)

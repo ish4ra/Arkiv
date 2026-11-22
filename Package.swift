@@ -34,8 +34,13 @@ var targets: [Target] = [
 #if os(macOS)
 dependencies.append(.package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"))
 products.append(.executable(name: "Arkiv", targets: ["ArkivApp"]))
-targets.append(.executableTarget(name: "ArkivApp", dependencies: ["ArkivCore", "ArkivPresentation", "ArkivFinderIntegration", .product(name: "Sparkle", package: "Sparkle")],
+// Optional document-icon themes: CryptoKit, ImageIO and AppKit are system
+// frameworks, so this adds no dependency. macOS only.
+targets.append(.target(name: "ArkivThemes", dependencies: ["ArkivCore"]))
+targets.append(.target(name: "ArkivThemesTestSupport", dependencies: ["ArkivThemes"], path: "Tests/ArkivThemesTestSupport"))
+targets.append(.testTarget(name: "ArkivThemesTests", dependencies: ["ArkivThemes", "ArkivThemesTestSupport", "ArkivCore"]))
+targets.append(.executableTarget(name: "ArkivApp", dependencies: ["ArkivCore", "ArkivPresentation", "ArkivFinderIntegration", "ArkivThemes", .product(name: "Sparkle", package: "Sparkle")],
     linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]))
-targets.append(.testTarget(name: "ArkivAppTests", dependencies: ["ArkivApp"]))
+targets.append(.testTarget(name: "ArkivAppTests", dependencies: ["ArkivApp", "ArkivThemes", "ArkivThemesTestSupport"]))
 #endif
 let package = Package(name: "Arkiv", platforms: [.macOS(.v13)], products: products, dependencies: dependencies, targets: targets)

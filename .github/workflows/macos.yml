@@ -21,6 +21,7 @@ jobs:
     env:
       ARKIV_ARCH: ${{ matrix.architecture }}
       SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
+      ARKIV_THEME_PUBLIC_ED_KEY: ${{ vars.ARKIV_THEME_PUBLIC_ED_KEY }}
     steps:
       - uses: actions/checkout@v5
       - name: Monotonic development build number
@@ -33,6 +34,8 @@ jobs:
           python3 tests/test_update_channel.py -v
       - name: Document icon registration, pixel identity and branding regressions
         run: python3 tests/test_document_icons.py -v
+      - name: Document icon theme pipeline and publication-safety regressions
+        run: python3 tests/test_document_icon_themes.py -v
       - name: CI reliability regressions (pipefail matching, PlugInKit retries)
         run: python3 tests/test_ci_reliability.py -v
       - name: Check for tracked signing material
@@ -159,6 +162,7 @@ jobs:
       cancel-in-progress: false
     env:
       SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
+      ARKIV_THEME_PUBLIC_ED_KEY: ${{ vars.ARKIV_THEME_PUBLIC_ED_KEY }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v5
