@@ -225,6 +225,9 @@ class DocumentIconTests(unittest.TestCase):
             self.assertEqual([body for k, body in ours if k == b'IDAT'], committed)
             self.assertEqual(icons.decode_png(after[kind]), icons.decode_png(before[kind]))
         self.assertEqual(packager.splice_icns(plain, iconset, pixels), (packaged, report), 'Deterministic')
+        # Packaged-app verification rebuilds without decoding; for a valid build
+        # it must reproduce exactly the bytes the fully checked build wrote.
+        self.assertEqual(packager.splice_icns(plain, iconset, pixels, verify_pixels=False), (packaged, report))
         self.assertEqual(icons.verify_icns_bytes(packaged, iconset), (['ic12', 'ic04', 'ic07', 'info'], 2, 2))
 
     def test_packaging_keeps_iconutil_element_when_unsafe(self):
@@ -242,6 +245,11 @@ class DocumentIconTests(unittest.TestCase):
             plain = self.icns([('ic07', payload)])
             packaged, _ = packager.splice_icns(plain, iconset, pixels)
             self.assertEqual(packaged, plain, label)
+        # If the checked build kept iconutil's element because pixels differed,
+        # the decode-free rebuild differs from it, so verification fails closed.
+        plain = self.icns([('ic07', cases['different pixels'])])
+        self.assertNotEqual(packager.splice_icns(plain, iconset, pixels, verify_pixels=False)[0],
+                            packager.splice_icns(plain, iconset, pixels)[0])
         wrong_manifest = dict(pixels, **{'Arkiv-ZIP.iconset/icon_128x128.png': '0' * 64})
         plain = self.icns([('ic07', self.iconutil_like('icon_128x128.png'))])
         self.assertEqual(packager.splice_icns(plain, iconset, wrong_manifest)[0], plain)

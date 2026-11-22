@@ -40,8 +40,12 @@ def chunk(kind, body):
     return struct.pack('>I', len(body)) + kind + body + struct.pack('>I', zlib.crc32(kind + body))
 
 
-def splice_png(packaged, committed, expected_digest):
-    """Return `packaged` with its IDAT data taken from `committed`, or None if unsafe."""
+def splice_png(packaged, committed, expected_digest, verify_pixels=True):
+    """Return `packaged` with its IDAT data taken from `committed`, or None if unsafe.
+
+    With verify_pixels=False the decode checks are skipped; only packaged-app
+    verification uses that, to rebuild the exact bytes the build produced
+    (with full checks) and compare them without decoding again."""
     ours = list(icons.png_chunks(committed))
     theirs = list(icons.png_chunks(packaged))
     if {kind for kind, _ in ours} - icons.PNG_CHUNKS:
@@ -55,13 +59,14 @@ def splice_png(packaged, committed, expected_digest):
     data = b'\x89PNG\r\n\x1a\n' + b''.join(chunk(kind, body) for kind, body in theirs[:first])
     data += b''.join(chunk(kind, body) for kind, body in ours if kind == b'IDAT')
     data += b''.join(chunk(kind, body) for kind, body in theirs[last + 1:])
-    decoded = icons.decode_png(data)
-    if decoded != icons.decode_png(packaged) or icons.pixel_digest(*decoded) != expected_digest:
-        return None
+    if verify_pixels:
+        decoded = icons.decode_png(data)
+        if decoded != icons.decode_png(packaged) or icons.pixel_digest(*decoded) != expected_digest:
+            return None
     return data
 
 
-def splice_icns(icns, iconset, pixels):
+def splice_icns(icns, iconset, pixels, verify_pixels=True):
     """Return (new ICNS bytes, [(type, before, after)]) for iconutil output `icns`."""
     assert icns[:4] == b'icns' and struct.unpack('>I', icns[4:8])[0] == len(icns), 'bad ICNS header'
     offset, body, report = 8, b'', []
@@ -72,7 +77,7 @@ def splice_icns(icns, iconset, pixels):
         name = kind.decode('latin-1')
         if payload.startswith(b'\x89PNG') and name in icons.ICNS_TYPES:
             source = Path(iconset) / icons.ICNS_TYPES[name]
-            spliced = splice_png(payload, source.read_bytes(), pixels[f'{Path(iconset).name}/{source.name}'])
+            spliced = splice_png(payload, source.read_bytes(), pixels[f'{Path(iconset).name}/{source.name}'], verify_pixels)
             if spliced is not None and len(spliced) < len(payload):
                 report.append((name, len(payload), len(spliced)))
                 payload = spliced
