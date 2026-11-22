@@ -159,7 +159,9 @@ Planned work that is **not** in current builds:
 - **Archive work:** encrypted ZIP after interoperability testing, general multi-selection and update-by-date operations, editing more formats, archive comments
 - **Tools:** checksums, split/combine, benchmark, a command-line companion
 - **App:** A Quick Look extension for archives in Finder remains planned. [Settings](docs/settings.md), [Open Recent](docs/open-recent.md), advanced browser columns and Archive Info are implemented.
-- **Distribution:** Developer ID signing and notarization, the final app icon and archive document icons
+- **Distribution:** Developer ID signing and notarization, and the final app icon
+- **Customization (final UI milestone, after the major archive-engine work):** Settings → Appearance → Document Icon Theme. The bundled Seal Dark family stays the default; every other preserved design becomes an optional, signed, download-on-demand theme stored outside the app bundle. See [document icon themes](docs/document-icon-themes.md).
+- **Lightweight by design:** bundle only what the default experience needs, download optional content on demand, and add no background services or new runtime frameworks.
 
 The full plan is in [`ARKIV_SPEC.md`](ARKIV_SPEC.md) and its current status in the [feature matrix](docs/feature-matrix.md).
 
