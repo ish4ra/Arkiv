@@ -1,0 +1,19 @@
+# GitHub language statistics (Linguist).
+# Third-party code that is vendored verbatim is excluded from the repository's
+# language breakdown. This affects statistics only: builds, licences and
+# provenance are unchanged (see docs/third-party-licenses.md).
+
+# 7-Zip upstream source subset.
+Vendor/7zip/** linguist-vendored
+# Arkiv-written provenance notes for that subset stay first-party.
+Vendor/7zip/README.md -linguist-vendored
+Vendor/7zip/sources.txt -linguist-vendored
+
+# libarchive, bzip2 and liblzma (xz) public headers.
+Sources/CArkiv/vendor/** linguist-vendored
+
+# Zstandard single-file library and public headers, pinned by checksums.json.
+# Sources/CZstd/checksums.json and include/module.modulemap are Arkiv's own.
+Sources/CZstd/zstd.c linguist-vendored
+Sources/CZstd/include/zstd.h linguist-vendored
+Sources/CZstd/include/zstd_errors.h linguist-vendored
