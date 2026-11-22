@@ -31,7 +31,7 @@ jobs:
         run: |
           python3 tests/test_updates.py -v
           python3 tests/test_update_channel.py -v
-      - name: Document icon registration and branding regressions
+      - name: Document icon registration, pixel identity and branding regressions
         run: python3 tests/test_document_icons.py -v
       - name: CI reliability regressions (pipefail matching, PlugInKit retries)
         run: python3 tests/test_ci_reliability.py -v
@@ -110,6 +110,33 @@ jobs:
           name: Arkiv-${{ matrix.architecture }}-development
           path: build/Arkiv-${{ matrix.architecture }}.zip
           if-no-files-found: error
+
+  icon-optimization-reproducibility:
+    # Design-time tooling check; nothing here is built into the app.
+    name: Icon optimization reproducibility (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      # Build 26501's unoptimized Playwright renders of the refined Seal Dark icons.
+      # Update this pin only together with an approved artwork change.
+      SOURCE_RENDERS: 84320dfa4ba81522dd71c63beb046b0b656819ad
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install pinned design-time optimizer (hash-locked)
+        run: python -m pip install --require-hashes -r design/document-icons/requirements-optimize.txt
+      - name: Reproduce committed icons byte-for-byte from build 26501 renders
+        run: |
+          git fetch --no-tags --depth=1 origin "$SOURCE_RENDERS"
+          mkdir -p build/icon-renders
+          git archive FETCH_HEAD Resources/DocumentIcons | tar -x -C build/icon-renders
+          python design/document-icons/optimize.py --reproduce build/icon-renders/Resources/DocumentIcons
 
   publish-development-update:
     name: Publish signed development update

@@ -1,0 +1,8 @@
+# Design-time only: the pinned lossless PNG optimizer used by optimize.py.
+# Never installed by the app build and never shipped. Python 3.13 wheels for
+# macOS arm64, macOS x86_64 and Linux x86_64 (pyoxipng 9.1.1, MIT; wraps oxipng).
+#   python3.13 -m pip install --require-hashes -r design/document-icons/requirements-optimize.txt
+pyoxipng==9.1.1 \
+    --hash=sha256:c1af73961a090209c1bc79d75942ee45955b4b47b53939fe49a036a9943e2472 \
+    --hash=sha256:4ca1d27a90e8adaeefe1d1fbc5f754021fa0f50fec240fff644635b91423cf2d \
+    --hash=sha256:a71024ec9660253fd8ab09e0af5e66aaa973fb31cc34a4f193aab8c5b7518d91

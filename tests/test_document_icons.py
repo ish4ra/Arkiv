@@ -190,6 +190,21 @@ class DocumentIconTests(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 icons.verify_icns(path, iconset)
 
+    def test_optimizer_is_pinned_lossless_and_deterministic(self):
+        source = Path('design/document-icons/optimize.py').read_text()
+        for setting in ['optimize_alpha=False', 'bit_depth_reduction=False', 'color_type_reduction=False',
+                        'palette_reduction=False', 'grayscale_reduction=False', 'interlace=None',
+                        'strip=oxipng.StripChunks.none()', 'timeout=None', "OXIPNG_VERSION = '9.1.1'"]:
+            self.assertIn(setting, source)
+        requirements = Path('design/document-icons/requirements-optimize.txt').read_text()
+        self.assertIn('pyoxipng==9.1.1', requirements)
+        self.assertEqual(requirements.count('--hash=sha256:'), 3)
+        generator = Path('design/document-icons/generate.mjs').read_text()
+        self.assertIn("optimize('--reproduce', tmp)", generator)
+        self.assertIn("optimize('--record-pixels', RES)", generator)
+        for path in ['Package.swift', 'Package.resolved', 'scripts/build-app.sh']:
+            self.assertNotIn('oxipng', Path(path).read_text(), 'Optimization is design-time only')
+
     def test_png_decoder_detects_opaque_corners(self):
         width, height, rgba = icons.read_png(icons.SOURCES / 'Arkiv-7z.iconset/icon_32x32.png')
         self.assertEqual((width, height), (32, 32))

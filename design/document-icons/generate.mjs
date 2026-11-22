@@ -1,13 +1,16 @@
 // Generates Arkiv's production document-icon iconsets (C · Seal Dark).
 //
-//   node generate.mjs           # write Resources/DocumentIcons/*.iconset + SHA256SUMS, previews
-//   node generate.mjs --check   # re-render into a temp dir and compare with SHA256SUMS
+//   node generate.mjs           # approved artwork change only: render, record PIXELS.sha256,
+//                               # optimize losslessly, write SHA256SUMS, SVGs and previews
+//   node generate.mjs --check   # render into a temp dir, then optimize.py --reproduce: the renders
+//                               # must match PIXELS.sha256 and optimize to the committed bytes
 //
-// Design-time only (Node 22 + Playwright 1.63.0 / Chromium 157). The app build
-// never runs this: scripts/build-app.sh packages the committed PNGs with
-// Apple's iconutil, so packaging is deterministic and adds no dependency.
+// Design-time only (Node 22 + Playwright 1.63.0 / Chromium 157, plus the pinned
+// optimizer in requirements-optimize.txt). The app build never runs this:
+// scripts/build-app.sh packages the committed PNGs with Apple's iconutil, so
+// packaging is deterministic and adds no dependency.
+import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -47,7 +50,11 @@ async function renderSet(page, items, dir) {
   }
   return written;
 }
-const sums = (files, base) => files.map((f) => `${crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex')}  ${path.relative(base, f)}`).sort((a, b) => a.slice(66).localeCompare(b.slice(66))).join('\n') + '\n';
+// Lossless recompression and pixel bookkeeping live in optimize.py (pinned oxipng).
+const optimize = (...args) => {
+  const result = spawnSync(process.env.PYTHON || 'python3', [path.join(here, 'optimize.py'), ...args], { stdio: 'inherit' });
+  if (result.status !== 0) process.exit(result.status ?? 1);
+};
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ deviceScaleFactor: 1 });
@@ -56,18 +63,16 @@ const items = Object.entries(ICONS).map(([name, v]) => [name, v.format, v.label]
 
 if (process.argv.includes('--check')) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'arkiv-doc-icons-'));
-  const got = sums(await renderSet(page, items, tmp), tmp);
-  const want = fs.readFileSync(path.join(RES, 'SHA256SUMS'), 'utf8');
-  fs.rmSync(tmp, { recursive: true, force: true });
+  await renderSet(page, items, tmp);
   await browser.close();
-  if (got !== want) { console.error('Regenerated iconsets differ from Resources/DocumentIcons/SHA256SUMS'); process.exit(1); }
-  console.log(`Regenerated ${items.length} iconsets match SHA256SUMS byte-for-byte`);
+  try { optimize('--reproduce', tmp); } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+  console.log(`Regenerated ${items.length} iconsets match PIXELS.sha256 and SHA256SUMS byte-for-byte`);
   process.exit(0);
 }
 
-fs.rmSync(RES, { recursive: true, force: true });
+for (const [name] of items) fs.rmSync(path.join(RES, `Arkiv-${name}.iconset`), { recursive: true, force: true });
 const files = await renderSet(page, items, RES);
-fs.writeFileSync(path.join(RES, 'SHA256SUMS'), sums(files, RES));
+optimize('--record-pixels', RES);
 
 // Editable outlined SVG sources for every shipped icon and size tier.
 const SVG = path.join(here, 'svg');
