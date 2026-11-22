@@ -176,7 +176,7 @@ public final class DocumentIconThemeManager {
         await refreshTask?.value
     }
 
-    static func isSecurityRejection(_ error: Error) -> Bool {
+    nonisolated static func isSecurityRejection(_ error: Error) -> Bool {
         switch error as? ThemeError {
         case .catalogRejected?, .rollback?, .requiresNewerArkiv?: return true
         default: return false

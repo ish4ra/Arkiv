@@ -281,6 +281,7 @@ final class ThemeManagerTests: XCTestCase {
         XCTAssertEqual(FixtureServer.requests(sandbox.url("folio-1.preview.arkivtheme")), 1, "Verified previews are cached on disk")
         // A tampered preview pack is rejected.
         FixtureServer.set(sandbox.url("strata-1.preview.arkivtheme"), .init(body: Data(count: 10)))
-        XCTAssertTrue((await themes.previews(for: "missing")).isEmpty)
+        let missing = await themes.previews(for: "missing")
+        XCTAssertTrue(missing.isEmpty)
     }
 }
