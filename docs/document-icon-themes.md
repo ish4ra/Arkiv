@@ -1,8 +1,11 @@
 # Document icon themes (planned, not implemented)
 
-**Status:** roadmap only. This belongs to the final UI-customization
-milestone, after the major archive-engine features. Nothing described here is
-in current builds: no theme downloading, switching or settings UI exists yet.
+**Status:** roadmap only. The owner moved this ahead of the remaining
+archive-engine work ([roadmap](roadmap.md)): downloadable theme packs are
+milestone 2, native Appearance Settings and UI customization milestone 3, and
+the safe Finder / Quick Look customization feasibility study milestone 4.
+Nothing described here is in current builds: no theme downloading, switching
+or settings UI exists yet.
 
 ## Decisions already made
 
@@ -130,13 +133,19 @@ switching is promised for Arkiv's own UI only.
 | `4d80a94` (before Seal Dark icons) | 4.22 MB | 5.57 MB | 4.04 MB | 5.27 MB |
 | `84320df` (build 26501, Seal Dark) | 13.33 MB | 14.71 MB | 13.02 MB | 14.25 MB |
 
-The 11 bundled icon files hold 7.81 MB of PNG data, which is most of the
+The 11 bundled icon files held 7.81 MB of PNG data, which is most of the
 increase. The 1024 px representations are 4.15 MB of that (53%).
+
+**After lossless optimization (roadmap milestone 1):** 6.33 MB of PNG data
+(−18.9%), pixel-identical; 1024 px representations 3.19 MB. ICNS, bundle,
+update-archive and DMG sizes come from the CI size report; see
+[document icons](document-icons.md#lossless-optimization).
 
 **Ways to make the default lighter without changing a pixel.** Each needs
 approval, because it changes shipped bytes:
-1. **Lossless recompression:** oxipng level 4 takes 7.81 → 6.43 MB (−17.6%),
-   verified pixel-identical.
+1. **Lossless recompression (done, in review):** oxipng level 6 with
+   libdeflate 12 takes 7.81 → 6.33 MB (−18.9%), verified pixel-identical.
+   Level 4 gave 6.43 MB.
 2. **Fewer duplicate representations:** 128 pt @2x equals 256 pt @1x, and
    256 pt @2x equals 512 pt @1x, accounting for 1.73 MB. Omitting the
    duplicates needs real-Mac confirmation that Finder still renders identically.
@@ -159,21 +168,18 @@ lossless optimisation, for example:
 * Seal Dark Aubergine, Wine and Noir about 5.7–5.9 MB
 * Strata 6.47 MB
 
-## Planned optimisation tasks (not implemented)
+## Optimisation tasks
 
 These are separate tasks, independent of the theme feature. The default
 artwork stays build 26501's refined Seal Dark: none of these may change a
 visible pixel.
 
-1. **Pixel-identical lossless icon recompression.** Recompress the 110 bundled
-   PNGs (for example with oxipng). Measured on 2026-11-22: 7.81 MB → about
-   6.43 MB, with decoded pixels verified identical. Update `SHA256SUMS`, keep
-   a pixel-level manifest, and regenerate the generator outputs to match.
-2. **Duplicate-representation investigation.** 128 pt @2x is identical to
-   256 pt @1x, and 256 pt @2x to 512 pt @1x (1.73 MB in total). Find out on
-   real Macs whether omitting duplicates from the `.icns` keeps rendering
-   identical in Finder, Get Info, Quick Look and Dock across supported macOS
-   versions. Adopt it only if it is fully compatible.
+1. **Pixel-identical lossless icon recompression: implemented (in review).**
+   The 110 bundled PNGs go from 7,808,654 to 6,334,859 bytes, with every
+   decoded pixel verified identical against `PIXELS.sha256`. `SHA256SUMS`, the
+   generator and the tests are updated; see
+   [document icons](document-icons.md#lossless-optimization).
+2. **Duplicate-representation investigation: deferred** (below).
 3. **Signed Sparkle delta updates.** Publish Sparkle binary deltas, signed and
    verified like full updates, so unchanged resources such as icons are not
    downloaded again. A full signed update must remain the fallback whenever a
@@ -182,6 +188,30 @@ visible pixel.
    (`du -sh /Applications/Arkiv.app`), cold and warm launch time, and resident
    memory at launch and while browsing a large archive. Measure before and
    after any resource change.
+
+## Duplicate-representation investigation (deferred)
+
+**Findings (2026-11-22, automated):**
+* In all 11 families, `icon_128x128@2x.png` is byte- and pixel-identical to
+  `icon_256x256.png`, and `icon_256x256@2x.png` to `icon_512x512.png`: 22
+  pairs, 1,726,055 bytes before and 1,477,371 bytes after optimization.
+* `icon_16x16@2x.png` is *not* the same as `icon_32x32.png`: the 16 and 32 pt
+  tiers have dedicated artwork, so they are not duplicates.
+* ICNS stores each representation under its own element type (`ic13` for
+  128 pt @2x, `ic08` for 256 pt, `ic14` for 256 pt @2x, `ic09` for 512 pt).
+  The format has no way to share one payload between two types, so the only
+  saving is to omit `ic13` and `ic14`.
+* Omitting them changes what Icon Services selects from when drawing at
+  128 pt and 256 pt on Retina displays. Whether every consumer (Finder icon,
+  list, column and gallery views, Get Info, Quick Look, Dock, open/save
+  panels) then picks the 256 / 512 px image unscaled cannot be shown on the
+  headless CI runners, and Apple documents the full ten-image iconset.
+
+**Decision:** not implemented. All ten representations stay in every ICNS,
+and verification still requires them. Revisit only with a real-Mac
+comparison across the supported macOS versions (13 and later), at 1× and 2×,
+in light and dark appearance, showing identical rendering. The likely saving
+is about 1.5 MB of ICNS data.
 
 ## Lightweight principle (applies to all future features)
 
