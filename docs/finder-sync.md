@@ -212,7 +212,12 @@ regressions explicitly reject absent/wrong-type attributes and unqualified names
 A CI-only PlugInKit diagnostic registers the built appex with `pluginkit -a`, then
 checks discovery with `pluginkit -m -A -D -v -v -i xyz.isharalakshan.arkiv.finder-sync`.
 The check requires both the identifier and this build’s resolved appex path, so
-an older installed copy cannot satisfy it. It never enables the extension or resets caches. Raw diagnostic output remains
+an older installed copy cannot satisfy it. Because the pkd daemon indexes a
+registration asynchronously, an immediate query could miss a correct
+registration and fail CI intermittently. Registration and discovery are now
+retried at most seven times each, with a 1–10 s backoff (29 s of waiting at
+most). The requirement itself is unchanged, and the step still fails after
+the last attempt. Each attempt's output is kept in the local CI log. It never enables the extension or resets caches. Raw diagnostic output remains
 in local CI logs. Users do not need terminal commands. These checks establish
 bundle/class discovery, not interactive Settings visibility or user approval.
 

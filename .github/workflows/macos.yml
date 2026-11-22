@@ -33,6 +33,8 @@ jobs:
           python3 tests/test_update_channel.py -v
       - name: Document icon registration and branding regressions
         run: python3 tests/test_document_icons.py -v
+      - name: CI reliability regressions (pipefail matching, PlugInKit retries)
+        run: python3 tests/test_ci_reliability.py -v
       - name: Check for tracked signing material
         run: python3 scripts/check-update-secrets.py
       - name: Toolchain and backend
