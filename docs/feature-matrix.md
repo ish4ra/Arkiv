@@ -26,6 +26,8 @@
 | Finder integration | Sandboxed Finder Sync **Arkiv** submenu (user enablement required; home folder only): Open, Extract Here, Extract to folder, Extract To and Test Archive for one ZIP/7z/uncompressed TAR, plus Add to Archive and ZIP/7z/password compression for normal items; [details](finder-sync.md). AppKit Services fallback for one ZIP/uncompressed TAR; [details](finder-integration.md). Extension registration and the direct menu were confirmed on a real M1 Mac; broader interactive acceptance pending |
 | Drag out | Native lazy file promises; selected files/folders to Finder; [details](drag-out.md) |
 | Drag in | Native Finder file URLs into writable ZIPs; current folder or folder-row destination |
+| Document icon themes | Planned for the final UI-customization milestone: the bundled Seal Dark (build 26501) family stays the default; optional themes download on demand, outside the app bundle; [plan](document-icon-themes.md). Not implemented |
+| Lightweight size optimisations | Planned, separate tasks: pixel-identical lossless icon recompression (≈7.81 → 6.43 MB), duplicate-representation investigation, signed Sparkle delta updates with full-update fallback, real-Mac size/launch/memory measurements; [details](document-icon-themes.md#planned-optimisation-tasks-not-implemented). Not implemented |
 | ZIP/TAR associations | Viewer/alternate registration implemented; real-Mac validation pending |
 | Open regular internal file | Selective extraction into an owned temporary copy; default macOS application; [details](open-files.md) |
 | Quick Look | Native single regular-file preview using the existing owned Open-file session; Space or Quick Look menu |

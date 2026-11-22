@@ -62,6 +62,65 @@ application.
   Finder may keep showing cached icons for a while; do not reset LaunchServices
   or Finder caches as part of installation.
 
+## Finder and Desktop display investigation (open)
+
+**Observed on a real Mac (build 26501):** Get Info for `~/Desktop/Arkiv-Test.zip`
+shows the Seal Dark ZIP icon, with Arkiv as the default app, but the Desktop
+showed a generic icon for the file.
+
+**What this establishes:**
+* Get Info asks Icon Services for the file's icon at the time you open it.
+* Because Get Info shows the Seal Dark icon, Arkiv's document-type
+  registration, the packaged `Arkiv-ZIP.icns` and the default-handler binding
+  are all working.
+* The difference is therefore in how the Desktop draws that item, not in
+  Arkiv's resources.
+
+**Candidate explanations** (not yet confirmed; no claim of resolution):
+1. **Stale Desktop icon.** The Desktop is still drawing the icon it cached for
+   the item before build 26501 was registered. Finder refreshes items
+   individually.
+2. **Stale preview thumbnail.** The Desktop has **Show icon preview** enabled
+   and is drawing a Quick Look thumbnail cached before the update. A thumbnail
+   is shown instead of the document icon.
+3. **Another icon source.** A per-file custom icon, or another registered copy
+   of Arkiv, takes precedence. This is less likely, because Get Info would
+   usually reflect a custom icon too.
+
+**Read-only diagnostic:** run `scripts/diagnose-finder-document-icons.sh
+~/Desktop/Arkiv-Test.zip` on the affected Mac. It prints:
+* the file's content type, dates and extended attributes
+* the default handler and its build
+* the icon Icon Services returns, saved as a PNG
+* every Arkiv copy Spotlight knows about
+* the Desktop view options
+* a freshly rendered Quick Look thumbnail
+
+It resets no caches, registers nothing, changes no defaults and does not touch
+the file.
+
+**Remaining real-Mac tests**
+* Create a new archive on the Desktop after the update. If it shows Seal Dark
+  while the old one does not, explanation 1 or 2 applies to the old item only.
+* Compare the result with **Show icon preview** on and off (Desktop → View
+  Options), which separates explanation 2 from 1.
+* Repeat in a Finder window (icon, list, column views) to see whether the
+  difference is Desktop-only.
+* Whether a Finder relaunch changes the result. This is optional and only by
+  the user's choice; Arkiv never does it.
+
+Arkiv will not reset caches, change default applications, modify users'
+archives or register generic numeric extensions to work around this.
+
+## Themes and archives
+
+Build 26501's refined Seal Dark family is the permanent default and the only
+bundled document-icon family. Every other design is preserved on
+[`archive/document-icon-concepts-v1`](https://github.com/ish4ra/Arkiv/tree/archive/document-icon-concepts-v1/design/document-icon-concepts-v1) and
+[`archive/document-icon-concepts-v2`](https://github.com/ish4ra/Arkiv/tree/archive/document-icon-concepts-v2/design/document-icon-concepts-v2).
+A future, download-on-demand theme feature is planned in
+[document icon themes](document-icon-themes.md).
+
 ## Pipeline
 
 * **Committed artwork.** `Resources/DocumentIcons/Arkiv-<name>.iconset/` holds
