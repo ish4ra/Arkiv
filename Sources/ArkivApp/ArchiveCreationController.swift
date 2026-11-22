@@ -68,10 +68,30 @@ private final class CreationProgressThrottle: @unchecked Sendable {
     }
 }
 
+/// Flipped so a form shorter than its scroll view stays pinned to the top.
+private final class CreateArchiveFormView: NSView { override var isFlipped: Bool { true } }
+
+/// One two-column grid holds every main and Advanced row, so labels share a trailing
+/// edge and controls share a leading edge. Hidden rows collapse. The form scrolls
+/// vertically when it is taller than the display; the buttons stay in a fixed footer.
 final class CreateArchiveSheet: NSWindowController, NSWindowDelegate, NSTextFieldDelegate {
+    static let margin: CGFloat = 20
+    static let controlWidth: CGFloat = 340
+    static let popupMinimumWidth: CGFloat = 180
+    static let customSplitIndex = 7
+    static let singleCollisionHint = "Existing files are never replaced. If the archive name is taken, a numbered name such as “Name (2)” is used."
+    static let splitCollisionHint = "Existing files are never replaced. If any numbered volume with this name already exists, creation stops. Split sets are never renamed."
+    static let splitExplanation = "MB = 1,000,000 bytes; GB = 1,000,000,000 bytes. Requires 2–128 parts and at most 4 GiB in total. The encoded size is checked before any part is published."
+    private static let footerSpacing: CGFloat = 12
+    private static let formBottom: CGFloat = 8
+    private static let minimumFormHeight: CGFloat = 160
+    /// Test seam for small displays; nil uses the visible frame of the window's screen.
+    var availableHeightOverride: CGFloat?
+
     var complete: ((URL?, String, CompressionPreset, ArchiveFormat, String?, Bool, SevenZipCreationOptions?, SevenZipSplitOptions?) -> Void)?
     private let sources: [URL]
     private let advancedToggle = NSButton()
+    private let disclosure = NSStackView()
     private let dictionary = NSPopUpButton()
     private let threads = NSPopUpButton()
     private let split = NSPopUpButton()
@@ -94,9 +114,13 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate, NSTextFiel
     private let solid = NSPopUpButton()
     private let solidBlock = NSPopUpButton()
     private let memory = NSTextField(wrappingLabelWithString: "")
-    private let advanced = NSStackView()
-    private let advancedFields = NSStackView()
+    private let hint = NSTextField(wrappingLabelWithString: "")
     private let createButton = NSButton(title: "Create", target: nil, action: nil)
+    private let buttons = NSStackView()
+    private let scroll = NSScrollView()
+    private let formView = CreateArchiveFormView()
+    private var grid: NSGridView!
+    private var scrollHeight: NSLayoutConstraint!
     private let sizeCancellation = ArchiveCancellation()
     private var sizeStarted = false
     private var inputSize: Result<UInt64, Error>?
@@ -119,19 +143,31 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate, NSTextFiel
     private var finished = false
     private var suggestedName: String
 
+    private static func formLabel(_ text: String) -> NSTextField {
+        let label = NSTextField(labelWithString: text); label.alignment = .right
+        return label
+    }
+    private static func secondary(_ label: NSTextField) {
+        label.font = .systemFont(ofSize: NSFont.smallSystemFontSize); label.textColor = .secondaryLabelColor
+        label.preferredMaxLayoutWidth = controlWidth
+    }
+
     init(sources: [URL], encrypted: Bool) {
         self.sources = sources
         suggestedName = CreationHandoff.baseName(for: sources)
         destination = sources.first?.deletingLastPathComponent() ?? FileManager.default.homeDirectoryForCurrentUser
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 510, height: 340),
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 480, height: 360),
                             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         super.init(window: panel)
         panel.title = "Create Archive"; panel.isReleasedWhenClosed = false; panel.delegate = self
-        panel.tabbingMode = .disallowed; panel.center()
+        panel.tabbingMode = .disallowed
         name.stringValue = CreationHandoff.baseName(for: sources)
         name.setAccessibilityLabel("Archive name")
-        location.stringValue = destination.path; location.lineBreakMode = .byTruncatingMiddle
+        name.lineBreakMode = .byTruncatingTail; name.cell?.isScrollable = true; name.cell?.wraps = false
+        location.stringValue = destination.path; location.toolTip = destination.path
+        location.lineBreakMode = .byTruncatingMiddle; location.maximumNumberOfLines = 1
         location.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        location.setContentHuggingPriority(.defaultLow, for: .horizontal)
         compression.setAccessibilityLabel("Compression")
         compression.target = self; compression.action = #selector(updateAdvanced)
         dictionary.addItems(withTitles:["Auto"] + SevenZipCreationOptions.supportedDictionaryBytes.map { "\($0 / 1024 / 1024) MiB" })
@@ -149,55 +185,115 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate, NSTextFiel
         advancedToggle.setButtonType(.onOff); advancedToggle.bezelStyle = .disclosure
         advancedToggle.title = ""; advancedToggle.setAccessibilityLabel("Advanced compression")
         advancedToggle.target = self; advancedToggle.action = #selector(updateAdvanced)
-        let disclosure = NSStackView(views:[advancedToggle,NSTextField(labelWithString:"Advanced")]); disclosure.spacing = 6
+        disclosure.addArrangedSubview(advancedToggle); disclosure.addArrangedSubview(NSTextField(labelWithString:"Advanced"))
+        disclosure.spacing = 6; disclosure.alignment = .centerY
         split.addItems(withTitles:["No splitting","100 MB","650 MB","700 MB","1 GB","2 GB","4 GB","Custom size"])
         split.setAccessibilityLabel("Split into volumes");split.target=self;split.action = #selector(updateAdvanced)
         customSplit.setAccessibilityLabel("Custom split size in bytes");customSplit.delegate=self
-        splitHint.font = .systemFont(ofSize:11);splitHint.textColor = .secondaryLabelColor
-        let customRow=NSStackView(views:[NSTextField(labelWithString:"Custom bytes:"),customSplit])
-        let splitFields=NSStackView(views:[split,customRow,splitHint]);splitFields.orientation = .vertical;splitFields.alignment = .leading
-        let advancedGrid = NSGridView(views:[[NSTextField(labelWithString:"Dictionary:"),dictionary],[NSTextField(labelWithString:"Threads:"),threads],[NSTextField(labelWithString:"Solid:"),solid],[NSTextField(labelWithString:"Solid block:"),solidBlock],[NSTextField(labelWithString:"Split into volumes:"),splitFields]])
-        advancedGrid.rowSpacing = 8; advancedGrid.columnSpacing = 12
-        advancedFields.addArrangedSubview(advancedGrid)
-        memory.font = .systemFont(ofSize:11); memory.textColor = .secondaryLabelColor
-        advanced.orientation = .vertical; advanced.alignment = .leading; advanced.spacing = 8
-        let advancedViews: [NSView] = [disclosure,advancedFields,memory]
-        advancedViews.forEach { advanced.addArrangedSubview($0) }
+        customSplit.placeholderString = "Bytes per volume"
+        customSplit.widthAnchor.constraint(equalToConstant: 160).isActive = true
         format.addItems(withTitles: ArchiveFormat.allCases.map(\.title))
         format.setAccessibilityLabel("Archive format")
         format.target = self; format.action = #selector(changeFormat)
+        for popup in [format, compression, dictionary, threads, solid, solidBlock, split] {
+            popup.widthAnchor.constraint(greaterThanOrEqualToConstant: Self.popupMinimumWidth).isActive = true
+        }
         encryption.target = self; encryption.action = #selector(changeEncryption)
         filenames.state = .on
-        encryptionNote.textColor = .secondaryLabelColor
-        let passwordSection = NSStackView(views: [encryption, passwords, filenames, encryptionNote])
-        passwordSection.orientation = .vertical; passwordSection.alignment = .leading; passwordSection.spacing = 8
+        encryptionNote.textColor = .secondaryLabelColor; encryptionNote.preferredMaxLayoutWidth = Self.controlWidth
+        for label in [splitHint, memory, hint] { Self.secondary(label) }
         let choose = NSButton(title: "Choose…", target: self, action: #selector(chooseDestination))
-        let destinationRow = NSStackView(views: [location, choose]); destinationRow.spacing = 8
-        let selection = NSTextField(wrappingLabelWithString: sources.prefix(5).map(\.lastPathComponent).joined(separator: ", ") + (sources.count > 5 ? " … (\(sources.count) items)" : ""))
-        let grid = NSGridView(views: [
-            [NSTextField(labelWithString: "Items:"), selection],
-            [NSTextField(labelWithString: "Name:"), name],
-            [NSTextField(labelWithString: "Destination:"), destinationRow],
-            [NSTextField(labelWithString: "Format:"), format],
-            [NSTextField(labelWithString: "Compression:"), compression],
-            [NSTextField(labelWithString: "Encryption:"), passwordSection]
+        choose.setContentCompressionResistancePriority(.required, for: .horizontal)
+        choose.setContentHuggingPriority(.required, for: .horizontal)
+        let destinationRow = NSStackView(views: [location, choose])
+        destinationRow.spacing = 8; destinationRow.distribution = .fill; destinationRow.alignment = .centerY
+        let names = sources.prefix(5).map(\.lastPathComponent).joined(separator: ", ") + (sources.count > 5 ? " … (\(sources.count) items)" : "")
+        let selection = NSTextField(wrappingLabelWithString: names)
+        selection.toolTip = sources.map(\.lastPathComponent).joined(separator: "\n")
+        selection.preferredMaxLayoutWidth = Self.controlWidth
+        selection.maximumNumberOfLines = 3; selection.cell?.truncatesLastVisibleLine = true
+        selection.setAccessibilityLabel("Items to compress")
+
+        let empty = NSGridCell.emptyContentView
+        let rows: [[NSView]] = [
+            [Self.formLabel("Items:"), selection],
+            [Self.formLabel("Name:"), name],
+            [Self.formLabel("Destination:"), destinationRow],
+            [Self.formLabel("Format:"), format],
+            [Self.formLabel("Compression:"), compression],
+            [Self.formLabel("Encryption:"), encryption],
+            [empty, passwords],
+            [empty, filenames],
+            [empty, encryptionNote],
+            [empty, disclosure],
+            [Self.formLabel("Dictionary:"), dictionary],
+            [Self.formLabel("Threads:"), threads],
+            [Self.formLabel("Solid:"), solid],
+            [Self.formLabel("Solid block:"), solidBlock],
+            [Self.formLabel("Split into volumes:"), split],
+            [Self.formLabel("Custom bytes:"), customSplit],
+            [empty, splitHint],
+            [empty, memory],
+            [empty, hint]
+        ]
+        let grid = NSGridView(views: rows)
+        self.grid = grid
+        grid.rowSpacing = 10; grid.columnSpacing = 8; grid.rowAlignment = .firstBaseline
+        // Measure every label once (hidden Advanced labels included) so expanding
+        // Advanced never shifts the controls sideways.
+        let labelWidth = rows.compactMap { $0[0] as? NSTextField }.map { ceil($0.fittingSize.width) }.max() ?? 0
+        grid.column(at: 0).xPlacement = .trailing; grid.column(at: 0).width = labelWidth
+        grid.column(at: 1).xPlacement = .leading; grid.column(at: 1).width = Self.controlWidth
+        for view in [selection, name, destinationRow, passwords, encryptionNote, splitHint, memory, hint] as [NSView] {
+            grid.cell(for: view)?.xPlacement = .fill
+        }
+        for view in [destinationRow, passwords, disclosure] as [NSView] {
+            grid.cell(for: view)?.row?.rowAlignment = .none
+            grid.cell(for: view)?.row?.yPlacement = view === passwords ? .top : .center
+        }
+        grid.cell(for: disclosure)?.row?.topPadding = 4
+        grid.cell(for: hint)?.row?.topPadding = 4
+
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        formView.addSubview(grid)
+        NSLayoutConstraint.activate([
+            grid.topAnchor.constraint(equalTo: formView.topAnchor, constant: Self.margin),
+            grid.leadingAnchor.constraint(equalTo: formView.leadingAnchor, constant: Self.margin)
         ])
-        grid.rowSpacing = 12; grid.columnSpacing = 12
+        scroll.documentView = formView
+        scroll.drawsBackground = false; scroll.borderType = .noBorder
+        scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = false; scroll.autohidesScrollers = true
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+
         let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelCreate)); cancel.keyEquivalent = "\u{1b}"
         createButton.target = self; createButton.action = #selector(createArchive); createButton.keyEquivalent = "\r"
-        let buttons = NSStackView(views: [cancel, createButton]); buttons.spacing = 8
-        let hint = NSTextField(wrappingLabelWithString: "Existing files are never replaced. A numbered name is used if needed.")
-        hint.font = .systemFont(ofSize: 11); hint.textColor = .secondaryLabelColor
-        let content = NSStackView(views: [grid, advanced, hint, buttons]); content.orientation = .vertical
-        content.alignment = .trailing; content.spacing = 16
-        content.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        panel.contentView = content
-        content.widthAnchor.constraint(equalToConstant: 510).isActive = true
-        grid.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -40).isActive = true
+        for button in [cancel, createButton] {
+            button.widthAnchor.constraint(greaterThanOrEqualToConstant: 80).isActive = true
+            buttons.addArrangedSubview(button)
+        }
+        buttons.spacing = 12
+        buttons.translatesAutoresizingMaskIntoConstraints = false
+
+        let root = NSView()
+        root.addSubview(scroll); root.addSubview(buttons)
+        scrollHeight = scroll.heightAnchor.constraint(equalToConstant: Self.minimumFormHeight)
+        let bottom = buttons.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -Self.margin)
+        bottom.priority = .defaultHigh
+        NSLayoutConstraint.activate([
+            scroll.topAnchor.constraint(equalTo: root.topAnchor),
+            scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            scrollHeight,
+            buttons.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: Self.footerSpacing),
+            buttons.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -Self.margin),
+            buttons.leadingAnchor.constraint(greaterThanOrEqualTo: root.leadingAnchor, constant: Self.margin),
+            bottom
+        ])
+        panel.contentView = root
         format.selectItem(at: encrypted ? 1 : 0)
         encryption.state = encrypted ? .on : .off
         changeFormat()
-        panel.setContentSize(content.fittingSize)
+        panel.center()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
     func present(parent: NSWindow?) {
@@ -205,7 +301,41 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate, NSTextFiel
         guard let window else { return }
         if let parent { parent.beginSheet(window) }
         else { showWindow(nil); window.makeKeyAndOrderFront(nil) }
+        relayout()
         window.makeFirstResponder(name)
+    }
+    /// Hides a form row together with its content so it takes no space.
+    private func setVisible(_ view: NSView, _ visible: Bool) {
+        view.isHidden = !visible
+        grid.cell(for: view)?.row?.isHidden = !visible
+    }
+    /// Sizes the window to the form, capped to the display; the form scrolls beyond that.
+    func relayout() {
+        guard let window, let grid else { return }
+        let form = grid.fittingSize
+        let formSize = NSSize(width: ceil(form.width) + 2 * Self.margin, height: ceil(form.height) + Self.margin + Self.formBottom)
+        let footer = ceil(buttons.fittingSize.height) + Self.footerSpacing + Self.margin
+        let chrome = window.frameRect(forContentRect: .zero).height
+        let available = availableHeightOverride ?? (window.screen ?? NSScreen.main)?.visibleFrame.height ?? 800
+        let visibleForm = min(formSize.height, max(Self.minimumFormHeight, floor(available - chrome - footer)))
+        let scrolls = visibleForm < formSize.height
+        let scroller = scrolls && NSScroller.preferredScrollerStyle == .legacy ? NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy) : 0
+        formView.frame = NSRect(origin: .zero, size: formSize)
+        scrollHeight.constant = visibleForm
+        let content = NSSize(width: formSize.width + scroller, height: visibleForm + footer)
+        if window.isVisible && window.sheetParent == nil {
+            // Keep the title bar in place while sections expand or collapse, moving up
+            // only when the taller window would otherwise leave the visible screen.
+            var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: content))
+            frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
+            if let screen = (window.screen ?? NSScreen.main)?.visibleFrame, frame.minY < screen.minY {
+                frame.origin.y = min(screen.minY, screen.maxY - frame.height)
+            }
+            window.setFrame(frame, display: true)
+        } else {
+            window.setContentSize(content)
+        }
+        window.contentView?.layoutSubtreeIfNeeded()
     }
     @objc private func changeFormat() {
         let nextName = selectedFormat.isStandalone && sources.count == 1 ? sources[0].lastPathComponent : CreationHandoff.baseName(for: sources)
@@ -219,8 +349,8 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate, NSTextFiel
         compression.selectItem(at: presets.firstIndex(of: .normal)!)
         compression.toolTip = fixedSettings ? "Fixed, bounded compression settings. This format has no encryption." : selectedFormat == .sevenZip ? "LZMA2 compression. Higher presets may need substantially more memory and time." : "Store uses no compression; other presets use Deflate."
         encryption.isEnabled = !fixedSettings
-        encryptionNote.isHidden = selectedFormat == .sevenZip
-        encryption.isHidden = fixedSettings
+        setVisible(encryptionNote, selectedFormat != .sevenZip)
+        setVisible(encryption, !fixedSettings)
         encryptionNote.stringValue = fixedSettings ? "This format does not support encryption." : "ZIP uses WinZip AES-256. Filenames remain visible."
         if fixedSettings { encryption.state = .off; passwords.clear() }
         changeEncryption()
@@ -228,22 +358,23 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate, NSTextFiel
     }
     @objc private func changeEncryption() {
         let enabled = (selectedFormat == .sevenZip || selectedFormat == .zip) && encryption.state == .on
-        passwords.isHidden = !enabled; filenames.isHidden = !enabled || selectedFormat != .sevenZip
+        setVisible(passwords, enabled); setVisible(filenames, enabled && selectedFormat == .sevenZip)
         if !enabled { passwords.clear() }
-        window?.contentView?.layoutSubtreeIfNeeded()
-        if let content = window?.contentView { window?.setContentSize(content.fittingSize) }
+        relayout()
     }
     @objc private func updateAdvanced() {
         solidBlock.isEnabled = solid.indexOfSelectedItem == 1
-        advanced.isHidden = selectedFormat != .sevenZip
-        advancedFields.isHidden = advancedToggle.state != .on
+        let seven = selectedFormat == .sevenZip, expanded = seven && advancedToggle.state == .on
+        setVisible(disclosure, seven); setVisible(memory, seven)
+        for view in [dictionary, threads, solid, solidBlock, split, splitHint] as [NSView] { setVisible(view, expanded) }
+        setVisible(customSplit, expanded && split.indexOfSelectedItem == Self.customSplitIndex)
         createButton.isEnabled = true
         if selectedFormat.isStandalone {
             let regular = sources.count == 1 && (try? FileManager.default.attributesOfItem(atPath: sources[0].path)[.type] as? FileAttributeType) == .typeRegular
             createButton.isEnabled = regular
             encryptionNote.stringValue = regular ? "One regular file. No encryption. Use TAR for folders or multiple files." : "Choose exactly one regular file, or use a TAR-based format for this selection."
         }
-        if selectedFormat == .sevenZip {
+        if seven {
             if !sizeStarted {
                 sizeStarted = true
                 let inputs = sources, token = sizeCancellation
@@ -268,16 +399,15 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate, NSTextFiel
                 createButton.isEnabled = false
             }
         }
-        customSplit.superview?.isHidden = split.indexOfSelectedItem != 7
-        splitHint.stringValue = "MB = 1,000,000 bytes; GB = 1,000,000,000 bytes. Requires 2–128 parts and at most 4 GiB total. Encoded size is checked before publication. Existing sets are never replaced."
+        splitHint.stringValue = Self.splitExplanation
+        hint.stringValue = seven && split.indexOfSelectedItem > 0 ? Self.splitCollisionHint : Self.singleCollisionHint
         do { _ = try selectedSplit() } catch {createButton.isEnabled=false;splitHint.stringValue=error.localizedDescription}
-        window?.contentView?.layoutSubtreeIfNeeded()
-        if let content = window?.contentView { window?.setContentSize(content.fittingSize) }
+        relayout()
     }
     @objc private func chooseDestination() {
         let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true
         panel.canCreateDirectories = true; panel.allowsMultipleSelection = false; panel.directoryURL = destination
-        if panel.runModal() == .OK, let url = panel.url { destination = url; location.stringValue = url.path }
+        if panel.runModal() == .OK, let url = panel.url { destination = url; location.stringValue = url.path; location.toolTip = url.path }
     }
     @objc private func createArchive() {
         guard createButton.isEnabled else { return }
