@@ -37,7 +37,7 @@
 
 See `archive-formats.md` for the narrower per-format evidence. This is an early development foundation, not a production-ready archive manager or completion of Priority A.
 
-Archive document icons: the Seal Dark family covers ZIP, 7z, RAR, TAR, GZIP, BZIP2, XZ, Zstandard and TGZ, each with its own artwork; the Tension Seal app icon is unchanged. Packaged resources are validated; Finder visual acceptance requires a real Mac. See [document icons](document-icons.md).
+Archive document icons: the Seal Dark family covers ZIP, 7z, RAR, TAR, GZIP, BZIP2, XZ, Zstandard, TGZ, TBZ2 and TXZ, each with its own artwork; the Tension Seal app icon is unchanged. Packaged resources are validated; Finder visual acceptance requires a real Mac. See [document icons](document-icons.md).
 
 Compressed TAR: read/browse/extract/Test via bounded gzip/bzip2/XZ decoding; shared Open/Quick Look/nested/drag workflows. Creation also supported; editing remains unavailable. [Limits](compressed-tar.md).
 

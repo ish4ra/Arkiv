@@ -21,6 +21,8 @@ are pinned by `branding/app-icon-preservation.json`.
 | `Arkiv-XZ.icns` | crystal (diamond) ribbon | `org.tukaani.xz-archive` (imported) | `.xz`, including `.tar.xz` |
 | `Arkiv-ZSTD.icns` | speed Z-fold | `org.zstandard.zstd` (imported) | `.zst`, `.tzst`, including `.tar.zst` |
 | `Arkiv-TGZ.icns` | tape spiral + GZIP medallion, coral fold | `org.gnu.gnu-zip-tar-archive` (declared by macOS) | `.tgz` |
+| `Arkiv-TBZ2.icns` | tape spiral + BZIP2 medallion, moss fold | `public.tar-bzip2-archive` (declared by macOS) | `.tbz2`, `.tbz` |
+| `Arkiv-TXZ.icns` | tape spiral + XZ medallion, iris fold | `org.tukaani.tar-xz-archive` (declared by macOS) | `.txz` |
 
 Every type is registered as **Viewer** with **LSHandlerRank Alternate**.
 Imported declarations are unchanged from before this family, apart from the
@@ -29,17 +31,16 @@ application.
 
 ## Alias decisions
 
-* **`.tgz`:** macOS itself declares `org.gnu.gnu-zip-tar-archive`, so Arkiv only
-  attaches a document type and icon to it, with no new type declaration.
-  `scripts/diagnose-document-types.swift` fails packaged-app verification if
-  the system ever stops declaring it.
-* **`.tzst`:** stays on `org.zstandard.zstd` (where it was already declared),
-  so an association the user made for it does not move. It therefore shows the
+* **`.tgz`, `.tbz2`/`.tbz`, `.txz`:** macOS declares `org.gnu.gnu-zip-tar-archive`,
+  `public.tar-bzip2-archive` and `org.tukaani.tar-xz-archive`. This was confirmed
+  on the macOS 15 CI runners, which have no Arkiv type registered. Arkiv only
+  attaches Viewer/Alternate document types and icons to these, with no new
+  declarations. `scripts/diagnose-document-types.swift` prints each declaring
+  bundle and fails packaged-app verification if a suffix stops resolving to its
+  declared type.
+* **`.tzst`:** macOS has no type for it, so it stays on `org.zstandard.zstd` (where
+  Arkiv already declared it), and an association the user made for it does not move. It therefore shows the
   ZSTD icon. The TZST/TAR.ZST artwork is kept in `design/document-icons`.
-* **`.tbz2` / `.txz`:** not declared. Declaring new types for them could
-  conflict with declarations from other installed apps and change how existing
-  files are typed. Arkiv still opens them through File → Open; the TBZ2/TXZ
-  artwork is kept for a future Quick Look task.
 
 ## Finder limitations
 
@@ -49,7 +50,7 @@ application.
   a Quick Look thumbnail can take precedence.
 * Finder types a file by its last extension, so `name.tar.gz` gets the GZIP icon
   and `name.tar.zst` the ZSTD icon. Compressed-TAR artwork can appear only for
-  single-suffix aliases with their own type (today `.tgz`).
+  single-suffix aliases with their own type (`.tgz`, `.tbz2`/`.tbz`, `.txz`).
 * **Split 7z volumes** (`name.7z.001`, `.002`, …) are typed by the generic
   numeric suffix, which unrelated software also uses. Arkiv does not register
   `.001`-style suffixes and never writes icons into user files. The approved
@@ -96,12 +97,12 @@ is needed.
 ## Real-Mac visual acceptance (not automated)
 
 1. Install the packaged app and confirm the original app icon is unchanged.
-2. Associate representative `.zip .7z .rar .tar .gz .bz2 .xz .zst .tgz` files
+2. Associate representative `.zip .7z .rar .tar .gz .bz2 .xz .zst .tgz .tbz2 .txz` files
    with Arkiv via Get Info → Open with only if you want to. Existing defaults
    stay yours.
 3. Inspect Finder icon, list, column and gallery views at 16–512 pt, on Retina
    and non-Retina displays, in light and dark appearance and on tinted desktops.
-4. Confirm `.tar.gz`/`.tar.zst`/`.tzst` show their compressor icon, and that
-   `.tbz2`, `.txz` and `.7z.001` are unaffected.
+4. Confirm `.tar.gz`/`.tar.zst`/`.tzst` show their compressor icon, `.tgz`/`.tbz2`/`.txz`
+   their TAR-family icon, and that `.7z.001` is unaffected.
 5. After a Sparkle update from the previous build, confirm the new icons appear
    without manual cache resets (allow for Finder's own refresh delay).

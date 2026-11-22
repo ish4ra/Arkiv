@@ -55,9 +55,14 @@ class DocumentIconTests(unittest.TestCase):
         self.assertIn('org.gnu.gnu-zip-tar-archive', icons.ICONS.values())
         self.assertNotIn('org.gnu.gnu-zip-tar-archive', imported)
         self.assertNotIn('tgz', extensions)
+        # .tbz2/.tbz and .txz: macOS-declared types, likewise never redeclared.
+        for uti in ['public.tar-bzip2-archive', 'org.tukaani.tar-xz-archive']:
+            self.assertIn(uti, icons.ICONS.values())
+            self.assertNotIn(uti, imported)
+        self.assertEqual(set(icons.SYSTEM_DECLARED), {'org.gnu.gnu-zip-tar-archive', 'public.tar-bzip2-archive', 'org.tukaani.tar-xz-archive'})
         # .tzst stays on the existing Zstandard type so current associations do not move.
         self.assertEqual(imported['org.zstandard.zstd'], ['zst', 'tzst'])
-        # .tbz2/.txz and double suffixes are not claimed (no new conflicting types).
+        # No alias or double suffix is declared by Arkiv itself.
         for ext in ['tbz2', 'tbz', 'txz', 'tar.gz', 'tar.bz2', 'tar.xz', 'tar.zst']:
             self.assertNotIn(ext, extensions)
         changed = copy.deepcopy(self.info)

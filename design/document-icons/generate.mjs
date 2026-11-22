@@ -23,7 +23,7 @@ const RES = path.join(repo, 'Resources/DocumentIcons');
 
 import { ICONS } from './generate-config.mjs';
 // Artwork kept for a future Quick Look thumbnail extension; never packaged.
-const UNREGISTERED = [['TAR.GZ', 'tgz'], ['TAR.BZ2', 'tbz2'], ['TBZ2', 'tbz2', 'TBZ2'], ['TAR.XZ', 'txz'], ['TXZ', 'txz', 'TXZ'],
+const UNREGISTERED = [['TAR.GZ', 'tgz'], ['TAR.BZ2', 'tbz2'], ['TAR.XZ', 'txz'],
   ['TAR.ZST', 'tzst'], ['TZST', 'tzst', 'TZST'], ['7z-volume', '7z-split'], ['RAR-volume-future', 'rar-parts'], ['ZIP-volume-future', 'zip-split']];
 const REPS = [16, 32, 128, 256, 512].flatMap((pt) => [[pt, 1], [pt, 2]]);
 const repName = (pt, scale) => `icon_${pt}x${pt}${scale === 2 ? '@2x' : ''}.png`;

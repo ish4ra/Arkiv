@@ -11,4 +11,6 @@ export const ICONS = {
   XZ: { format: 'xz', ext: '.xz · .tar.xz' },
   ZSTD: { format: 'zst', ext: '.zst · .tar.zst · .tzst' },
   TGZ: { format: 'tgz', label: 'TGZ', ext: '.tgz' },
+  TBZ2: { format: 'tbz2', label: 'TBZ2', ext: '.tbz2 · .tbz' },
+  TXZ: { format: 'txz', label: 'TXZ', ext: '.txz' },
 };

@@ -29,6 +29,8 @@ ICONS = {
     'XZ': 'org.tukaani.xz-archive',
     'ZSTD': 'org.zstandard.zstd',
     'TGZ': 'org.gnu.gnu-zip-tar-archive',
+    'TBZ2': 'public.tar-bzip2-archive',
+    'TXZ': 'org.tukaani.tar-xz-archive',
 }
 FORMATS = {name: ICONS[name] for name in ('ZIP', 'TAR', '7z', 'RAR')}
 STREAM_FORMATS = {'org.gnu.gnu-zip-archive': 'gz', 'public.bzip2-archive': 'bz2',
@@ -39,7 +41,8 @@ IMPORTED = {'org.7-zip.7-zip-archive': ['7z'], 'com.rarlab.rar-archive': ['rar']
             'org.gnu.gnu-zip-archive': ['gz'], 'public.bzip2-archive': ['bz2'],
             'org.tukaani.xz-archive': ['xz'], 'org.zstandard.zstd': ['zst', 'tzst']}
 # Declared by macOS itself; Arkiv only attaches a Viewer/Alternate document type.
-SYSTEM_DECLARED = {'org.gnu.gnu-zip-tar-archive': 'tgz'}
+SYSTEM_DECLARED = {'org.gnu.gnu-zip-tar-archive': ['tgz'], 'public.tar-bzip2-archive': ['tbz2', 'tbz'],
+                   'org.tukaani.tar-xz-archive': ['txz']}
 # Split-volume and generic numeric suffixes are shared with unrelated software.
 GENERIC_EXTENSION = re.compile(r'^(\d+|[a-z]\d{2,}|part\d+)$', re.IGNORECASE)
 REPRESENTATIONS = [(pt, scale) for pt in (16, 32, 128, 256, 512) for scale in (1, 2)]

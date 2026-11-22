@@ -40,7 +40,7 @@ approved concept, in light and dark, at large and actual small sizes.
 | `generate.mjs` | Writes `Resources/DocumentIcons/*.iconset` + `SHA256SUMS`, editable SVGs and unregistered previews |
 | `board.mjs` | Review board, optionally against the archived concept |
 | `svg/` | Outlined, editable SVG sources (`-xs` 16 pt, `-s` 32 pt, `-l` large) for shipped and unregistered artwork |
-| `previews/unregistered/` | TAR.\* labels, TBZ2/TXZ/TZST, the 7z volume (for a future Quick Look extension) and future RAR/ZIP volume concepts |
+| `previews/unregistered/` | TAR.\* double-suffix labels, TZST, the 7z volume (for a future Quick Look extension) and future RAR/ZIP volume concepts |
 
 ## Regenerate
 
@@ -51,7 +51,7 @@ opentype.js **1.3.4**, all pinned in `package-lock.json`.
 cd design/document-icons
 npm ci
 npx playwright install chromium
-node generate.mjs --check     # expect: Regenerated 9 iconsets match SHA256SUMS byte-for-byte
+node generate.mjs --check     # expect: Regenerated 11 iconsets match SHA256SUMS byte-for-byte
 node generate.mjs             # only after an approved design change; commit the result
 node board.mjs previews/production-board.png \
   --concept <archive checkout>/design/document-icon-concepts-v1/directions/seal-dark.mjs

@@ -185,7 +185,7 @@ Third-party components keep their own licenses:
 
 See [third-party notices](docs/third-party-licenses.md).
 
-Archive document icons (Seal Dark family) are provided for ZIP, 7z, RAR, TAR, GZIP, BZIP2, XZ, Zstandard and TGZ when macOS associates them with Arkiv. This does not change default handlers or expand RAR compatibility. See [document icons and Finder checks](docs/document-icons.md).
+Archive document icons (Seal Dark family) are provided for ZIP, 7z, RAR, TAR, GZIP, BZIP2, XZ, Zstandard, TGZ, TBZ2 and TXZ when macOS associates them with Arkiv. This does not change default handlers or expand RAR compatibility. See [document icons and Finder checks](docs/document-icons.md).
 
 See [compressed TAR](docs/compressed-tar.md) for stream integrity, temporary-disk limits and read-only compatibility boundaries.
 
