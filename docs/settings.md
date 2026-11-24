@@ -1,7 +1,7 @@
 # Settings
 
 Open **Arkiv → Settings…** (Command-comma). Settings uses one reusable native
-window with General, Updates and Finder Integration tabs. Closing it does not
+window with General, Updates, Finder Integration and Appearance tabs. Closing it does not
 quit Arkiv; reopening focuses the same window.
 
 ## General
@@ -36,6 +36,16 @@ action in macOS Settings. Direct contextual actions cover the home folder;
 Services remain the fallback for other locations. Settings does not silently
 enable extensions or expand their directory scope.
 
+## Appearance → Document Icon Theme
+
+Choose the artwork Arkiv uses for archive documents inside its own windows.
+Seal Dark is bundled and cannot be removed; other themes are optional signed
+downloads, stored in `~/Library/Application Support/Arkiv/DocumentIconThemes`.
+The tab and its theme manager are created only when the tab is first shown,
+and the catalogue is requested only then or on Refresh Catalogue. The window
+grows while this tab is shown. Finder and Quick Look keep the bundled icons;
+the pane says so. Details: [document icon themes](document-icon-themes.md).
+
 ## Real-Mac checks
 
 1. Press Command-comma; repeat and confirm only one Settings window exists.
@@ -46,7 +56,9 @@ enable extensions or expand their directory scope.
    confirm the existing app-menu checkbox agrees. Check for Updates should use
    the usual Sparkle dialog.
 5. Open Finder Integration and confirm the existing setup/status window appears.
-6. Check keyboard tab navigation and all three sections in light and dark mode.
+6. Check keyboard tab navigation and all four sections in light and dark mode.
+7. Appearance: see the document icon theme checks in
+   [document icon themes](document-icon-themes.md#remaining-real-mac-acceptance).
 
 Automated preference tests use isolated UserDefaults suites. Native tests inject
 recent-history storage, an updater driver and the Finder presentation boundary;

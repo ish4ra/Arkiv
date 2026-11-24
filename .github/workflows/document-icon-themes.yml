@@ -1,0 +1,189 @@
+name: Document icon themes
+# Optional theme packs are built from the preserved design archives, verified,
+# and installed through the native theme manager. Nothing here changes the app
+# bundle, Sparkle releases, the `updates` feed branch or `dev-*` tags.
+on:
+  push:
+    paths:
+      - '.github/workflows/document-icon-themes.yml'
+      - 'design/document-icon-themes/**'
+      - 'design/document-icons/**'
+      - 'Resources/DocumentIcons/**'
+      - 'Resources/DocumentIconsInApp/**'
+      - 'Sources/ArkivThemes/**'
+      - 'Sources/ArkivApp/DocumentIconThemePane.swift'
+      - 'Sources/ArkivApp/SettingsWindowController.swift'
+      - 'Tests/ArkivThemesTests/**'
+      - 'Tests/ArkivThemesTestSupport/**'
+      - 'Tests/ArkivAppTests/DocumentIconTheme*'
+      - 'scripts/document-icon-theme-catalog.swift'
+      - 'scripts/publish-document-icon-themes.py'
+      - 'tests/test_document_icon_themes.py'
+      - 'Package.swift'
+  pull_request:
+    paths:
+      - '.github/workflows/document-icon-themes.yml'
+      - 'design/document-icon-themes/**'
+      - 'design/document-icons/**'
+      - 'Resources/DocumentIcons/**'
+      - 'Resources/DocumentIconsInApp/**'
+      - 'Sources/ArkivThemes/**'
+      - 'Sources/ArkivApp/DocumentIconThemePane.swift'
+      - 'Sources/ArkivApp/SettingsWindowController.swift'
+      - 'Tests/ArkivThemesTests/**'
+      - 'Tests/ArkivThemesTestSupport/**'
+      - 'Tests/ArkivAppTests/DocumentIconTheme*'
+      - 'scripts/document-icon-theme-catalog.swift'
+      - 'scripts/publish-document-icon-themes.py'
+      - 'tests/test_document_icon_themes.py'
+      - 'Package.swift'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the verified packs and signed catalogue (maintainer approval required)'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  theme-packs:
+    name: Build theme packs from the archives (Linux, pinned Playwright)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v5
+      - name: Fetch the pinned design archives
+        run: git fetch --no-tags --depth=1 origin 7e9b736b123274e28a64727d0e6fde22ca11daf7 8a1b92ae31f5ba4e649022f0cb38ccd9e24647a6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install pinned design-time tooling (hash-locked)
+        run: |
+          (cd design/document-icons && npm ci && npx playwright install-deps chromium)
+          design/document-icon-themes/fetch-headless-shell.sh "$RUNNER_TEMP/headless-shell"
+          echo "ARKIV_THEME_HEADLESS_SHELL=$RUNNER_TEMP/headless-shell/chrome-headless-shell-linux64" >> "$GITHUB_ENV"
+          python -m pip install --require-hashes -r design/document-icons/requirements-optimize.txt
+      - name: Theme pipeline and publication-safety regressions
+        run: python tests/test_document_icon_themes.py -v
+      - name: Render every theme with the archived generators
+        run: node design/document-icon-themes/render.mjs --work build/theme-work
+      - name: Verify provenance, optimize losslessly, build packs, compare with inventory.json
+        run: python design/document-icon-themes/build.py --work build/theme-work --out build/theme-packs
+      - name: Validate every pack (container, manifest, checksums, decoded pixels)
+        run: ARKIV_THEME_PACKS=build/theme-packs python tests/test_document_icon_themes.py -v
+      - uses: actions/upload-artifact@v6
+        with:
+          name: document-icon-theme-packs
+          path: build/theme-packs
+          if-no-files-found: error
+          compression-level: 0
+
+  theme-end-to-end:
+    name: Install every theme natively (${{ matrix.runner }})
+    needs: theme-packs
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v6
+        with:
+          name: document-icon-theme-packs
+          path: build/theme-packs
+      - name: Build pinned in-process 7z engine
+        run: scripts/ci-check.sh sevenzip python3 scripts/build-sevenzip.py
+      - name: Sign the catalogue with an isolated test key and verify it
+        # A throwaway key generated in this job. Production packs are never
+        # signed here; production signing uses the protected publish job.
+        run: |
+          swift scripts/document-icon-theme-catalog.swift test-key "$RUNNER_TEMP/theme-test-key"
+          ARKIV_THEME_PRIVATE_ED_KEY="$(cat "$RUNNER_TEMP/theme-test-key/theme-test-signing.key")" \
+            swift scripts/document-icon-theme-catalog.swift sign build/theme-packs/catalog-payload.json build/theme-packs/catalog-test-signed.json
+          export ARKIV_THEME_PUBLIC_ED_KEY="$(cat "$RUNNER_TEMP/theme-test-key/theme-test-signing.pub")"
+          swift scripts/document-icon-theme-catalog.swift verify build/theme-packs/catalog-test-signed.json build/theme-packs/catalog-payload.json
+          python3 - <<'EOF'
+          import json, base64
+          e = json.load(open('build/theme-packs/catalog-test-signed.json'))
+          p = bytearray(base64.b64decode(e['payload'])); p[10] ^= 1
+          e['payload'] = base64.b64encode(bytes(p)).decode()
+          json.dump(e, open('build/theme-packs/catalog-tampered.json', 'w'))
+          EOF
+          if swift scripts/document-icon-theme-catalog.swift verify build/theme-packs/catalog-tampered.json; then
+            echo '::error::A tampered catalogue verified'; exit 1
+          fi
+          echo "ARKIV_THEME_PUBLIC_ED_KEY=$ARKIV_THEME_PUBLIC_ED_KEY" >> "$GITHUB_ENV"
+          rm -rf "$RUNNER_TEMP/theme-test-key"
+      - name: Signing-key provisioning safeguards (throwaway keys only)
+        run: |
+          tool=scripts/document-icon-theme-catalog.swift
+          dir="$RUNNER_TEMP/provisioning"
+          swift $tool production-key "$dir" | tee "$RUNNER_TEMP/production-key.out"
+          test "$(stat -f %Lp "$dir/arkiv-theme-signing.key")" = 600
+          test "$(stat -f %Lp "$dir")" = 700
+          if grep -F "$(cat "$dir/arkiv-theme-signing.key")" "$RUNNER_TEMP/production-key.out"; then echo '::error::The private key was printed'; exit 1; fi
+          before=$(shasum -a 256 "$dir/arkiv-theme-signing.key")
+          if swift $tool production-key "$dir"; then echo '::error::An existing key was overwritten'; exit 1; fi
+          test "$before" = "$(shasum -a 256 "$dir/arkiv-theme-signing.key")"
+          if swift $tool production-key "$PWD/build/never-here"; then echo '::error::A key was written inside the checkout'; exit 1; fi
+          test ! -e build/never-here/arkiv-theme-signing.key
+          ARKIV_THEME_PRIVATE_ED_KEY="$(cat "$dir/arkiv-theme-signing.key")" ARKIV_THEME_PUBLIC_ED_KEY="$(cat "$dir/arkiv-theme-signing.pub")" swift $tool verify-keypair
+          swift $tool test-key "$dir/other"
+          if ARKIV_THEME_PRIVATE_ED_KEY="$(cat "$dir/arkiv-theme-signing.key")" ARKIV_THEME_PUBLIC_ED_KEY="$(cat "$dir/other/theme-test-signing.pub")" swift $tool verify-keypair; then
+            echo '::error::A mismatched key pair passed'; exit 1
+          fi
+          if ARKIV_THEME_PRIVATE_ED_KEY="$(cat "$dir/arkiv-theme-signing.key")" ARKIV_THEME_PUBLIC_ED_KEY="$(cat "$dir/arkiv-theme-signing.pub")" SPARKLE_PUBLIC_ED_KEY="$(cat "$dir/arkiv-theme-signing.pub")" swift $tool verify-keypair; then
+            echo '::error::A key equal to the Sparkle key passed'; exit 1
+          fi
+          rm -rf "$dir" "$RUNNER_TEMP/production-key.out"
+      - name: Download, verify and install every pack; capture Settings screenshots
+        env:
+          ARKIV_THEME_PACKS: ${{ github.workspace }}/build/theme-packs
+          ARKIV_THEME_CATALOG: ${{ github.workspace }}/build/theme-packs/catalog-test-signed.json
+          ARKIV_THEME_SCREENSHOTS: ${{ github.workspace }}/build/theme-screenshots
+          ARKIV_BUNDLED_ICONS: ${{ github.workspace }}/Resources/DocumentIcons
+        run: scripts/ci-check.sh theme-e2e swift test --filter 'DocumentIconTheme(EndToEnd|Settings)Tests' -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: document-icon-theme-settings-screenshots-${{ matrix.runner }}
+          path: build/theme-screenshots
+          if-no-files-found: warn
+
+  publish:
+    name: Publish signed theme packs (maintainer approval)
+    needs: theme-end-to-end
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    environment: document-icon-themes
+    permissions:
+      contents: write
+    concurrency:
+      group: arkiv-document-icon-themes
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ARKIV_THEME_PUBLIC_ED_KEY: ${{ vars.ARKIV_THEME_PUBLIC_ED_KEY }}
+      SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v6
+        with:
+          name: document-icon-theme-packs
+          path: build/theme-packs
+      - name: Sign with the dedicated theme key and publish
+        env:
+          ARKIV_THEME_PRIVATE_ED_KEY: ${{ secrets.ARKIV_THEME_PRIVATE_ED_KEY }}
+        run: |
+          if [[ -z "$ARKIV_THEME_PRIVATE_ED_KEY" || -z "$ARKIV_THEME_PUBLIC_ED_KEY" ]]; then
+            echo '::error::Set the ARKIV_THEME_PRIVATE_ED_KEY secret and ARKIV_THEME_PUBLIC_ED_KEY variable on the document-icon-themes environment.'; exit 1
+          fi
+          swift scripts/document-icon-theme-catalog.swift verify-keypair
+          swift scripts/document-icon-theme-catalog.swift sign build/theme-packs/catalog-payload.json build/theme-packs/catalog.json
+          unset ARKIV_THEME_PRIVATE_ED_KEY
+          python3 scripts/publish-document-icon-themes.py build/theme-packs build/theme-packs/catalog.json

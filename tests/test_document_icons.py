@@ -22,6 +22,11 @@ spec.loader.exec_module(packager)
 # archive/document-icon-concepts-v2 (themes/seal-dark-refined-26501). Changing
 # it means changing the artwork, which needs an approved design change.
 PIXELS_26501 = '53e7df26242c7e331dc07cd6b26b1eaa126ebc60c8ef34f8b56fb6ad7cafbf57'
+# SHA-256 of Resources/DocumentIconsInApp/PIXELS.sha256: the decoded pixels of
+# the refined Seal Dark compound-suffix and split-7z artwork, rendered by the
+# archived 26501 generator (512 px renders byte-identical to the preserved
+# previews). Change only together with an approved artwork change.
+PIXELS_INAPP = '64601047f7204e4911c29c7b5553bd92b1251486bb7cb62f59dc8a056bc451f1'
 
 
 def encode_png(width, height, rgba, level=9, extra=()):
@@ -94,8 +99,19 @@ class DocumentIconTests(unittest.TestCase):
         for ext in ['tbz2', 'tbz', 'txz', 'tar.gz', 'tar.bz2', 'tar.xz', 'tar.zst']:
             self.assertNotIn(ext, extensions)
         changed = copy.deepcopy(self.info)
-        changed['UTImportedTypeDeclarations'].append({'UTTypeIdentifier': 'org.gnu.gnu-zip-tar-archive', 'UTTypeConformsTo': ['public.archive'],
+        changed['UTImportedTypeDeclarations'].append({'UTTypeIdentifier': 'org.gnu.gnu-zip-tar-archive', 'UTTypeConformsTo': ['public.data', 'public.archive'],
                                                       'UTTypeTagSpecification': {'public.filename-extension': ['tgz']}})
+        with self.assertRaises(AssertionError):
+            icons.verify_metadata(changed)
+
+    def test_imported_types_conform_to_public_data(self):
+        # Without public.data, UTType(filenameExtension:) (which looks up types
+        # conforming to public.data) leaves .rar, .zst and .tzst as dynamic
+        # types, so no document icon can apply. Observed on macOS 15 in CI.
+        for declaration in self.info['UTImportedTypeDeclarations']:
+            self.assertEqual(declaration['UTTypeConformsTo'], ['public.data', 'public.archive'], declaration['UTTypeIdentifier'])
+        changed = copy.deepcopy(self.info)
+        changed['UTImportedTypeDeclarations'][1]['UTTypeConformsTo'] = ['public.archive']
         with self.assertRaises(AssertionError):
             icons.verify_metadata(changed)
 
@@ -131,6 +147,18 @@ class DocumentIconTests(unittest.TestCase):
         manifest = icons.SOURCES / 'PIXELS.sha256'
         self.assertEqual(hashlib.sha256(manifest.read_bytes()).hexdigest(), PIXELS_26501)
         self.assertEqual(set(icons.read_manifest(manifest)), set(icons.read_manifest(icons.SOURCES / 'SHA256SUMS')))
+
+    def test_inapp_extras_are_pinned_and_verified(self):
+        self.assertEqual(hashlib.sha256((icons.INAPP / 'PIXELS.sha256').read_bytes()).hexdigest(), PIXELS_INAPP)
+        self.assertEqual(icons.verify_inapp(), 24)
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = Path(tmp) / 'DocumentIconsInApp'
+            shutil.copytree(icons.INAPP, copy)
+            target = copy / 'Arkiv-TAR.XZ/icon_16x16.png'
+            data = bytearray(target.read_bytes()); data[-20] ^= 1
+            target.write_bytes(bytes(data))
+            with self.assertRaises(AssertionError):
+                icons.verify_inapp(copy)
 
     def test_lossless_reencode_passes_but_any_pixel_change_fails(self):
         with tempfile.TemporaryDirectory() as tmp:

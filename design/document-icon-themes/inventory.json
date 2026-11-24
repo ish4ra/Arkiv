@@ -1,0 +1,662 @@
+{
+ "archives": {
+  "v1": {
+   "branch": "archive/document-icon-concepts-v1",
+   "commit": "7e9b736b123274e28a64727d0e6fde22ca11daf7",
+   "path": "design/document-icon-concepts-v1"
+  },
+  "v2": {
+   "branch": "archive/document-icon-concepts-v2",
+   "commit": "8a1b92ae31f5ba4e649022f0cb38ccd9e24647a6",
+   "path": "design/document-icon-concepts-v2"
+  }
+ },
+ "bundledInAppExtras": {
+  "bytes": 307048,
+  "files": 24,
+  "pixels": "64601047f7204e4911c29c7b5553bd92b1251486bb7cb62f59dc8a056bc451f1",
+  "sha256sums": "8f91d58ba1888077ce8a7c2f934c88c778cab1824348c52ac01c24425b60291e"
+ },
+ "catalogPayloadSHA256": "2c90309463a08f86c674a942b18f2c6435060f38703ec872367c19f27d0af9d5",
+ "catalogVersion": 1,
+ "default": {
+  "family": "C · Seal",
+  "id": "seal-dark",
+  "name": "Seal Dark",
+  "source": "main Resources/DocumentIcons (build 26501, losslessly optimized; pixels pinned by PIXELS.sha256)"
+ },
+ "releaseTag": "document-icon-themes-v1",
+ "schema": 1,
+ "themes": [
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "A · Folio",
+   "id": "folio",
+   "installedBytes": 4434668,
+   "kind": "family",
+   "name": "Folio",
+   "packBytes": 4456068,
+   "packSHA256": "b67353cd5d54551d77fa346666a39fea1dec68ef94617da8eae6305c518e5500",
+   "pixels": "3955e43d96e9965f23e2473096951269496c75f4c1b3f7aad263e818155d6b0d",
+   "previewBytes": 136091,
+   "previewSHA256": "b320214006f40c0c6ce5648d1f15033a04e9b54b51fa840ba9ff230d2caa5111",
+   "rawBytes": 6892149,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v1",
+    "commit": "7e9b736b123274e28a64727d0e6fde22ca11daf7",
+    "direction": "folio",
+    "file": "directions/folio.mjs",
+    "type": "v1-family"
+   },
+   "storedFiles": 136,
+   "variantOf": null,
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "A · Folio",
+   "id": "folio-dark",
+   "installedBytes": 7648203,
+   "kind": "family",
+   "name": "Folio Dark",
+   "packBytes": 7669603,
+   "packSHA256": "02123fb9cbf1282e5221c967ee003763c58d6ce94f2b6b7ef4b62f0f49091772",
+   "pixels": "a941bfd8fee4dd255e8d95c2fb6922444b978299bbcd4a0809ae4f5460c17694",
+   "previewBytes": 189962,
+   "previewSHA256": "f51466967fda3fd474d21ad41319c586cc5fe28e463d63143fcdbf1f812a70fc",
+   "rawBytes": 13689080,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v1",
+    "commit": "7e9b736b123274e28a64727d0e6fde22ca11daf7",
+    "direction": "folio-dark",
+    "file": "directions/folio-dark.mjs",
+    "type": "v1-family"
+   },
+   "storedFiles": 136,
+   "variantOf": null,
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "B · Strata",
+   "id": "strata",
+   "installedBytes": 8400831,
+   "kind": "family",
+   "name": "Strata",
+   "packBytes": 8422231,
+   "packSHA256": "6053df2f6738155482ca226bfa13d4ee9fdf294798405533733d32c9a981a523",
+   "pixels": "8d1bdd15feced3da88b40ef40a1a3804a2126ff3f0bc1be7b430224276083256",
+   "previewBytes": 210151,
+   "previewSHA256": "30ceca511be1a5c7f206c061ff447e1e47610bc7579c301e2f1e5c5eb4cdadea",
+   "rawBytes": 15211638,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v1",
+    "commit": "7e9b736b123274e28a64727d0e6fde22ca11daf7",
+    "direction": "strata",
+    "file": "directions/strata.mjs",
+    "type": "v1-family"
+   },
+   "storedFiles": 136,
+   "variantOf": null,
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "C · Seal",
+   "id": "seal",
+   "installedBytes": 5156811,
+   "kind": "family",
+   "name": "Seal Original",
+   "packBytes": 5178211,
+   "packSHA256": "c75967593ae3f0064dbf712b0ff9f3bf04e24069e9ab5287e6d5b0cf805a8bb6",
+   "pixels": "2b90d661221a2892b90131db0196712d1adf99e009060dc33d8af4c47d8b3521",
+   "previewBytes": 164805,
+   "previewSHA256": "d47e2019136425de8847abb925e447a2d2f61c3d9ac6003801b34bf27ab740a4",
+   "rawBytes": 9147253,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v1",
+    "commit": "7e9b736b123274e28a64727d0e6fde22ca11daf7",
+    "direction": "seal",
+    "file": "directions/seal.mjs",
+    "type": "v1-family"
+   },
+   "storedFiles": 136,
+   "variantOf": null,
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "C · Seal",
+   "id": "seal-dark-aubergine",
+   "installedBytes": 8618790,
+   "kind": "concept",
+   "name": "Seal Dark — Original Aubergine",
+   "packBytes": 8640190,
+   "packSHA256": "a5b6fd3b1f10e445ec262426ad41157b92b55bd1828ef9b4a36c920d6e9d80ab",
+   "pixels": "18adaa31127d26f24c1cdc52e953e35f8f7dc64685821dd9c0fd7029de879935",
+   "previewBytes": 197450,
+   "previewSHA256": "3e92fd43aa21b5649422af22da525b0c21e1f860b52edbc60d8f86e9978626b8",
+   "rawBytes": 13696175,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v1",
+    "commit": "7e9b736b123274e28a64727d0e6fde22ca11daf7",
+    "direction": "seal-dark",
+    "file": "directions/seal-dark.mjs",
+    "type": "v1-family"
+   },
+   "storedFiles": 136,
+   "variantOf": null,
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "C · Seal",
+   "id": "seal-wine",
+   "installedBytes": 8617463,
+   "kind": "surface",
+   "name": "Seal Wine",
+   "packBytes": 8638863,
+   "packSHA256": "55c9c13e4a65b973b41d4ee6327df35bc7967f747ebb84173c79f53501078e37",
+   "pixels": "2d6d365add35109fed425decdac73141be84086d5991186f3c80f1bd0b01ac2c",
+   "previewBytes": 200682,
+   "previewSHA256": "49a9d40d63c6a7fa127709aebb1b6ac29d91e1fef623971e15627e570315ec4c",
+   "rawBytes": 13775749,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v1",
+    "commit": "7e9b736b123274e28a64727d0e6fde22ca11daf7",
+    "direction": "seal-dark-wine",
+    "file": "directions/seal-dark.mjs",
+    "type": "v1-family"
+   },
+   "storedFiles": 136,
+   "variantOf": null,
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "C · Seal",
+   "id": "seal-noir",
+   "installedBytes": 8836998,
+   "kind": "surface",
+   "name": "Seal Noir",
+   "packBytes": 8858398,
+   "packSHA256": "fe15395332542154850792bbff688d6af3d1821b7d9034867754111e7d824f61",
+   "pixels": "f8c8a5a95aee1bd72a2f476d9af4da44b479b8fbccb330e9699edbdc454981e5",
+   "previewBytes": 198737,
+   "previewSHA256": "78b26f376425b871b3771c6b49ab43f572460e92114207d80877b7412e2ce732",
+   "rawBytes": 13914071,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v1",
+    "commit": "7e9b736b123274e28a64727d0e6fde22ca11daf7",
+    "direction": "seal-dark-noir",
+    "file": "directions/seal-dark.mjs",
+    "type": "v1-family"
+   },
+   "storedFiles": 136,
+   "variantOf": null,
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "C · Seal",
+   "id": "seal-dark-restored",
+   "installedBytes": 8626711,
+   "kind": "candidate",
+   "name": "Seal Dark — Restored Readability",
+   "packBytes": 8648111,
+   "packSHA256": "fa980c2a9da150b4b40964dbe7c7258ea84bcd66fe3e737dbc03957ec403d342",
+   "pixels": "9fd55b58ea27ba14fa4aad7d8a1b31373c901dc0497537f4bee158ff9a38b87d",
+   "previewBytes": 198304,
+   "previewSHA256": "2320d88f6e173e2435020f5da550e3f53f39e219a148d61aae3c2b3b85dd450d",
+   "rawBytes": 13710961,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v2",
+    "commit": "8a1b92ae31f5ba4e649022f0cb38ccd9e24647a6",
+    "theme": "seal-dark-restored-readability",
+    "type": "v2-theme"
+   },
+   "storedFiles": 136,
+   "variantOf": null,
+   "version": 1
+  },
+  {
+   "coverage": "4/11 icons, 0/8 extras",
+   "familyName": "Classic",
+   "id": "classic",
+   "installedBytes": 538216,
+   "kind": "reproduction",
+   "name": "Classic (pre-redesign)",
+   "packBytes": 542424,
+   "packSHA256": "3eae4e299350182a9a9f542c062a752f61f67b0731bb63eb139073e6d96032ef",
+   "pixels": "b1e6da4419ce33dc7c5f024d2a201d25a5995392a17540d555a5e6718faa452c",
+   "previewBytes": 18720,
+   "previewSHA256": "7268cb67c896635d5c53aa8d3abc1d989e49ad9c2709dd865b6f433a57e580ca",
+   "rawBytes": 825977,
+   "representations": 40,
+   "source": {
+    "archive": "archive/document-icon-concepts-v1",
+    "commit": "7e9b736b123274e28a64727d0e6fde22ca11daf7",
+    "direction": "current",
+    "file": "directions/current.mjs",
+    "icons": [
+     "ZIP",
+     "7z",
+     "TAR",
+     "RAR"
+    ],
+    "type": "v1-family"
+   },
+   "storedFiles": 28,
+   "variantOf": null,
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "A · Folio",
+   "id": "folio-tar-three-windows",
+   "installedBytes": 4478704,
+   "kind": "variation",
+   "name": "Three-window reel",
+   "packBytes": 4500104,
+   "packSHA256": "f25f18b13cb1b642d4e51a4b07201de5c2d94ccfec5e364856b0056fa6f1da1b",
+   "pixels": "a66f2d76e1ddfc91e499f53a7e3a5547560d152dba3a57f1d81c2115a280ffde",
+   "previewBytes": 136976,
+   "previewSHA256": "854761886f8774fc1abe5f6702388cc6ce0894f9f30bcafd0d4f72d6e522c3aa",
+   "rawBytes": 6952518,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v2",
+    "archives": [
+     "8a1b92ae31f5ba4e649022f0cb38ccd9e24647a6",
+     "7e9b736b123274e28a64727d0e6fde22ca11daf7"
+    ],
+    "parent": "folio",
+    "type": "iteration",
+    "variant": "folio-tar-three-windows"
+   },
+   "storedFiles": 136,
+   "variantOf": "folio",
+   "variation": {
+    "changes": [
+     "TAR",
+     "TGZ",
+     "TBZ2",
+     "TAR.GZ",
+     "TAR.BZ2"
+    ],
+    "sourceAlsoChangesUnrecordedFormats": false
+   },
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "A · Folio",
+   "id": "folio-xs-glyph-unit-60",
+   "installedBytes": 4434777,
+   "kind": "variation",
+   "name": "First 16 pt layout",
+   "packBytes": 4456177,
+   "packSHA256": "9b64317b561f6b799e97c69900362afcc5a420d3c44f24a908fdec1b59ef9288",
+   "pixels": "d882ae859accacff18471458c13dc7f13f13082dcb8d8bf94fb7d1cc1a65101b",
+   "previewBytes": 136091,
+   "previewSHA256": "b320214006f40c0c6ce5648d1f15033a04e9b54b51fa840ba9ff230d2caa5111",
+   "rawBytes": 6892289,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v2",
+    "archives": [
+     "8a1b92ae31f5ba4e649022f0cb38ccd9e24647a6",
+     "7e9b736b123274e28a64727d0e6fde22ca11daf7"
+    ],
+    "parent": "folio",
+    "type": "iteration",
+    "variant": "folio-xs-glyph-unit-60"
+   },
+   "storedFiles": 136,
+   "variantOf": "folio",
+   "variation": {
+    "changes": [
+     "ZIP",
+     "7z",
+     "TAR",
+     "XZ"
+    ],
+    "sourceAlsoChangesUnrecordedFormats": true
+   },
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "A · Folio",
+   "id": "folio-dark-zip-pale-tape",
+   "installedBytes": 7639675,
+   "kind": "variation",
+   "name": "Pale ZIP tape",
+   "packBytes": 7661075,
+   "packSHA256": "72c60d104d98908f731c4f431f62963310f929ae8a6e8c1ab7de0d4b21465db8",
+   "pixels": "b97f82d6c915899316e40ea5ab61fc91f27721b08b7094176a304563ad22fdfb",
+   "previewBytes": 189884,
+   "previewSHA256": "a85b730c5235085ba1ef54bc1f0681b3b43da997f660497ead5285480ebcc1dd",
+   "rawBytes": 13677913,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v2",
+    "archives": [
+     "8a1b92ae31f5ba4e649022f0cb38ccd9e24647a6",
+     "7e9b736b123274e28a64727d0e6fde22ca11daf7"
+    ],
+    "parent": "folio-dark",
+    "type": "iteration",
+    "variant": "folio-dark-zip-pale-tape"
+   },
+   "storedFiles": 136,
+   "variantOf": "folio-dark",
+   "variation": {
+    "changes": [
+     "ZIP",
+     "ZIP-volume-future"
+    ],
+    "sourceAlsoChangesUnrecordedFormats": false
+   },
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "B · Strata",
+   "id": "strata-tar-trefoil-windows",
+   "installedBytes": 8414462,
+   "kind": "variation",
+   "name": "Sector-window reel",
+   "packBytes": 8435862,
+   "packSHA256": "994e83cfd6bf699699f826eab6ce1e53d62e0b67cd372064027079913d7b4f79",
+   "pixels": "e53862b1b11857d8c79df7e12c5d321e0cd316a379f2df2d6fb90000e4b2c3b1",
+   "previewBytes": 210267,
+   "previewSHA256": "7bd0bb43864df99c5fd48cdc514b5046928ceb13d49523b4d95269d5d6eb2362",
+   "rawBytes": 15235322,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v2",
+    "archives": [
+     "8a1b92ae31f5ba4e649022f0cb38ccd9e24647a6",
+     "7e9b736b123274e28a64727d0e6fde22ca11daf7"
+    ],
+    "parent": "strata",
+    "type": "iteration",
+    "variant": "strata-tar-trefoil-windows"
+   },
+   "storedFiles": 136,
+   "variantOf": "strata",
+   "variation": {
+    "changes": [
+     "TAR",
+     "TGZ",
+     "TBZ2",
+     "TXZ",
+     "TAR.GZ",
+     "TAR.BZ2",
+     "TAR.XZ",
+     "TAR.ZST",
+     "TZST"
+    ],
+    "sourceAlsoChangesUnrecordedFormats": false
+   },
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "B · Strata",
+   "id": "strata-xz-octahedron-v0",
+   "installedBytes": 8399112,
+   "kind": "variation",
+   "name": "First XZ crystal",
+   "packBytes": 8420512,
+   "packSHA256": "75e7a3038eb080277f163dd58f46a548b4a9aa27b60b61776164a5cd18d7bafe",
+   "pixels": "c3ee37a24c9697e3967601430f6ed5e6937eaeace102cc715a457fc0d32d890c",
+   "previewBytes": 209851,
+   "previewSHA256": "d38ddbaa41303bd942aa71979cccaac1652a29d5c7d58d1fc367247276cda7d8",
+   "rawBytes": 15206004,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v2",
+    "archives": [
+     "8a1b92ae31f5ba4e649022f0cb38ccd9e24647a6",
+     "7e9b736b123274e28a64727d0e6fde22ca11daf7"
+    ],
+    "parent": "strata",
+    "type": "iteration",
+    "variant": "strata-xz-octahedron-v0"
+   },
+   "storedFiles": 136,
+   "variantOf": "strata",
+   "variation": {
+    "changes": [
+     "XZ"
+    ],
+    "sourceAlsoChangesUnrecordedFormats": false
+   },
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "B · Strata",
+   "id": "strata-zst-floating-streaks",
+   "installedBytes": 8400845,
+   "kind": "variation",
+   "name": "Floating ZSTD streaks",
+   "packBytes": 8422245,
+   "packSHA256": "a34c2a423e6985e5bf409a7631ed75d600861a5f87391c3078dfaf29d88fdf97",
+   "pixels": "3f7b4ae91d2dc99bd48c44440af2df34614f71c88645ab601d3826183103f5fb",
+   "previewBytes": 209955,
+   "previewSHA256": "bf6e0a2bb3e469579fa18d0c207ec8fc6f2a4f97854d720e86188a195e0f2557",
+   "rawBytes": 15210096,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v2",
+    "archives": [
+     "8a1b92ae31f5ba4e649022f0cb38ccd9e24647a6",
+     "7e9b736b123274e28a64727d0e6fde22ca11daf7"
+    ],
+    "parent": "strata",
+    "type": "iteration",
+    "variant": "strata-zst-floating-streaks"
+   },
+   "storedFiles": 136,
+   "variantOf": "strata",
+   "variation": {
+    "changes": [
+     "ZSTD"
+    ],
+    "sourceAlsoChangesUnrecordedFormats": false
+   },
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "C · Seal",
+   "id": "seal-zip-pale-ladder",
+   "installedBytes": 5145475,
+   "kind": "variation",
+   "name": "Pale ZIP ladder",
+   "packBytes": 5166875,
+   "packSHA256": "c95e957991717a1841a656aab2758c94466a1b88333528d25a2a20177c495846",
+   "pixels": "47e42a9162e35ad12ec4d18d7e99ce9ae9dc6ec3762e28d904783e45e7b07e44",
+   "previewBytes": 164524,
+   "previewSHA256": "254579d021c904d5029018c11aaf002793d89ae3bb1179ef96dcb57306dbef0b",
+   "rawBytes": 9128856,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v2",
+    "archives": [
+     "8a1b92ae31f5ba4e649022f0cb38ccd9e24647a6",
+     "7e9b736b123274e28a64727d0e6fde22ca11daf7"
+    ],
+    "parent": "seal",
+    "type": "iteration",
+    "variant": "seal-zip-pale-ladder"
+   },
+   "storedFiles": 136,
+   "variantOf": "seal",
+   "variation": {
+    "changes": [
+     "ZIP",
+     "ZIP-volume-future"
+    ],
+    "sourceAlsoChangesUnrecordedFormats": false
+   },
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "C · Seal",
+   "id": "seal-rar-ring",
+   "installedBytes": 5214412,
+   "kind": "variation",
+   "name": "Ring RAR",
+   "packBytes": 5235812,
+   "packSHA256": "841b460f16e58dc61d91ace8d8a01c7a881368ae3cc4cd9e80be8e30dea1070f",
+   "pixels": "4102bf7824fde401db0e4a190ceb83d2859ca0f12f0c010b64c23550cd0757f0",
+   "previewBytes": 166239,
+   "previewSHA256": "b5ce3038a0540f573f2fb2b773ed00e5435d79aa1e064c162bd545a500528a2f",
+   "rawBytes": 9237120,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v2",
+    "archives": [
+     "8a1b92ae31f5ba4e649022f0cb38ccd9e24647a6",
+     "7e9b736b123274e28a64727d0e6fde22ca11daf7"
+    ],
+    "parent": "seal",
+    "type": "iteration",
+    "variant": "seal-rar-ring"
+   },
+   "storedFiles": 136,
+   "variantOf": "seal",
+   "variation": {
+    "changes": [
+     "RAR",
+     "RAR-volume-future"
+    ],
+    "sourceAlsoChangesUnrecordedFormats": false
+   },
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "C · Seal",
+   "id": "seal-layout-v0",
+   "installedBytes": 5161904,
+   "kind": "variation",
+   "name": "First layout",
+   "packBytes": 5183304,
+   "packSHA256": "78bece96dfcdfad09b205a9bf9816ff34854b965e7f0f89e891224112f6fc9e2",
+   "pixels": "db78c830f4ca08b73182da6efc9394f7a0adeeb305835563e44d8ba68378d61e",
+   "previewBytes": 165054,
+   "previewSHA256": "8c42c518ce3b3b4cd10d1c75fa8746c56bf541b47f0a703fd3cc3e2217db1583",
+   "rawBytes": 9162552,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v2",
+    "archives": [
+     "8a1b92ae31f5ba4e649022f0cb38ccd9e24647a6",
+     "7e9b736b123274e28a64727d0e6fde22ca11daf7"
+    ],
+    "parent": "seal",
+    "type": "iteration",
+    "variant": "seal-layout-v0"
+   },
+   "storedFiles": 136,
+   "variantOf": "seal",
+   "variation": {
+    "changes": [
+     "ZIP",
+     "7z",
+     "TAR",
+     "RAR",
+     "TGZ",
+     "TAR.GZ",
+     "7z-volume"
+    ],
+    "sourceAlsoChangesUnrecordedFormats": true
+   },
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "C · Seal",
+   "id": "seal-layout-v0-5-large-glyph",
+   "installedBytes": 5183146,
+   "kind": "variation",
+   "name": "Large-glyph layout",
+   "packBytes": 5204546,
+   "packSHA256": "ba7687d9453c25125a856a189faaa4af1be9b2347b5d8f977fc6dc701eea7e4d",
+   "pixels": "2307c4d9f75006e3e6e82355f5864f70e54d044e9a757040f1c541a0a23a11c9",
+   "previewBytes": 166018,
+   "previewSHA256": "49769e935c28fd11b6a46f6553e771ab78b9c601c94b40d9ffcd9920053441a7",
+   "rawBytes": 9182891,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v2",
+    "archives": [
+     "8a1b92ae31f5ba4e649022f0cb38ccd9e24647a6",
+     "7e9b736b123274e28a64727d0e6fde22ca11daf7"
+    ],
+    "parent": "seal",
+    "type": "iteration",
+    "variant": "seal-layout-v0.5-large-glyph"
+   },
+   "storedFiles": 136,
+   "variantOf": "seal",
+   "variation": {
+    "changes": [
+     "ZIP",
+     "7z",
+     "RAR",
+     "RAR-volume-future"
+    ],
+    "sourceAlsoChangesUnrecordedFormats": true
+   },
+   "version": 1
+  },
+  {
+   "coverage": "11/11 icons, 8/8 extras",
+   "familyName": "C · Seal",
+   "id": "seal-dark-zip-loose-teeth",
+   "installedBytes": 8687645,
+   "kind": "variation",
+   "name": "Loose-teeth ZIP",
+   "packBytes": 8709045,
+   "packSHA256": "43c5988df451356451ad7a4bbc06dd142740ae8802e811b64669ddbaf1150173",
+   "pixels": "f91c2bf5559d5aeb8b8dea9daab8ddeb558dc54535743b427243380342b3d80a",
+   "previewBytes": 200048,
+   "previewSHA256": "6c05200aba7e0a177bc5e8f37a4e30bf000b32086f862c250274079bb813f544",
+   "rawBytes": 12467708,
+   "representations": 190,
+   "source": {
+    "archive": "archive/document-icon-concepts-v2",
+    "archives": [
+     "8a1b92ae31f5ba4e649022f0cb38ccd9e24647a6"
+    ],
+    "parent": "seal-dark",
+    "type": "iteration",
+    "variant": "production-zip-loose-teeth"
+   },
+   "storedFiles": 136,
+   "variantOf": "seal-dark",
+   "variation": {
+    "changes": [
+     "ZIP"
+    ],
+    "sourceAlsoChangesUnrecordedFormats": false
+   },
+   "version": 1
+  }
+ ]
+}

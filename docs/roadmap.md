@@ -9,20 +9,30 @@ feature is finished. Nothing below is in current builds unless the
 
 | # | Milestone | State |
 | --- | --- | --- |
-| 1 | **Lossless icon optimization and CI reliability** | In review: pixel-identical recompression of the bundled Seal Dark icons, pipefail-safe dependency checks, bounded PlugInKit retries. See [document icons](document-icons.md#lossless-optimization) |
-| 2 | **Downloadable document icon theme packs** | Next. Signed, verified packs stored outside the app bundle; [plan](document-icon-themes.md) |
-| 3 | **Native Appearance Settings and UI customization** | Settings → Appearance, including Document Icon Theme; [plan](document-icon-themes.md#planned-user-experience) |
-| 4 | **Safe Finder and Quick Look customization feasibility** | Real-Mac prototype of an opt-in Quick Look thumbnail extension; no per-file icons or bundle changes; [constraints](document-icon-themes.md#where-a-theme-can-apply) |
+| 1 | **Lossless icon optimization and CI reliability** | Integrated (`022631e`): pixel-identical recompression of the bundled Seal Dark icons, pipefail-safe dependency checks, bounded PlugInKit retries. See [document icons](document-icons.md#lossless-optimization) |
+| 2 | **Downloadable document icon theme packs** | **Implemented, in review.** 20 optional themes (every preserved design and variation) built from the archives; signed catalogue, verified packs stored outside the app bundle; Settings → Appearance → Document Icon Theme; applied inside Arkiv. Production key and first publication await the maintainer; [details](document-icon-themes.md), [inventory](document-icon-theme-inventory.md) |
+| 3 | **Native Appearance Settings and UI customization** | Next. The Appearance tab exists, holding Document Icon Theme; broader UI customization (and moving the General tab's appearance choice) is this milestone; [current pane](document-icon-themes.md#settings--appearance--document-icon-theme) |
+| 4 | **Safe Finder and Quick Look customization feasibility** | Real-Mac prototype of an opt-in Quick Look thumbnail extension; no per-file icons or bundle changes. Finder keeps the bundled icons until then; [constraints](document-icon-themes.md#where-a-theme-can-apply) |
 | 5 | **RAR multipart reading** | Read-only, evidence-gated like RAR Phase 1; [RAR matrix](rar-compatibility.md) |
 | 6 | **Split ZIP support** | `.z01`/`.zip.001` sets; [multipart](multipart.md) |
 | 7 | **Remaining archive-engine features** | The rest of the queue below, in its existing relative order |
+
+**Permanent rule for every format milestone (5, 6 and 7 included):** a new
+archive format, alias or volume scheme ships only with its document-icon
+coverage: bundled default artwork, coverage in every theme family, extension
+and alias mapping, safe registration where macOS can type it, in-app icons,
+updated theme and preview packs, and a row in
+[`format-icon-coverage.json`](format-icon-coverage.md) with passing coverage
+tests. See [ARKIV_SPEC.md](../ARKIV_SPEC.md#document-icon-coverage-for-every-archive-format-permanent-requirement-added-2026-11-24).
+For example, multipart RAR (milestone 5) must decide how its first and later
+volumes are identified before the preserved RAR-volume artwork is used.
 
 Rules for milestones 2–4:
 * The refined **C · Seal Dark** family from build 26501 stays the default and
   the only bundled document-icon family.
 * Every other preserved design ([`archive/document-icon-concepts-v1`](https://github.com/ish4ra/Arkiv/tree/archive/document-icon-concepts-v1/design/document-icon-concepts-v1),
   [`archive/document-icon-concepts-v2`](https://github.com/ish4ra/Arkiv/tree/archive/document-icon-concepts-v2/design/document-icon-concepts-v2))
-  remains available for future optional download, with its real artwork. No
+  is an optional download built from its real artwork (milestone 2). No
   design is redrawn.
 * Optional themes are never bundled. The signed app bundle is never modified
   at runtime, and Sparkle update signing and verification are unchanged.

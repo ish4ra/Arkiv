@@ -2,6 +2,7 @@ import AppKit
 import UniformTypeIdentifiers
 import ArkivCore
 import ArkivPresentation
+import ArkivThemes
 
 /// Keep the context menu attached to the row under the pointer without losing a multi-selection.
 final class ArchiveTableView: NSTableView {
@@ -51,7 +52,7 @@ final class ArchiveCellView: NSTableCellView {
         NSLayoutConstraint.activate(constraints)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
-    func configure(_ row: BrowserRow, column: String, searching: Bool) {
+    func configure(_ row: BrowserRow, column: String, searching: Bool, documentIcons: DocumentIconProvider = .shared) {
         switch column {
         case "size": label.stringValue = row.size.flatMap { $0 >= 0 ? ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) : nil } ?? "—"
         case "packed", "ratio", "modified", "method", "encrypted", "crc", "attributes": label.stringValue = BrowserPresentation.metadataText(row,column:column)
@@ -64,7 +65,10 @@ final class ArchiveCellView: NSTableCellView {
             } else {
                 type = row.isDirectory ? .folder : UTType(filenameExtension: (row.name as NSString).pathExtension) ?? .data
             }
-            icon.image = NSWorkspace.shared.icon(for: type)
+            // Archives inside the archive use the selected document icon theme;
+            // every other entry keeps its system icon.
+            let themed = row.isDirectory || BrowserPresentation.packageKind(row) != nil ? nil : documentIcons.icon(forFileName: row.name, points: 16)
+            icon.image = themed ?? NSWorkspace.shared.icon(for: type)
         }
         toolTip = column == "name" ? row.path : label.stringValue
     }

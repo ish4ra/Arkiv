@@ -31,6 +31,21 @@ class UpdateTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 metadata['configured']({}, {'ARKIV_BUILD_VERSION': version})
 
+    def test_document_icon_theme_key_is_separate_and_optional(self):
+        info = metadata['configured']({}, {})
+        self.assertNotIn('ArkivDocumentIconThemePublicEDKey', info)
+        self.assertNotIn('ArkivDocumentIconThemeCatalogURL', info)
+        sparkle, theme = base64.b64encode(bytes(32)).decode(), base64.b64encode(bytes([1]) * 32).decode()
+        info = metadata['configured']({}, {'SPARKLE_PUBLIC_ED_KEY': sparkle, 'ARKIV_THEME_PUBLIC_ED_KEY': theme})
+        self.assertEqual(info['ArkivDocumentIconThemePublicEDKey'], theme)
+        self.assertEqual(info['ArkivDocumentIconThemeCatalogURL'],
+                         'https://raw.githubusercontent.com/ish4ra/Arkiv/document-icon-themes/catalog.json')
+        self.assertNotEqual(info['ArkivDocumentIconThemeCatalogURL'], info['SUFeedURL'])
+        with self.assertRaisesRegex(ValueError, 'must not be the Sparkle update key'):
+            metadata['configured']({}, {'SPARKLE_PUBLIC_ED_KEY': sparkle, 'ARKIV_THEME_PUBLIC_ED_KEY': sparkle})
+        with self.assertRaises(ValueError):
+            metadata['configured']({}, {'ARKIV_THEME_PUBLIC_ED_KEY': base64.b64encode(b'x' * 31).decode()})
+
     def test_public_configuration_and_unsigned_feed_rejected(self):
         info = metadata['configured']({'CFBundleShortVersionString': '0.1.0'},
                                       {'ARKIV_BUILD_VERSION': '12001', 'SPARKLE_PUBLIC_ED_KEY': base64.b64encode(bytes(32)).decode()})

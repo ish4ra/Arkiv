@@ -60,6 +60,11 @@ stage=document-icons
 # optimized IDAT data where the decoded pixels are verified identical.
 (cd Resources/DocumentIcons && shasum -a 256 -c SHA256SUMS > /dev/null)
 python3 scripts/package-document-icons.py Resources/DocumentIcons "$app/Contents/Resources"
+# In-app-only Seal Dark artwork for compound suffixes and split 7z volumes
+# (Finder cannot distinguish these names, so they are not ICNS document icons).
+(cd Resources/DocumentIconsInApp && shasum -a 256 -c SHA256SUMS > /dev/null)
+ditto Resources/DocumentIconsInApp "$app/Contents/Resources/DocumentIconsInApp"
+rm "$app/Contents/Resources/DocumentIconsInApp/SHA256SUMS" "$app/Contents/Resources/DocumentIconsInApp/PIXELS.sha256"
 cp docs/third-party-licenses.md "$app/Contents/Resources/ThirdPartyNotices.txt"
 mkdir -p "$app/Contents/Resources/licenses"
 cp Sources/CArkiv/vendor/bzip2-LICENSE "$app/Contents/Resources/licenses/"

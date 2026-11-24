@@ -2,6 +2,7 @@ import AppKit
 import Quartz
 import ArkivCore
 import ArkivPresentation
+import ArkivThemes
 
 final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, NSToolbarDelegate, NSMenuItemValidation, NSToolbarItemValidation {
@@ -65,6 +66,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     private let requestArchivePassword: (URL, Bool, NSWindow?, @escaping (String?) -> Void) -> Void
     private let engine = LibArchiveEngine()
     private let worker: DispatchQueue
+    private let documentIcons: DocumentIconProvider
 
     init(worker: DispatchQueue = DispatchQueue(label: "xyz.isharalakshan.arkiv.archive", qos: .userInitiated),
          columnPreferences: BrowserColumnPreferences = BrowserColumnPreferences(),
@@ -76,8 +78,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
          },
          requestArchivePassword: @escaping (URL, Bool, NSWindow?, @escaping (String?) -> Void) -> Void = {
              ArchivePasswordPrompt.ask(archive: $0, retry: $1, parent: $2, completion: $3)
-         }) {
+         },
+         documentIcons: DocumentIconProvider = .shared) {
         self.worker = worker
+        self.documentIcons = documentIcons
         self.columnPreferences = columnPreferences
         self.quickLook = quickLook
         self.modificationFeedback = modificationFeedback
@@ -94,6 +98,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
         window.contentView = makeContent()
+        NotificationCenter.default.addObserver(self, selector: #selector(documentIconThemeDidChange(_:)),
+                                               name: .arkivDocumentIconThemeDidChange, object: nil)
         let toolbar = NSToolbar(identifier: "ArkivBrowser")
         toolbar.delegate = self
         toolbar.displayMode = .iconAndLabel
@@ -293,6 +299,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                     self.currentPath = value.index.row(at: browsingFolder)?.isDirectory == true ? browsingFolder : ""; self.back = []; self.forward = []
                     self.window?.title = url.lastPathComponent
                     self.window?.representedURL = url
+                    self.applyDocumentIcon()
                     self.reload()
                     let wanted = selectingPaths.union(selectingPath.map { [$0] } ?? [])
                     let selected = IndexSet(self.rows.indices.filter { wanted.contains(self.rows[$0].path) })
@@ -322,6 +329,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         zipAdditionAvailable = additionCapability == .zip
         window?.title = value.url.lastPathComponent
         window?.representedURL = value.url
+        applyDocumentIcon()
         reload()
         window?.makeFirstResponder(table)
     }
@@ -1113,10 +1121,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         guard !isBusy, let path = forward.popLast() else { return }
         back.append(currentPath); currentPath = path; search.stringValue = ""; reload(preservingSelection: false)
     }
+    /// The title-bar proxy icon follows the selected document icon theme.
+    /// Formats without Arkiv artwork keep the icon macOS supplies.
+    func applyDocumentIcon() {
+        guard let url = window?.representedURL, let button = window?.standardWindowButton(.documentIconButton) else { return }
+        if let image = documentIcons.icon(forFileName: url.lastPathComponent, points: 16) { button.image = image }
+        else { window?.representedURL = nil; window?.representedURL = url }
+    }
+    @objc private func documentIconThemeDidChange(_ notification: Notification) {
+        applyDocumentIcon()
+        table.reloadData()
+    }
     private var archiveInspector: ArchiveInspector?
     @objc func showInfo(_ sender: Any?) {
         guard let metadata = snapshot?.metadata, let window, window.attachedSheet == nil else { return }
-        let inspector = ArchiveInspector(metadata:metadata)
+        let inspector = ArchiveInspector(metadata:metadata, icon: documentIcons.icon(forFileName: metadata.url.lastPathComponent, points: 64))
         archiveInspector = inspector
         if let panel = inspector.window {
             window.beginSheet(panel) { [weak self] _ in self?.archiveInspector = nil }
@@ -1172,7 +1191,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let id = tableColumn?.identifier ?? NSUserInterfaceItemIdentifier("name")
         let cell = tableView.makeView(withIdentifier: id, owner: self) as? ArchiveCellView ?? ArchiveCellView(column: id.rawValue)
-        cell.configure(rows[row], column: id.rawValue, searching: !search.stringValue.isEmpty)
+        cell.configure(rows[row], column: id.rawValue, searching: !search.stringValue.isEmpty, documentIcons: documentIcons)
         return cell
     }
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
