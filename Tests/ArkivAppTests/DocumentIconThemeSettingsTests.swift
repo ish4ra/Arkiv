@@ -146,7 +146,9 @@ final class DocumentIconThemeSettingsTests: XCTestCase {
         func texts(_ view: NSView) -> [String] { ((view as? NSTextField).map { [$0.stringValue] } ?? []) + view.subviews.flatMap(texts) }
         let all = texts(pane).joined(separator: " ")
         XCTAssertTrue(all.contains("Downloaded themes apply inside Arkiv"))
-        XCTAssertTrue(all.contains("Finder and Quick Look keep Arkiv’s bundled Seal Dark document icons"))
+        XCTAssertTrue(all.contains("Finder keeps Arkiv’s bundled Seal Dark document icons, and only when Arkiv is the default app"))
+        XCTAssertTrue(all.contains("optional Quick Look thumbnail setting is planned"))
+        XCTAssertTrue(all.contains("Inside Arkiv only: .tar.gz"))
     }
 
     @MainActor func testArchiveRowsAndInspectorUseTheSelectedTheme() async throws {

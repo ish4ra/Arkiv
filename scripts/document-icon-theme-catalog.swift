@@ -4,8 +4,12 @@
 //       private key: ARKIV_THEME_PRIVATE_ED_KEY (base64 of the 32-byte Ed25519 seed)
 //   swift scripts/document-icon-theme-catalog.swift verify <catalog.json> [<payload.json>]
 //       public key: ARKIV_THEME_PUBLIC_ED_KEY (base64 of the 32-byte public key)
-//   swift scripts/document-icon-theme-catalog.swift test-key <directory outside the repository>
-//       writes an isolated, throwaway key pair for CI and local tests
+//   swift scripts/document-icon-theme-catalog.swift verify-keypair
+//       checks ARKIV_THEME_PRIVATE_ED_KEY against ARKIV_THEME_PUBLIC_ED_KEY (prints key IDs only)
+//   swift scripts/document-icon-theme-catalog.swift production-key <directory outside any Git checkout>
+//       the production key pair, generated on the maintainer's own Mac; never overwrites
+//   swift scripts/document-icon-theme-catalog.swift test-key <directory outside any Git checkout>
+//       a throwaway key pair for CI and local tests; never configure it in GitHub
 //
 // The theme key is dedicated: this tool refuses Sparkle's update key. The
 // signed message is the context below followed by the exact payload bytes;
@@ -40,6 +44,50 @@ func refuseSparkle(privateKey: Data?, publicKey: Data) {
     }
 }
 
+/// Writes a new key pair to `path`, which must be outside any Git checkout,
+/// without overwriting anything. The private key file is 0600 in a 0700 folder
+/// and is never printed.
+func writeKeyPair(_ path: String, prefix: String, label: String) {
+    let directory = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL
+    var probe = directory
+    while probe.path != "/" {
+        if FileManager.default.fileExists(atPath: probe.appendingPathComponent(".git").path) {
+            fail("Refusing to write a signing key inside a Git checkout (\(probe.path))")
+        }
+        probe.deleteLastPathComponent()
+    }
+    let manager = FileManager.default
+    let privateFile = directory.appendingPathComponent(prefix + ".key"), publicFile = directory.appendingPathComponent(prefix + ".pub")
+    for file in [privateFile, publicFile] where manager.fileExists(atPath: file.path) {
+        fail("Refusing to overwrite \(file.path); move it away first if you really mean to replace this key")
+    }
+    var isDirectory: ObjCBool = false
+    if manager.fileExists(atPath: directory.path, isDirectory: &isDirectory) {
+        guard isDirectory.boolValue else { fail("\(directory.path) is not a folder") }
+    } else {
+        do { try manager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]) }
+        catch { fail("Cannot create \(directory.path)") }
+    }
+    let privateKey = Curve25519.Signing.PrivateKey()
+    let publicKey = privateKey.publicKey.rawRepresentation
+    refuseSparkle(privateKey: privateKey.rawRepresentation, publicKey: publicKey)
+    // O_EXCL: never replace a file that appeared in the meantime.
+    let fd = open(privateFile.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+    guard fd >= 0 else { fail("Cannot create \(privateFile.path)") }
+    let secret = Data(privateKey.rawRepresentation.base64EncodedString().utf8)
+    let written = secret.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+    close(fd)
+    guard written == secret.count else { fail("Cannot write \(privateFile.path)") }
+    guard manager.createFile(atPath: publicFile.path, contents: Data(publicKey.base64EncodedString().utf8), attributes: [.posixPermissions: 0o644]) else {
+        fail("Cannot write \(publicFile.path)")
+    }
+    print("Wrote a new \(label) key pair, key \(keyID(publicKey)):")
+    print("  private key (keep secret, mode 0600): \(privateFile.path)")
+    print("  public key: \(publicFile.path)")
+    print("  public key value: \(publicKey.base64EncodedString())")
+    if label == "TEST" { print("  TEST key: never configure it in GitHub or use it for published catalogues") }
+}
+
 let args = CommandLine.arguments.dropFirst()
 switch (args.first, args.count) {
 case ("sign", 3):
@@ -68,21 +116,23 @@ case ("verify", 2), ("verify", 3):
           publicKey.isValidSignature(signature, for: context + payload) else { fail("Catalogue signature is NOT valid") }
     if args.count == 3, payload != read(args[args.startIndex + 2]) { fail("Signed payload differs from the expected payload") }
     print("Catalogue signature valid (key \(keyID(publicKeyData)))")
+case ("production-key", 2):
+    // The real signing key: generate it on the maintainer's own Mac only.
+    writeKeyPair(args[args.startIndex + 1], prefix: "arkiv-theme-signing", label: "PRODUCTION")
 case ("test-key", 2):
-    let directory = URL(fileURLWithPath: args[args.startIndex + 1]).standardizedFileURL
-    let git = Process(); git.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-    git.arguments = ["-C", FileManager.default.currentDirectoryPath, "rev-parse", "--show-toplevel"]
-    let pipe = Pipe(); git.standardOutput = pipe; git.standardError = Pipe()
-    try? git.run(); git.waitUntilExit()
-    let top = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-    if !top.isEmpty, directory.path == top || directory.path.hasPrefix(top + "/") { fail("Refusing to write a key inside the repository") }
-    let privateKey = Curve25519.Signing.PrivateKey()
-    try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-    let privateFile = directory.appendingPathComponent("theme-test-signing.key")
-    try! Data(privateKey.rawRepresentation.base64EncodedString().utf8).write(to: privateFile)
-    try! FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: privateFile.path)
-    try! Data(privateKey.publicKey.rawRepresentation.base64EncodedString().utf8).write(to: directory.appendingPathComponent("theme-test-signing.pub"))
-    print("Wrote an isolated TEST key pair \(keyID(privateKey.publicKey.rawRepresentation)) to \(directory.path); never use it for production")
+    // Throwaway keys for CI and local tests. Never configure them in GitHub.
+    writeKeyPair(args[args.startIndex + 1], prefix: "theme-test-signing", label: "TEST")
+case ("verify-keypair", 1):
+    // Before publishing: the private key in the environment must belong to the
+    // public key the app embeds. Prints key IDs only.
+    let seed = key("ARKIV_THEME_PRIVATE_ED_KEY"), configured = key("ARKIV_THEME_PUBLIC_ED_KEY")
+    guard let privateKey = try? Curve25519.Signing.PrivateKey(rawRepresentation: seed) else { fail("Invalid private key") }
+    refuseSparkle(privateKey: seed, publicKey: privateKey.publicKey.rawRepresentation)
+    refuseSparkle(privateKey: nil, publicKey: configured)
+    guard privateKey.publicKey.rawRepresentation == configured else {
+        fail("ARKIV_THEME_PRIVATE_ED_KEY (key \(keyID(privateKey.publicKey.rawRepresentation))) does not match ARKIV_THEME_PUBLIC_ED_KEY (key \(keyID(configured)))")
+    }
+    print("Theme signing key pair matches (key \(keyID(configured)))")
 default:
-    fail("Usage: sign <payload> <catalog> | verify <catalog> [<payload>] | test-key <directory>")
+    fail("Usage: sign <payload> <catalog> | verify <catalog> [<payload>] | verify-keypair | production-key <directory> | test-key <directory>")
 }

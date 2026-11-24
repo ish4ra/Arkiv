@@ -157,7 +157,7 @@ final class ThemeManagerTests: XCTestCase {
         XCTAssertNotNil(provider.icon(.zip, points: 16))
         // Previews of installed themes come from disk.
         let previews = await second.previews(for: "folio")
-        XCTAssertEqual(Array(previews.keys), [.zip])
+        XCTAssertEqual(Array(previews.keys), [.icon(.zip)])
     }
 
     @MainActor func testCatalogueRollbackIsRejectedEvenWithoutTheCacheFile() async throws {
@@ -271,8 +271,8 @@ final class ThemeManagerTests: XCTestCase {
         themes.activate(refresh: false)
         await themes.refreshCatalogAndWait()
         let previews = await themes.previews(for: "folio")
-        XCTAssertEqual(Set(previews.keys), [.zip, .tar])
-        XCTAssertEqual(previews[.zip]?.representations.first?.pixelsWide, 128)
+        XCTAssertEqual(Set(previews.keys), [.icon(.zip), .icon(.tar)])
+        XCTAssertEqual(previews[.icon(.zip)]?.representations.first?.pixelsWide, 128)
         _ = await themes.previews(for: "folio")
         XCTAssertEqual(FixtureServer.requests(sandbox.url("folio-1.preview.arkivtheme")), 1, "Previews are cached while the pane is open")
         themes.deactivate()

@@ -44,6 +44,14 @@ REPO = HERE.parents[1]
 CONFIG = json.loads((HERE / 'themes.json').read_text())
 REPS = [(pt, scale) for pt in (16, 32, 128, 256, 512) for scale in (1, 2)]
 RELEASE_BASE = 'https://github.com/ish4ra/Arkiv/releases/download/'
+# Artwork Arkiv draws for compound suffixes and split 7z volumes (Finder cannot
+# tell these names apart from their last extension). Must match
+# DocumentIconExtra in Sources/ArkivThemes/ThemeModels.swift.
+INAPP_EXTRAS = ['TAR.GZ', 'TAR.BZ2', 'TAR.XZ', 'TAR.ZST', 'TZST', '7z-volume']
+# The representations Arkiv draws them at (16 pt rows and title bar, 64 pt
+# Archive Info and 128 pt previews), bundled for the default Seal Dark only.
+INAPP_REPS = ['icon_16x16.png', 'icon_16x16@2x.png', 'icon_128x128.png', 'icon_128x128@2x.png']
+INAPP_ROOT = REPO / 'Resources/DocumentIconsInApp'
 PACK_SCHEMA = 1
 CATALOG_SCHEMA = 1
 # Hard limits, mirrored by Sources/ArkivThemes/ThemeLimits.swift and tested.
@@ -334,7 +342,8 @@ def main(argv):
                          'licence': CONFIG['licence']}
         manifest_bytes = (json.dumps(pack_manifest, indent=1, sort_keys=True, ensure_ascii=False) + '\n').encode()
         pack = zip_bytes([('theme.json', manifest_bytes)] + [(f['path'], f['data']) for f in files])
-        previews = [(f'Arkiv-{name}.png', theme_sources[(name, 'icon_128x128.png')]) for name in CONFIG['icons'] if name in mapping['icons']]
+        previews = [(f'Arkiv-{name}.png', theme_sources[(name, 'icon_128x128.png')])
+                    for name in CONFIG['icons'] + INAPP_EXTRAS if name in mapping['icons'] or name in mapping['extras']]
         preview_entries = [(n, optimized[sha256(s.path.read_bytes())][0]) for n, s in previews]
         preview = zip_bytes(preview_entries)
         installed = len(manifest_bytes) + sum(f['size'] for f in files)
@@ -375,6 +384,25 @@ def main(argv):
                 'changes': changed[theme['id']],
                 'sourceAlsoChangesUnrecordedFormats': shared.get(theme['id'], False)}
             entry['variation'] = {'changes': changed[theme['id']]}
+    # Bundled in-app extras of the default theme, from the same verified,
+    # losslessly optimized renders as the packs.
+    inapp_out = out / 'DocumentIconsInApp'
+    sums, pixels, inapp_bytes = [], [], 0
+    for name in INAPP_EXTRAS:
+        for rep in INAPP_REPS:
+            src = sources['seal-dark'][(name, rep)]
+            data, digest = optimized[sha256(src.path.read_bytes())]
+            rel = f'Arkiv-{name}/{rep}'
+            (inapp_out / rel).parent.mkdir(parents=True, exist_ok=True)
+            (inapp_out / rel).write_bytes(data)
+            sums.append(f'{sha256(data)}  {rel}\n'); pixels.append(f'{digest}  {rel}\n')
+            inapp_bytes += len(data)
+    (inapp_out / 'SHA256SUMS').write_text(''.join(sorted(sums, key=lambda l: l[66:])))
+    (inapp_out / 'PIXELS.sha256').write_text(''.join(sorted(pixels, key=lambda l: l[66:])))
+    inventory['bundledInAppExtras'] = {'files': len(sums), 'bytes': inapp_bytes,
+                                       'sha256sums': sha256((inapp_out / 'SHA256SUMS').read_bytes()),
+                                       'pixels': sha256((inapp_out / 'PIXELS.sha256').read_bytes())}
+
     payload = {'schema': CATALOG_SCHEMA, 'catalogVersion': args.catalog_version, 'defaultTheme': CONFIG['default']['id'],
                'limits': LIMITS, 'themes': catalog_themes}
     payload_bytes = (json.dumps(payload, indent=1, sort_keys=True, ensure_ascii=False) + '\n').encode()
@@ -386,8 +414,13 @@ def main(argv):
     (out / 'inventory.json').write_text(text)
     if args.write:
         lock.write_text(text)
+        import shutil
+        shutil.rmtree(INAPP_ROOT, ignore_errors=True)
+        shutil.copytree(inapp_out, INAPP_ROOT)
         (REPO / 'docs/document-icon-theme-inventory.md').write_text(inventory_markdown(inventory))
         print(f'Wrote {lock.relative_to(REPO)} and docs/document-icon-theme-inventory.md')
+    elif any((INAPP_ROOT / f).read_bytes() != (inapp_out / f).read_bytes() for f in ['SHA256SUMS', 'PIXELS.sha256']):
+        raise SystemExit('Resources/DocumentIconsInApp differs from the rebuilt default-theme extras')
     elif not lock.exists() or lock.read_text() != text:
         raise SystemExit('Built packs differ from design/document-icon-themes/inventory.json; '
                          'the build is not reproducible or the themes changed (re-run with --write for an approved change)')

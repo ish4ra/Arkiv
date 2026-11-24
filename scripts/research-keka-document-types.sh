@@ -69,3 +69,4 @@ else
   echo 'Wiki not reachable' > "$out/keka-wiki.txt"
 fi
 cat "$out/keka-release.txt"
+cat "$out/keka-wiki.txt"

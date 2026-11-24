@@ -52,19 +52,24 @@ for type in info["CFBundleDocumentTypes"] as? [[String: Any]] ?? [] {
 }
 let imported = (info["UTImportedTypeDeclarations"] as? [[String: Any]] ?? []).compactMap { $0["UTTypeIdentifier"] as? String }
 
+/// RGBA pixels of an image drawn at `side` px through its CGImage (works for
+/// ICNS files and Icon Services images alike, without a window).
 func pixels(_ image: NSImage, _ side: Int = 64) -> [UInt8] {
-    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side, bitsPerSample: 8, samplesPerPixel: 4,
-                               hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: side * 4, bitsPerPixel: 32)!
-    NSGraphicsContext.saveGraphicsState()
-    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-    image.draw(in: NSRect(x: 0, y: 0, width: side, height: side))
-    NSGraphicsContext.restoreGraphicsState()
-    return Array(UnsafeBufferPointer(start: rep.bitmapData!, count: side * side * 4))
+    var rect = NSRect(x: 0, y: 0, width: side, height: side)
+    var out = [UInt8](repeating: 0, count: side * side * 4)
+    guard let cg = image.cgImage(forProposedRect: &rect, context: nil, hints: nil),
+          let context = CGContext(data: &out, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
+                                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return out }
+    context.interpolationQuality = .high
+    context.draw(cg, in: CGRect(x: 0, y: 0, width: side, height: side))
+    return out
 }
+/// Share of pixels that are not fully transparent: 0 means the image drew nothing.
+func coverage(_ p: [UInt8]) -> Double { Double(stride(from: 3, to: p.count, by: 4).filter { p[$0] > 0 }.count) / Double(p.count / 4) }
 /// Mean absolute RGBA difference at 64 px; 0 means identical.
-func difference(_ a: NSImage, _ b: NSImage) -> Double {
+func difference(_ a: NSImage, _ b: NSImage) -> (Double, Double, Double) {
     let x = pixels(a), y = pixels(b)
-    return Double(zip(x, y).reduce(0) { $0 + abs(Int($1.0) - Int($1.1)) }) / Double(x.count)
+    return (Double(zip(x, y).reduce(0) { $0 + abs(Int($1.0) - Int($1.1)) }) / Double(x.count), coverage(x), coverage(y))
 }
 let bundledIcons: [String: NSImage] = Dictionary(uniqueKeysWithValues: Set(iconForType.values).compactMap { name in
     NSImage(contentsOf: app.appendingPathComponent("Contents/Resources").appendingPathComponent(name)).map { (name, $0) }
@@ -83,7 +88,7 @@ let sampleURLs = samples.map { name -> URL in
     return url
 }
 
-func report(_ url: URL, label: String) -> (verdict: String, arkivIcon: Bool) {
+func report(_ url: URL, label: String, quiet: Bool = false) -> (verdict: String, arkivIcon: Bool) {
     let ext = url.pathExtension
     let byExtension = UTType(filenameExtension: ext)
     let content = (try? url.resourceValues(forKeys: [.contentTypeKey]))?.contentType
@@ -98,9 +103,9 @@ func report(_ url: URL, label: String) -> (verdict: String, arkivIcon: Bool) {
     let shown = NSWorkspace.shared.icon(forFile: url.path)
     var arkivIcon = false, diff = "-"
     if let iconFile, let bundled = bundledIcons[iconFile] {
-        let d = difference(shown, bundled)
-        diff = String(format: "%.2f", d)
-        arkivIcon = d < 1.0
+        let (d, shownCoverage, arkivCoverage) = difference(shown, bundled)
+        diff = String(format: "%.2f (drawn %.2f/%.2f)", d, shownCoverage, arkivCoverage)
+        arkivIcon = d < 2.0 && arkivCoverage > 0.05
     }
     let verdict: String
     switch (iconFile != nil, arkivIsHandler, arkivIsDefault, arkivIcon) {
@@ -110,9 +115,9 @@ func report(_ url: URL, label: String) -> (verdict: String, arkivIcon: Bool) {
     case (true, true, false, _): verdict = "Arkiv registered, but another app is the default handler, so Finder shows that app's icon"
     case (true, true, true, false): verdict = "Arkiv is the default handler but Icon Services returned another icon (cached?)"
     }
-    print("\(label)  ext=.\(ext) type=\(byExtension?.identifier ?? "none") fileType=\(content?.identifier ?? "none") compoundTag[\(compound)]=\(compoundType)"
+    if !quiet { print("\(label)  ext=.\(ext) type=\(byExtension?.identifier ?? "none") fileType=\(content?.identifier ?? "none") compoundTag[\(compound)]=\(compoundType)"
         + " arkivIcon=\(iconFile ?? "none")\(imported.contains(typeID) ? " (imported)" : "") default=\(handler?.lastPathComponent ?? "none")"
-        + " arkivHandler=\(arkivIsHandler) diff=\(diff) -> \(verdict)")
+        + " arkivHandler=\(arkivIsHandler) diff=\(diff) -> \(verdict)") }
     return (verdict, arkivIcon)
 }
 
@@ -145,10 +150,38 @@ if experiment {
         let status = LSSetDefaultRoleHandlerForContentType(type as CFString, .all, bundleID as CFString)
         print("\(type): previous default \(previous[type] ?? "none"), set Arkiv -> status \(status)")
     }
-    let watched = sampleURLs.filter { ["archive.zip", "archive.xz", "archive.tar.xz", "Sparkle-2.10.0.tar.xz", "archive.txz"].contains($0.lastPathComponent) }
-    for _ in 0..<20 where !watched.prefix(2).allSatisfy({ NSWorkspace.shared.urlForApplication(toOpen: $0).flatMap { Bundle(url: $0)?.bundleIdentifier } == bundleID }) {
-        Thread.sleep(forTimeInterval: 0.5)
+    // Type lookups in a fresh process, after registration, plus what
+    // LaunchServices recorded for the types only Arkiv declares.
+    let probe = folder.appendingPathComponent("probe.swift")
+    try? Data("""
+    import UniformTypeIdentifiers
+    for ext in ["rar", "zst", "tzst", "7z", "xz"] {
+        let t = UTType(filenameExtension: ext)
+        print("fresh process: .\\(ext) -> \\(t?.identifier ?? "none") declared=\\(t?.isDeclared ?? false)")
     }
+    """.utf8).write(to: probe)
+    let swift = Process(); swift.executableURL = URL(fileURLWithPath: "/usr/bin/swift"); swift.arguments = [probe.path]
+    try? swift.run(); swift.waitUntilExit()
+    let dump = Process(); let pipe = Pipe()
+    dump.executableURL = URL(fileURLWithPath: lsregister); dump.arguments = ["-dump", "Type"]; dump.standardOutput = pipe
+    try? dump.run()
+    let text = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    dump.waitUntilExit()
+    for id in ["com.rarlab.rar-archive", "org.zstandard.zstd"] {
+        let blocks = text.components(separatedBy: "\n----").filter { $0.range(of: "type id:\\s+\(id)\\s", options: .regularExpression) != nil }
+        print("LaunchServices records for \(id): \(blocks.count)")
+        for block in blocks.prefix(3) {
+            let lines = block.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+            print("  " + lines.filter { line in ["bundle:", "flags:", "tags:", "conforms to:", "uti flags:"].contains { line.hasPrefix($0) } }.joined(separator: " | "))
+        }
+    }
+    let watched = sampleURLs.filter { ["archive.zip", "archive.xz", "archive.tar.xz", "Sparkle-2.10.0.tar.xz", "archive.txz"].contains($0.lastPathComponent) }
+    // Icon Services updates asynchronously: wait up to 30 s for the ZIP and XZ icons.
+    var attempt = 0
+    while attempt < 60, !watched.prefix(2).allSatisfy({ report($0, label: "waiting", quiet: true).arkivIcon }) {
+        Thread.sleep(forTimeInterval: 0.5); attempt += 1
+    }
+    print("waited \(Double(attempt) / 2) s")
     for url in watched { _ = report(url, label: "after: " + url.lastPathComponent) }
     for type in types {
         if let old = previous[type] { _ = LSSetDefaultRoleHandlerForContentType(type as CFString, .all, old as CFString) }

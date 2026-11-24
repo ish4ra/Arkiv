@@ -23,7 +23,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
     private let tabs = NSTabView()
     static let appearanceTab = "Appearance"
     private static let compactSize = NSSize(width: 520, height: 330)
-    private static let appearanceSize = NSSize(width: 820, height: 590)
+    private static let appearanceSize = NSSize(width: 820, height: 680)
     let appearancePicker = NSPopUpButton(frame: .zero, pullsDown: false)
     let automaticChecks = NSButton(checkboxWithTitle: "Automatically check for updates", target: nil, action: nil)
     private let updateStatus = NSTextField(wrappingLabelWithString: "")

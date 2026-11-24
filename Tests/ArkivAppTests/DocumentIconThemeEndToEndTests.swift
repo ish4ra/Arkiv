@@ -40,6 +40,8 @@ final class DocumentIconThemeEndToEndTests: XCTestCase {
         return catalog
     }
 
+    func inAppExtras(_ theme: CatalogTheme) -> [DocumentIconExtra] { theme.extras.compactMap(DocumentIconExtra.init(rawValue:)) }
+
     @MainActor func environment(_ sandbox: ThemeFixtures.Sandbox, _ inputs: Inputs) -> ThemeEnvironment {
         sandbox.environment(keys: [inputs.key])
     }
@@ -78,9 +80,20 @@ final class DocumentIconThemeEndToEndTests: XCTestCase {
                     }
                 }
             }
+            // Compound suffixes and split 7z volumes use the theme's preserved
+            // extra artwork, or its family icon when the theme has none.
+            for extra in DocumentIconExtra.allCases {
+                let image = provider.icon(.extra(extra), points: 16)
+                if theme.extras.contains(extra.rawValue) || theme.coverage.contains(extra.fallback.rawValue) {
+                    XCTAssertEqual(image?.representations.map(\.pixelsWide).sorted(), [16, 32], "\(theme.id) \(extra.rawValue)")
+                } else {
+                    XCTAssertNil(image, "\(theme.id) \(extra.rawValue)")
+                }
+            }
+            XCTAssertNotNil(provider.icon(forFileName: "Sparkle-2.10.0.TAR.XZ", points: 16) ?? (theme.isPartial ? NSImage() : nil), theme.id)
             XCTAssertNil(provider.damagedTheme)
             let previews = await manager.previews(for: theme.id)
-            XCTAssertEqual(previews.count, theme.coverage.count, theme.id)
+            XCTAssertEqual(previews.count, theme.coverage.count + inAppExtras(theme).count, theme.id)
         }
         XCTAssertEqual(sandbox.store.installedThemes().count, catalog.themes.count)
         // Offline: no network at all, every installed theme still applies.
@@ -104,7 +117,7 @@ final class DocumentIconThemeEndToEndTests: XCTestCase {
         await manager.refreshCatalogAndWait()
         for theme in catalog.themes {
             let previews = await manager.previews(for: theme.id)
-            XCTAssertEqual(Set(previews.keys.map(\.rawValue)), Set(theme.coverage), theme.id)
+            XCTAssertEqual(Set(previews.keys), Set(theme.coverage.compactMap(DocumentIconName.init(rawValue:)).map(DocumentIconArtwork.icon) + inAppExtras(theme).map(DocumentIconArtwork.extra)), theme.id)
             XCTAssertTrue(previews.values.allSatisfy { $0.representations.first?.pixelsWide == 128 })
         }
         XCTAssertTrue(sandbox.store.installedThemes().isEmpty, "Previews never install a theme")
@@ -124,6 +137,9 @@ final class DocumentIconThemeEndToEndTests: XCTestCase {
         let provider = sandbox.provider(bundled: { name in inputs.bundledIcons?.appendingPathComponent("Arkiv-\(name.rawValue).iconset/icon_16x16.png") })
         let manager = DocumentIconThemeManager(environment: environment(sandbox, inputs), provider: provider)
         manager.providerBundledIcon = bundledIcon(inputs)
+        manager.providerBundledExtra = { extra in
+            inputs.bundledIcons?.deletingLastPathComponent().appendingPathComponent("DocumentIconsInApp/Arkiv-\(extra.rawValue)", isDirectory: true)
+        }
         let controller = SettingsWindowController(preferences: AppPreferences(defaults: sandbox.defaults),
             recents: RecentArchives(urls: { [] }, note: { _ in }, clear: {}),
             updates: UpdateController(publicKey: { nil }, makeDriver: { fatalError("Keyless build") }),
@@ -142,6 +158,11 @@ final class DocumentIconThemeEndToEndTests: XCTestCase {
             try capture(controller.window!, output.appendingPathComponent(name + ".png"))
         }
         try await shot("01-bundled-default-dark", "seal-dark")
+        // Same window through Core Animation, to tell offscreen-capture artefacts
+        // (the tab labels) from real drawing problems.
+        try captureLayer(controller.window!, output.appendingPathComponent("01b-bundled-default-dark-layer-render.png"))
+        XCTAssertEqual(controller.window?.contentView?.subviews.compactMap { $0 as? NSTabView }.first?.tabViewItems.map(\.label),
+                       ["General", "Updates", "Finder Integration", "Appearance"])
         try await shot("02-available-seal-wine-dark", "seal-wine")
         await manager.downloadAndWait("seal-wine")
         try manager.apply("seal-wine")
@@ -167,6 +188,21 @@ final class DocumentIconThemeEndToEndTests: XCTestCase {
         try await shot("09-offline-restored-default-light", "seal-dark")
         let files = try FileManager.default.contentsOfDirectory(atPath: output.path).filter { $0.hasSuffix(".png") }
         XCTAssertGreaterThanOrEqual(files.count, 9)
+    }
+
+    /// The window's layer tree rendered by Core Animation.
+    func captureLayer(_ window: NSWindow, _ url: URL) throws {
+        let view = try XCTUnwrap(window.contentView?.superview ?? window.contentView)
+        view.layoutSubtreeIfNeeded(); view.displayIfNeeded()
+        let layer = try XCTUnwrap(view.layer)
+        let scale = window.backingScaleFactor
+        let context = try XCTUnwrap(CGContext(data: nil, width: Int(view.bounds.width * scale), height: Int(view.bounds.height * scale),
+                                              bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.scaleBy(x: scale, y: scale)
+        layer.render(in: context)
+        let image = try XCTUnwrap(context.makeImage())
+        try XCTUnwrap(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])).write(to: url)
     }
 
     /// The window as AppKit draws it, including the title bar (the frame view).

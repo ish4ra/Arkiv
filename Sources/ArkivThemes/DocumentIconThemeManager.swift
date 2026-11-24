@@ -78,6 +78,13 @@ public struct ThemeEntry: Equatable {
         let names = catalog?.coverage ?? installed.map { Array($0.manifest.icons.keys) } ?? DocumentIconName.allCases.map(\.rawValue)
         return DocumentIconName.allCases.filter { names.contains($0.rawValue) }
     }
+    /// Compound-suffix and volume artwork this theme has for Arkiv's own windows.
+    public var extrasCoverage: [DocumentIconExtra] {
+        let names = catalog?.extras ?? installed.map { Array($0.manifest.extras.keys) } ?? DocumentIconExtra.allCases.map(\.rawValue)
+        return DocumentIconExtra.allCases.filter { names.contains($0.rawValue) }
+    }
+    /// Everything the Settings preview shows for this theme.
+    public var previewArtwork: [DocumentIconArtwork] { coverage.map(DocumentIconArtwork.icon) + extrasCoverage.map(DocumentIconArtwork.extra) }
 }
 
 @MainActor
@@ -94,7 +101,7 @@ public final class DocumentIconThemeManager {
     private var operations: [String: Task<Void, Never>] = [:]
     private var progress: [String: Double] = [:]
     private var installing: Set<String> = []
-    private var previewTasks: [String: Task<[DocumentIconName: NSImage], Never>] = [:]
+    private var previewTasks: [String: Task<[DocumentIconArtwork: NSImage], Never>] = [:]
     private let previews = NSCache<NSString, NSImage>()
     private var refreshTask: Task<Void, Never>?
     private var active = false
@@ -366,13 +373,14 @@ public final class DocumentIconThemeManager {
 
     // MARK: Previews (real artwork only)
 
-    /// The theme's own 128 px artwork for each covered icon: bundled ICNS,
-    /// installed files, or the verified preview pack listed in the catalogue.
-    /// Loaded only for the theme being shown, and cancelled when the pane closes.
-    public func previews(for id: String) async -> [DocumentIconName: NSImage] {
+    /// The theme's own 128 px artwork for each covered icon and in-app extra:
+    /// bundled resources, installed files, or the verified preview pack listed
+    /// in the catalogue. Loaded only for the theme being shown, and cancelled
+    /// when the pane closes.
+    public func previews(for id: String) async -> [DocumentIconArtwork: NSImage] {
         if let cached = cachedPreviews(id) { return cached }
         if let running = previewTasks[id] { return await running.value }
-        let task = Task { [weak self] () -> [DocumentIconName: NSImage] in
+        let task = Task { [weak self] () -> [DocumentIconArtwork: NSImage] in
             guard let self else { return [:] }
             return await self.loadPreviews(id)
         }
@@ -386,37 +394,55 @@ public final class DocumentIconThemeManager {
         for (key, task) in previewTasks where key != id { task.cancel(); previewTasks[key] = nil }
     }
 
-    private func cacheKey(_ id: String, _ name: DocumentIconName) -> NSString { "\(id)/\(name.rawValue)" as NSString }
+    private func cacheKey(_ id: String, _ artwork: DocumentIconArtwork) -> NSString { "\(id)/\(Self.previewName(artwork))" as NSString }
 
-    private func cachedPreviews(_ id: String) -> [DocumentIconName: NSImage]? {
-        guard let entry = entry(id) else { return nil }
-        var images = [DocumentIconName: NSImage]()
-        for name in entry.coverage {
-            guard let image = previews.object(forKey: cacheKey(id, name)) else { return nil }
-            images[name] = image
+    /// `Arkiv-<name>.png`, as in preview packs.
+    public static func previewName(_ artwork: DocumentIconArtwork) -> String {
+        switch artwork {
+        case .icon(let name): return "Arkiv-\(name.rawValue).png"
+        case .extra(let extra): return "Arkiv-\(extra.rawValue).png"
+        }
+    }
+    static func previewArtwork(named file: String) -> DocumentIconArtwork? {
+        guard file.hasPrefix("Arkiv-"), file.hasSuffix(".png") else { return nil }
+        let raw = String(file.dropFirst(6).dropLast(4))
+        return DocumentIconName(rawValue: raw).map(DocumentIconArtwork.icon) ?? DocumentIconExtra(rawValue: raw).map(DocumentIconArtwork.extra)
+    }
+
+    private func cachedPreviews(_ id: String) -> [DocumentIconArtwork: NSImage]? {
+        guard let entry = entry(id), !entry.previewArtwork.isEmpty else { return nil }
+        var images = [DocumentIconArtwork: NSImage]()
+        for artwork in entry.previewArtwork {
+            guard let image = previews.object(forKey: cacheKey(id, artwork)) else { return nil }
+            images[artwork] = image
         }
         return images
     }
 
-    private func remember(_ images: [DocumentIconName: NSImage], for id: String) -> [DocumentIconName: NSImage] {
-        for (name, image) in images { previews.setObject(image, forKey: cacheKey(id, name), cost: 128 * 128 * 4) }
+    private func remember(_ images: [DocumentIconArtwork: NSImage], for id: String) -> [DocumentIconArtwork: NSImage] {
+        for (artwork, image) in images { previews.setObject(image, forKey: cacheKey(id, artwork), cost: 128 * 128 * 4) }
         return images
     }
 
-    private func loadPreviews(_ id: String) async -> [DocumentIconName: NSImage] {
+    private func loadPreviews(_ id: String) async -> [DocumentIconArtwork: NSImage] {
         guard let entry = entry(id) else { return [:] }
         if entry.status == .bundled {
-            var images = [DocumentIconName: NSImage]()
+            var images = [DocumentIconArtwork: NSImage]()
             for name in DocumentIconName.allCases {
                 guard let image = providerBundledIcon(name).flatMap({ NSImage(contentsOf: $0) }) else { continue }
                 image.size = NSSize(width: 128, height: 128)
-                images[name] = image
+                images[.icon(name)] = image
+            }
+            for extra in DocumentIconExtra.allCases {
+                if let image = providerBundledExtra(extra).flatMap({ DocumentIconProvider.loadBundledExtra(from: $0, points: 128) }) {
+                    images[.extra(extra)] = image
+                }
             }
             return remember(images, for: id)
         }
         if let local = entry.installed {
-            var images = [DocumentIconName: NSImage]()
-            for name in entry.coverage { images[name] = provider.previewImage(name, theme: local) }
+            var images = [DocumentIconArtwork: NSImage]()
+            for artwork in entry.previewArtwork { images[artwork] = provider.previewImage(artwork, theme: local) }
             return remember(images, for: id)
         }
         guard let theme = entry.catalog else { return [:] }
@@ -441,23 +467,24 @@ public final class DocumentIconThemeManager {
     }
 
     /// Cached preview files are re-checked against the signed catalogue on every read.
-    private func readPreviewCache(_ theme: CatalogTheme, _ directory: URL) -> [DocumentIconName: NSImage]? {
-        var images = [DocumentIconName: NSImage]()
+    private func readPreviewCache(_ theme: CatalogTheme, _ directory: URL) -> [DocumentIconArtwork: NSImage]? {
+        var images = [DocumentIconArtwork: NSImage]()
         for file in theme.preview.files {
-            guard let name = DocumentIconName(rawValue: String(file.name.dropFirst(6).dropLast(4))),
+            guard let artwork = Self.previewArtwork(named: file.name),
                   let data = try? ThemePackValidator.read(directory.appendingPathComponent(file.name), limit: ThemeLimits.fileBytes),
                   data.count == file.size, ThemeHash.sha256(data) == file.sha256,
                   let bitmap = NSBitmapImageRep(data: data) else { return nil }
             let image = NSImage(size: NSSize(width: 128, height: 128))
             bitmap.size = NSSize(width: 128, height: 128)
             image.addRepresentation(bitmap)
-            images[name] = image
+            images[artwork] = image
         }
         return images
     }
 
     /// How the bundled previews are located; replaced in tests.
     public var providerBundledIcon: (DocumentIconName) -> URL? = { Bundle.main.url(forResource: "Arkiv-\($0.rawValue)", withExtension: "icns") }
+    public var providerBundledExtra: (DocumentIconExtra) -> URL? = DocumentIconProvider.bundledExtraFolder
 
     private func changed() { onChange?() }
 }

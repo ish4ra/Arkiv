@@ -36,6 +36,8 @@ jobs:
         run: python3 tests/test_document_icons.py -v
       - name: Document icon theme pipeline and publication-safety regressions
         run: python3 tests/test_document_icon_themes.py -v
+      - name: Archive format and document-icon coverage regressions
+        run: python3 tests/test_format_icon_coverage.py -v
       - name: CI reliability regressions (pipefail matching, PlugInKit retries)
         run: python3 tests/test_ci_reliability.py -v
       - name: Check for tracked signing material

@@ -117,6 +117,7 @@ public enum ThemeFixtures {
         public var id: String
         public var version: Int
         public var coverage: [DocumentIconName]
+        public var extras: [DocumentIconExtra] = []
         public var entries: [Entry]
         public var manifest: [String: Any]
         public var data: Data { ThemeFixtures.zip(entries) }
@@ -126,9 +127,11 @@ public enum ThemeFixtures {
 
     /// A complete, valid pack: every representation of every covered icon,
     /// with the pipeline's deduplication (128 pt @2x = 256 pt, 256 pt @2x = 512 pt).
-    public static func pack(id: String, version: Int = 1, coverage: [DocumentIconName] = [.zip], tint: UInt8 = 0) -> Pack {
+    public static func pack(id: String, version: Int = 1, coverage: [DocumentIconName] = [.zip], extras: [DocumentIconExtra] = [], tint: UInt8 = 0) -> Pack {
         var entries: [Entry] = [], files: [[String: Any]] = [], icons: [String: [String: String]] = [:], previews: [(name: String, data: Data)] = []
-        for (index, name) in coverage.enumerated() {
+        var extraIcons: [String: [String: String]] = [:]
+        let artwork = coverage.map { ($0.rawValue, "Arkiv-\($0.rawValue).iconset/", false) } + extras.map { ($0.rawValue, "extras/Arkiv-\($0.rawValue).iconset/", true) }
+        for (index, (name, folder, isExtra)) in artwork.enumerated() {
             var reps: [String: String] = [:]
             var stored: [Int: String] = [:]
             for rep in IconRepresentation.all {
@@ -136,19 +139,19 @@ public enum ThemeFixtures {
                 // Byte-identical representations share one file, like build.py.
                 let key = rep.pixels * 10 + (tier <= 32 ? tier : 0)
                 if let path = stored[key] { reps[rep.fileName] = path; continue }
-                let path = "Arkiv-\(name.rawValue).iconset/\(rep.fileName)"
+                let path = folder + rep.fileName
                 let data = png(width: rep.pixels, height: rep.pixels, rgba: (UInt8(40 + index * 17) &+ tint, UInt8(tier % 251), 90, 255))
                 entries.append(Entry(path, data))
                 files.append(["path": path, "size": data.count, "sha256": sha256(data), "width": rep.pixels, "height": rep.pixels])
                 stored[key] = path
                 reps[rep.fileName] = path
-                if rep.fileName == "icon_128x128.png" { previews.append((name: "Arkiv-\(name.rawValue).png", data: data)) }
+                if rep.fileName == "icon_128x128.png" { previews.append((name: "Arkiv-\(name).png", data: data)) }
             }
-            icons[name.rawValue] = reps
+            if isExtra { extraIcons[name] = reps } else { icons[name] = reps }
         }
         let manifest: [String: Any] = ["schema": 1, "id": id, "version": version, "name": "Fixture \(id)", "icons": icons,
-                                       "extras": [String: Any](), "files": files, "licence": "Test fixture"]
-        var pack = Pack(id: id, version: version, coverage: coverage, entries: [], manifest: manifest, previewFiles: previews)
+                                       "extras": extraIcons, "files": files, "licence": "Test fixture"]
+        var pack = Pack(id: id, version: version, coverage: coverage, extras: extras, entries: [], manifest: manifest, previewFiles: previews)
         pack.entries = [Entry("theme.json", manifestData(manifest))] + entries
         return pack
     }
@@ -169,7 +172,7 @@ public enum ThemeFixtures {
         let preview = previewData ?? zip(pack.previewFiles.map { Entry($0.name, $0.data) })
         return [
             "id": pack.id, "version": pack.version, "name": "Fixture \(pack.id)", "family": "fixture", "familyName": "Fixtures",
-            "kind": kind, "summary": "A test theme.", "variantOf": NSNull(), "coverage": pack.coverage.map(\.rawValue), "extras": [String](),
+            "kind": kind, "summary": "A test theme.", "variantOf": NSNull(), "coverage": pack.coverage.map(\.rawValue), "extras": pack.extras.map(\.rawValue),
             "minimumAppBuild": 0, "licence": "Test fixture", "provenance": ["type": "fixture"],
             "pack": ["url": assetBase + tag + "/\(pack.id)-\(pack.version).arkivtheme", "size": data.count, "sha256": sha256(data),
                      "installedSize": installedSize ?? pack.installedSize, "files": pack.entries.count],
@@ -213,8 +216,9 @@ public enum ThemeFixtures {
             ThemeEnvironment(store: store, verifier: ThemeCatalogVerifier(publicKeys: keys ?? [key.publicKey.rawRepresentation], appBuild: appBuild),
                              catalogURL: catalogURL, configuration: { FixtureServer.configuration() })
         }
-        public func provider(bundled: @escaping (DocumentIconName) -> URL? = { _ in nil }) -> DocumentIconProvider {
-            DocumentIconProvider(store: store, bundledIcon: bundled)
+        public func provider(bundled: @escaping (DocumentIconName) -> URL? = { _ in nil },
+                             bundledExtra: @escaping (DocumentIconExtra) -> URL? = { _ in nil }) -> DocumentIconProvider {
+            DocumentIconProvider(store: store, bundledIcon: bundled, bundledExtra: bundledExtra)
         }
         public func url(_ name: String) -> URL { URL(string: ThemeFixtures.assetBase + tag + "/" + name)! }
         /// Serves `catalog` and every theme's pack and preview.

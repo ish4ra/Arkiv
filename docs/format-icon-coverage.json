@@ -1,0 +1,38 @@
+{
+ "comment": "Authoritative archive-format and document-icon coverage. Engine detection is content-based; names only choose icons, creation suffixes and split-7z grouping. Finder columns describe what Finder shows when Arkiv is the default handler for the type (see docs/format-icon-coverage.md). Tests: tests/test_format_icon_coverage.py and Tests/ArkivThemesTests/DocumentIconArtworkTests.swift.",
+ "statuses": {
+  "supported": "Supported and correctly mapped (Finder and inside Arkiv)",
+  "finder-limited": "Supported; Arkiv shows dedicated artwork, Finder shows the family icon because macOS types the name by its last extension",
+  "planned": "Planned or unsupported format: no claim, no registration, no dedicated artwork in use",
+  "unrelated": "Not an archive type Arkiv can identify by name: never claimed"
+ },
+ "rows": [
+  {"name": "archive.zip", "format": "ZIP", "engine": "read, create, edit (ZIP32)", "create": ".zip", "finderType": "public.zip-archive", "finderIcon": "ZIP", "inApp": "ZIP", "status": "supported"},
+  {"name": "archive.7z", "format": "7z", "engine": "read, create", "create": ".7z", "finderType": "org.7-zip.7-zip-archive", "finderIcon": "7z", "inApp": "7z", "status": "supported"},
+  {"name": "archive.rar", "format": "RAR4/RAR5 (single volume)", "engine": "read only", "create": null, "finderType": "com.rarlab.rar-archive", "finderIcon": "RAR", "inApp": "RAR", "status": "supported"},
+  {"name": "archive.tar", "format": "TAR", "engine": "read, create", "create": ".tar", "finderType": "public.tar-archive", "finderIcon": "TAR", "inApp": "TAR", "status": "supported"},
+  {"name": "archive.gz", "format": "GZIP (single file)", "engine": "read, create", "create": ".gz", "finderType": "org.gnu.gnu-zip-archive", "finderIcon": "GZIP", "inApp": "GZIP", "status": "supported"},
+  {"name": "archive.bz2", "format": "BZIP2 (single file)", "engine": "read, create", "create": ".bz2", "finderType": "public.bzip2-archive", "finderIcon": "BZIP2", "inApp": "BZIP2", "status": "supported"},
+  {"name": "archive.xz", "format": "XZ (single file)", "engine": "read, create", "create": ".xz", "finderType": "org.tukaani.xz-archive", "finderIcon": "XZ", "inApp": "XZ", "status": "supported"},
+  {"name": "archive.zst", "format": "Zstandard (single file)", "engine": "read, create", "create": ".zst", "finderType": "org.zstandard.zstd", "finderIcon": "ZSTD", "inApp": "ZSTD", "status": "supported"},
+  {"name": "archive.tgz", "format": "TAR + gzip", "engine": "read, create", "create": ".tgz", "finderType": "org.gnu.gnu-zip-tar-archive", "finderIcon": "TGZ", "inApp": "TGZ", "status": "supported"},
+  {"name": "archive.tar.gz", "format": "TAR + gzip", "engine": "read, create", "create": ".tar.gz", "finderType": "org.gnu.gnu-zip-archive", "finderIcon": "GZIP", "inApp": "TAR.GZ", "status": "finder-limited"},
+  {"name": "archive.tbz2", "format": "TAR + bzip2", "engine": "read, create", "create": ".tbz2", "finderType": "public.tar-bzip2-archive", "finderIcon": "TBZ2", "inApp": "TBZ2", "status": "supported"},
+  {"name": "archive.tbz", "format": "TAR + bzip2", "engine": "read", "create": null, "finderType": "public.tar-bzip2-archive", "finderIcon": "TBZ2", "inApp": "TBZ2", "status": "supported"},
+  {"name": "archive.tar.bz2", "format": "TAR + bzip2", "engine": "read, create", "create": ".tar.bz2", "finderType": "public.bzip2-archive", "finderIcon": "BZIP2", "inApp": "TAR.BZ2", "status": "finder-limited"},
+  {"name": "archive.txz", "format": "TAR + XZ", "engine": "read, create", "create": ".txz", "finderType": "org.tukaani.tar-xz-archive", "finderIcon": "TXZ", "inApp": "TXZ", "status": "supported"},
+  {"name": "archive.tar.xz", "format": "TAR + XZ", "engine": "read, create", "create": ".tar.xz", "finderType": "org.tukaani.xz-archive", "finderIcon": "XZ", "inApp": "TAR.XZ", "status": "finder-limited"},
+  {"name": "archive.tzst", "format": "TAR + Zstandard", "engine": "read, create", "create": ".tzst", "finderType": "org.zstandard.zstd", "finderIcon": "ZSTD", "inApp": "TZST", "status": "finder-limited"},
+  {"name": "archive.tar.zst", "format": "TAR + Zstandard", "engine": "read, create", "create": ".tar.zst", "finderType": "org.zstandard.zstd", "finderIcon": "ZSTD", "inApp": "TAR.ZST", "status": "finder-limited"},
+  {"name": "archive.7z.001", "format": "Split 7z volume", "engine": "read, create (2-128 parts)", "create": ".7z.001", "finderType": null, "finderIcon": null, "inApp": "7z-volume", "status": "finder-limited"},
+  {"name": "archive.7z.002", "format": "Split 7z volume", "engine": "read (opened from any volume)", "create": null, "finderType": null, "finderIcon": null, "inApp": "7z-volume", "status": "finder-limited"},
+  {"name": "archive.7z.0123", "format": "Split 7z volume", "engine": "read", "create": null, "finderType": null, "finderIcon": null, "inApp": "7z-volume", "status": "finder-limited"},
+  {"name": "archive.part1.rar", "format": "Multipart RAR first volume", "engine": "rejected (multipart RAR is milestone 5)", "create": null, "finderType": "com.rarlab.rar-archive", "finderIcon": "RAR", "inApp": "RAR", "status": "planned", "note": "Still a .rar file, so it keeps the RAR icon; the preserved RAR-volume artwork is not used until multipart RAR is supported."},
+  {"name": "archive.r00", "format": "Legacy RAR volume", "engine": "unsupported (milestone 5)", "create": null, "finderType": null, "finderIcon": null, "inApp": null, "status": "planned"},
+  {"name": "archive.z01", "format": "Split ZIP volume", "engine": "unsupported (milestone 6)", "create": null, "finderType": null, "finderIcon": null, "inApp": null, "status": "planned"},
+  {"name": "archive.zip.001", "format": "Split ZIP volume", "engine": "unsupported (milestone 6)", "create": null, "finderType": null, "finderIcon": null, "inApp": null, "status": "planned"},
+  {"name": "archive.001", "format": "Unknown numbered file", "engine": "not identified by name", "create": null, "finderType": null, "finderIcon": null, "inApp": null, "status": "unrelated"},
+  {"name": "notes.txt", "format": "Not an archive", "engine": "-", "create": null, "finderType": null, "finderIcon": null, "inApp": null, "status": "unrelated"},
+  {"name": "release.tar", "format": "TAR", "engine": "read, create", "create": ".tar", "finderType": "public.tar-archive", "finderIcon": "TAR", "inApp": "TAR", "status": "supported", "note": "A name containing 'tar' without a compressor suffix stays TAR."}
+ ]
+}

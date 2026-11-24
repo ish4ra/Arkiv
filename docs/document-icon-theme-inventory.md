@@ -11,26 +11,26 @@ Sizes are bytes as published. *Raw* is the archived renders before lossless opti
 
 | Theme | Family | Kind | Source | Coverage | Raw | Download | Installed | Preview |
 | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| Folio (`folio` v1) | A · Folio | family | v1 `directions/folio.mjs` (`folio`) | 11/11 icons, 8/8 extras | 6.89 MB | 4.46 MB | 4.43 MB | 82 kB |
-| Folio Dark (`folio-dark` v1) | A · Folio | family | v1 `directions/folio-dark.mjs` (`folio-dark`) | 11/11 icons, 8/8 extras | 13.69 MB | 7.67 MB | 7.65 MB | 118 kB |
-| Strata (`strata` v1) | B · Strata | family | v1 `directions/strata.mjs` (`strata`) | 11/11 icons, 8/8 extras | 15.21 MB | 8.42 MB | 8.40 MB | 133 kB |
-| Seal Original (`seal` v1) | C · Seal | family | v1 `directions/seal.mjs` (`seal`) | 11/11 icons, 8/8 extras | 9.15 MB | 5.18 MB | 5.16 MB | 103 kB |
-| Seal Dark — Original Aubergine (`seal-dark-aubergine` v1) | C · Seal | concept | v1 `directions/seal-dark.mjs` (`seal-dark`) | 11/11 icons, 8/8 extras | 13.70 MB | 8.64 MB | 8.62 MB | 124 kB |
-| Seal Wine (`seal-wine` v1) | C · Seal | surface | v1 `directions/seal-dark.mjs` (`seal-dark-wine`) | 11/11 icons, 8/8 extras | 13.78 MB | 8.64 MB | 8.62 MB | 126 kB |
-| Seal Noir (`seal-noir` v1) | C · Seal | surface | v1 `directions/seal-dark.mjs` (`seal-dark-noir`) | 11/11 icons, 8/8 extras | 13.91 MB | 8.86 MB | 8.84 MB | 124 kB |
-| Seal Dark — Restored Readability (`seal-dark-restored` v1) | C · Seal | candidate | v2 `themes/seal-dark-restored-readability/` | 11/11 icons, 8/8 extras | 13.71 MB | 8.65 MB | 8.63 MB | 124 kB |
+| Folio (`folio` v1) | A · Folio | family | v1 `directions/folio.mjs` (`folio`) | 11/11 icons, 8/8 extras | 6.89 MB | 4.46 MB | 4.43 MB | 136 kB |
+| Folio Dark (`folio-dark` v1) | A · Folio | family | v1 `directions/folio-dark.mjs` (`folio-dark`) | 11/11 icons, 8/8 extras | 13.69 MB | 7.67 MB | 7.65 MB | 190 kB |
+| Strata (`strata` v1) | B · Strata | family | v1 `directions/strata.mjs` (`strata`) | 11/11 icons, 8/8 extras | 15.21 MB | 8.42 MB | 8.40 MB | 210 kB |
+| Seal Original (`seal` v1) | C · Seal | family | v1 `directions/seal.mjs` (`seal`) | 11/11 icons, 8/8 extras | 9.15 MB | 5.18 MB | 5.16 MB | 165 kB |
+| Seal Dark — Original Aubergine (`seal-dark-aubergine` v1) | C · Seal | concept | v1 `directions/seal-dark.mjs` (`seal-dark`) | 11/11 icons, 8/8 extras | 13.70 MB | 8.64 MB | 8.62 MB | 197 kB |
+| Seal Wine (`seal-wine` v1) | C · Seal | surface | v1 `directions/seal-dark.mjs` (`seal-dark-wine`) | 11/11 icons, 8/8 extras | 13.78 MB | 8.64 MB | 8.62 MB | 201 kB |
+| Seal Noir (`seal-noir` v1) | C · Seal | surface | v1 `directions/seal-dark.mjs` (`seal-dark-noir`) | 11/11 icons, 8/8 extras | 13.91 MB | 8.86 MB | 8.84 MB | 199 kB |
+| Seal Dark — Restored Readability (`seal-dark-restored` v1) | C · Seal | candidate | v2 `themes/seal-dark-restored-readability/` | 11/11 icons, 8/8 extras | 13.71 MB | 8.65 MB | 8.63 MB | 198 kB |
 | Classic (pre-redesign) (`classic` v1) | Classic | reproduction | v1 `directions/current.mjs` (`current`) | 4/11 icons, 0/8 extras | 0.83 MB | 0.54 MB | 0.54 MB | 19 kB |
-| Three-window reel (`folio-tar-three-windows` v1) | A · Folio | variation of Folio | v2 `iterations/` `folio-tar-three-windows` on Folio | 11/11 icons, 8/8 extras; changes TAR, TGZ, TBZ2, TAR.GZ, TAR.BZ2 | 6.95 MB | 4.50 MB | 4.48 MB | 83 kB |
-| First 16 pt layout (`folio-xs-glyph-unit-60` v1) | A · Folio | variation of Folio | v2 `iterations/` `folio-xs-glyph-unit-60` on Folio | 11/11 icons, 8/8 extras; changes ZIP, 7z, TAR, XZ | 6.89 MB | 4.46 MB | 4.43 MB | 82 kB |
-| Pale ZIP tape (`folio-dark-zip-pale-tape` v1) | A · Folio | variation of Folio Dark | v2 `iterations/` `folio-dark-zip-pale-tape` on Folio Dark | 11/11 icons, 8/8 extras; changes ZIP, ZIP-volume-future | 13.68 MB | 7.66 MB | 7.64 MB | 118 kB |
-| Sector-window reel (`strata-tar-trefoil-windows` v1) | B · Strata | variation of Strata | v2 `iterations/` `strata-tar-trefoil-windows` on Strata | 11/11 icons, 8/8 extras; changes TAR, TGZ, TBZ2, TXZ, TAR.GZ, TAR.BZ2, TAR.XZ, TAR.ZST, TZST | 15.24 MB | 8.44 MB | 8.41 MB | 133 kB |
-| First XZ crystal (`strata-xz-octahedron-v0` v1) | B · Strata | variation of Strata | v2 `iterations/` `strata-xz-octahedron-v0` on Strata | 11/11 icons, 8/8 extras; changes XZ | 15.21 MB | 8.42 MB | 8.40 MB | 133 kB |
-| Floating ZSTD streaks (`strata-zst-floating-streaks` v1) | B · Strata | variation of Strata | v2 `iterations/` `strata-zst-floating-streaks` on Strata | 11/11 icons, 8/8 extras; changes ZSTD | 15.21 MB | 8.42 MB | 8.40 MB | 133 kB |
-| Pale ZIP ladder (`seal-zip-pale-ladder` v1) | C · Seal | variation of Seal Original | v2 `iterations/` `seal-zip-pale-ladder` on Seal Original | 11/11 icons, 8/8 extras; changes ZIP, ZIP-volume-future | 9.13 MB | 5.17 MB | 5.15 MB | 103 kB |
-| Ring RAR (`seal-rar-ring` v1) | C · Seal | variation of Seal Original | v2 `iterations/` `seal-rar-ring` on Seal Original | 11/11 icons, 8/8 extras; changes RAR, RAR-volume-future | 9.24 MB | 5.24 MB | 5.21 MB | 105 kB |
-| First layout (`seal-layout-v0` v1) | C · Seal | variation of Seal Original | v2 `iterations/` `seal-layout-v0` on Seal Original | 11/11 icons, 8/8 extras; changes ZIP, 7z, TAR, RAR, TGZ, TAR.GZ, 7z-volume | 9.16 MB | 5.18 MB | 5.16 MB | 103 kB |
-| Large-glyph layout (`seal-layout-v0-5-large-glyph` v1) | C · Seal | variation of Seal Original | v2 `iterations/` `seal-layout-v0.5-large-glyph` on Seal Original | 11/11 icons, 8/8 extras; changes ZIP, 7z, RAR, RAR-volume-future | 9.18 MB | 5.20 MB | 5.18 MB | 104 kB |
-| Loose-teeth ZIP (`seal-dark-zip-loose-teeth` v1) | C · Seal | variation of Seal Dark | v2 `iterations/` `production-zip-loose-teeth` on Seal Dark | 11/11 icons, 8/8 extras; changes ZIP | 12.47 MB | 8.71 MB | 8.69 MB | 124 kB |
+| Three-window reel (`folio-tar-three-windows` v1) | A · Folio | variation of Folio | v2 `iterations/` `folio-tar-three-windows` on Folio | 11/11 icons, 8/8 extras; changes TAR, TGZ, TBZ2, TAR.GZ, TAR.BZ2 | 6.95 MB | 4.50 MB | 4.48 MB | 137 kB |
+| First 16 pt layout (`folio-xs-glyph-unit-60` v1) | A · Folio | variation of Folio | v2 `iterations/` `folio-xs-glyph-unit-60` on Folio | 11/11 icons, 8/8 extras; changes ZIP, 7z, TAR, XZ | 6.89 MB | 4.46 MB | 4.43 MB | 136 kB |
+| Pale ZIP tape (`folio-dark-zip-pale-tape` v1) | A · Folio | variation of Folio Dark | v2 `iterations/` `folio-dark-zip-pale-tape` on Folio Dark | 11/11 icons, 8/8 extras; changes ZIP, ZIP-volume-future | 13.68 MB | 7.66 MB | 7.64 MB | 190 kB |
+| Sector-window reel (`strata-tar-trefoil-windows` v1) | B · Strata | variation of Strata | v2 `iterations/` `strata-tar-trefoil-windows` on Strata | 11/11 icons, 8/8 extras; changes TAR, TGZ, TBZ2, TXZ, TAR.GZ, TAR.BZ2, TAR.XZ, TAR.ZST, TZST | 15.24 MB | 8.44 MB | 8.41 MB | 210 kB |
+| First XZ crystal (`strata-xz-octahedron-v0` v1) | B · Strata | variation of Strata | v2 `iterations/` `strata-xz-octahedron-v0` on Strata | 11/11 icons, 8/8 extras; changes XZ | 15.21 MB | 8.42 MB | 8.40 MB | 210 kB |
+| Floating ZSTD streaks (`strata-zst-floating-streaks` v1) | B · Strata | variation of Strata | v2 `iterations/` `strata-zst-floating-streaks` on Strata | 11/11 icons, 8/8 extras; changes ZSTD | 15.21 MB | 8.42 MB | 8.40 MB | 210 kB |
+| Pale ZIP ladder (`seal-zip-pale-ladder` v1) | C · Seal | variation of Seal Original | v2 `iterations/` `seal-zip-pale-ladder` on Seal Original | 11/11 icons, 8/8 extras; changes ZIP, ZIP-volume-future | 9.13 MB | 5.17 MB | 5.15 MB | 165 kB |
+| Ring RAR (`seal-rar-ring` v1) | C · Seal | variation of Seal Original | v2 `iterations/` `seal-rar-ring` on Seal Original | 11/11 icons, 8/8 extras; changes RAR, RAR-volume-future | 9.24 MB | 5.24 MB | 5.21 MB | 166 kB |
+| First layout (`seal-layout-v0` v1) | C · Seal | variation of Seal Original | v2 `iterations/` `seal-layout-v0` on Seal Original | 11/11 icons, 8/8 extras; changes ZIP, 7z, TAR, RAR, TGZ, TAR.GZ, 7z-volume | 9.16 MB | 5.18 MB | 5.16 MB | 165 kB |
+| Large-glyph layout (`seal-layout-v0-5-large-glyph` v1) | C · Seal | variation of Seal Original | v2 `iterations/` `seal-layout-v0.5-large-glyph` on Seal Original | 11/11 icons, 8/8 extras; changes ZIP, 7z, RAR, RAR-volume-future | 9.18 MB | 5.20 MB | 5.18 MB | 166 kB |
+| Loose-teeth ZIP (`seal-dark-zip-loose-teeth` v1) | C · Seal | variation of Seal Dark | v2 `iterations/` `production-zip-loose-teeth` on Seal Dark | 11/11 icons, 8/8 extras; changes ZIP | 12.47 MB | 8.71 MB | 8.69 MB | 200 kB |
 
 **20 packs, 132.45 MB in total.** A user downloads only the themes they choose.
 

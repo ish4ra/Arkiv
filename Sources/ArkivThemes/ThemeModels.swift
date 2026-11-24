@@ -42,6 +42,56 @@ public enum DocumentIconName: String, CaseIterable, Sendable, Codable {
     public var label: String { rawValue == "7z" ? "7Z" : rawValue }
 }
 
+/// Artwork Arkiv draws for names Finder cannot tell apart from a shorter
+/// suffix: compressed TAR with a double suffix, TZST, and split 7z volumes.
+/// Finder types `name.tar.xz` by its last extension (XZ); inside Arkiv the
+/// dedicated archived artwork is used.
+public enum DocumentIconExtra: String, CaseIterable, Sendable, Codable {
+    case tarGzip = "TAR.GZ", tarBzip2 = "TAR.BZ2", tarXZ = "TAR.XZ", tarZstd = "TAR.ZST", tzst = "TZST"
+    case sevenZipVolume = "7z-volume"
+    /// The Finder icon whose artwork stands in when a theme has no such extra.
+    public var fallback: DocumentIconName {
+        switch self {
+        case .tarGzip: return .tgz
+        case .tarBzip2: return .tbz2
+        case .tarXZ: return .txz
+        case .tarZstd, .tzst: return .zstd
+        case .sevenZipVolume: return .sevenZip
+        }
+    }
+    public var label: String { self == .sevenZipVolume ? "7Z VOL" : rawValue }
+}
+
+/// What Arkiv draws for an archive name in its own windows.
+public enum DocumentIconArtwork: Hashable, Sendable {
+    case icon(DocumentIconName)
+    case extra(DocumentIconExtra)
+
+    public var label: String {
+        switch self { case .icon(let name): return name.label; case .extra(let extra): return extra.label }
+    }
+
+    /// Longest matching suffix first, case-insensitively. Split 7z volumes use
+    /// exactly the engine's rule (`SplitSevenZip.matches`): `.7z.` followed
+    /// only by digits. A bare `.001` is never assumed to be 7z. Only the name
+    /// is used; archive detection stays content-based.
+    public static func forFileName(_ name: String) -> DocumentIconArtwork? {
+        let lower = name.lowercased()
+        if isSplitSevenZipVolume(lower) { return .extra(.sevenZipVolume) }
+        let compound: [(String, DocumentIconExtra)] = [(".tar.gz", .tarGzip), (".tar.bz2", .tarBzip2), (".tar.xz", .tarXZ),
+                                                        (".tar.zst", .tarZstd), (".tzst", .tzst)]
+        for (suffix, extra) in compound where lower.hasSuffix(suffix) && lower.count > suffix.count { return .extra(extra) }
+        return DocumentIconName.forFileName(name).map(DocumentIconArtwork.icon)
+    }
+
+    public static func isSplitSevenZipVolume(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        guard let range = lower.range(of: ".7z.", options: .backwards) else { return false }
+        let suffix = lower[range.upperBound...]
+        return !suffix.isEmpty && suffix.allSatisfy { $0.isASCII && $0.isNumber }
+    }
+}
+
 /// Artwork kept for future consumers (a Quick Look thumbnail provider):
 /// double-suffix TAR labels, TZST and volume artwork. Never used for Finder.
 public let documentIconExtraNames: Set<String> = ["TAR.GZ", "TAR.BZ2", "TAR.XZ", "TAR.ZST", "TZST",

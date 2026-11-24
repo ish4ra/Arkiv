@@ -11,17 +11,31 @@ import AppKit
 /// * Finder is unaffected: it keeps reading the ICNS files in Arkiv.app.
 public final class DocumentIconProvider {
     public static let shared = DocumentIconProvider(store: .shared,
-        bundledIcon: { Bundle.main.url(forResource: "Arkiv-\($0.rawValue)", withExtension: "icns") })
+        bundledIcon: { Bundle.main.url(forResource: "Arkiv-\($0.rawValue)", withExtension: "icns") },
+        bundledExtra: DocumentIconProvider.bundledExtraFolder)
+
+    /// In-app-only artwork of the bundled Seal Dark family for compound
+    /// suffixes and split 7z volumes (16 pt and 128 pt tiers). Finder never
+    /// uses these: it cannot tell `.tar.xz` from `.xz`.
+    public static func bundledExtraFolder(_ extra: DocumentIconExtra) -> URL? {
+        guard let url = Bundle.main.resourceURL?.appendingPathComponent("DocumentIconsInApp/Arkiv-\(extra.rawValue)", isDirectory: true),
+              FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return url
+    }
+    /// Representations bundled for each in-app extra.
+    public static let bundledExtraTiers = [16, 128]
 
     private let store: ThemeStore
     private let bundledIcon: (DocumentIconName) -> URL?
+    private let bundledExtra: (DocumentIconExtra) -> URL?
     private let cache = NSCache<NSString, NSImage>()
     private var active: InstalledTheme?
     private var resolved = false
     public private(set) var damagedTheme: String?
 
-    public init(store: ThemeStore, bundledIcon: @escaping (DocumentIconName) -> URL?) {
-        self.store = store; self.bundledIcon = bundledIcon
+    public init(store: ThemeStore, bundledIcon: @escaping (DocumentIconName) -> URL?,
+                bundledExtra: @escaping (DocumentIconExtra) -> URL? = { _ in nil }) {
+        self.store = store; self.bundledIcon = bundledIcon; self.bundledExtra = bundledExtra
         cache.countLimit = 96
         cache.totalCostLimit = 12 << 20
     }
@@ -42,7 +56,51 @@ public final class DocumentIconProvider {
     /// The selected theme's icon for an archive file name, or nil when Arkiv
     /// has no document icon for it (the caller keeps the system icon).
     public func icon(forFileName name: String, points: CGFloat = 16) -> NSImage? {
-        DocumentIconName.forFileName(name).flatMap { icon($0, points: points) }
+        DocumentIconArtwork.forFileName(name).flatMap { icon($0, points: points) }
+    }
+
+    /// Compound and volume artwork when the theme has it, otherwise the
+    /// family's Finder icon (a theme without that icon keeps the system icon).
+    public func icon(_ artwork: DocumentIconArtwork, points: CGFloat) -> NSImage? {
+        switch artwork {
+        case .icon(let name): return icon(name, points: points)
+        case .extra(let extra): return extraIcon(extra, points: points) ?? icon(extra.fallback, points: points)
+        }
+    }
+
+    private func extraIcon(_ extra: DocumentIconExtra, points: CGFloat) -> NSImage? {
+        resolve()
+        let key = "\(active?.id ?? DocumentIconThemeID.bundled)/extra/\(extra.rawValue)/\(points)" as NSString
+        if let image = cache.object(forKey: key) { return image }
+        let image: NSImage?
+        if let theme = active {
+            guard let reps = theme.manifest.extras[extra.rawValue] else { return nil }
+            image = load(reps, from: theme, tier: IconRepresentation.tier(for: points), points: points)
+            if image == nil { markDamaged(theme); return extraIcon(extra, points: points) }
+        } else {
+            image = bundledExtra(extra).flatMap { Self.loadBundledExtra(from: $0, points: points) }
+        }
+        if let image { cache.setObject(image, forKey: key, cost: Int(points * points * 4 * 5)) }
+        return image
+    }
+
+    /// The smallest bundled tier that covers `points`, at 1x and 2x.
+    static func loadBundledExtra(from folder: URL, points: CGFloat, scales: [Int] = [1, 2]) -> NSImage? {
+        let tier = bundledExtraTiers.first { CGFloat($0) >= points } ?? bundledExtraTiers.last!
+        let image = NSImage(size: NSSize(width: points, height: points))
+        for scale in scales {
+            let rep = IconRepresentation(points: tier, scale: scale)
+            guard let data = try? ThemePackValidator.read(folder.appendingPathComponent(rep.fileName), limit: ThemeLimits.fileBytes),
+                  let bitmap = NSBitmapImageRep(data: data), bitmap.pixelsWide == rep.pixels, bitmap.pixelsHigh == rep.pixels else { return nil }
+            bitmap.size = NSSize(width: points, height: points)
+            image.addRepresentation(bitmap)
+        }
+        return image
+    }
+
+    /// The bundled extra's own 128 px artwork, for the Settings preview.
+    func bundledExtraPreview(_ extra: DocumentIconExtra) -> NSImage? {
+        bundledExtra(extra).flatMap { Self.loadBundledExtra(from: $0, points: 128, scales: [1, 2]) }
     }
 
     /// nil when the active theme has no artwork for `name` (a partial theme)
@@ -66,8 +124,13 @@ public final class DocumentIconProvider {
     }
 
     /// The installed theme's own 128 px artwork for a preview, verified like any other read.
-    func previewImage(_ name: DocumentIconName, theme: InstalledTheme) -> NSImage? {
-        guard let reps = theme.manifest.icons[name.rawValue] else { return nil }
+    func previewImage(_ artwork: DocumentIconArtwork, theme: InstalledTheme) -> NSImage? {
+        let reps: [String: String]?
+        switch artwork {
+        case .icon(let name): reps = theme.manifest.icons[name.rawValue]
+        case .extra(let extra): reps = theme.manifest.extras[extra.rawValue]
+        }
+        guard let reps else { return nil }
         return load(reps, from: theme, tier: 128, points: 128, scales: [1])
     }
 

@@ -264,6 +264,30 @@ def verify_branding():
         assert hashlib.sha256(Path(path).read_bytes()).hexdigest() == expected, path
 
 
+INAPP = Path('Resources/DocumentIconsInApp')
+INAPP_EXTRAS = ['TAR.GZ', 'TAR.BZ2', 'TAR.XZ', 'TAR.ZST', 'TZST', '7z-volume']
+INAPP_REPS = {'icon_16x16.png': 16, 'icon_16x16@2x.png': 32, 'icon_128x128.png': 128, 'icon_128x128@2x.png': 256}
+
+
+def verify_inapp(root=INAPP):
+    """In-app-only artwork for compound suffixes and split 7z volumes: exactly
+    the expected files, checksummed, 8-bit RGBA with only IHDR/IDAT/IEND, and
+    decoded pixels equal to PIXELS.sha256."""
+    root = Path(root)
+    assert {p.name for p in root.iterdir() if p.is_dir()} == {f'Arkiv-{n}' for n in INAPP_EXTRAS}, f'{root}: unexpected folders'
+    sums, pixels = read_manifest(root / 'SHA256SUMS'), read_manifest(root / 'PIXELS.sha256')
+    expected = {f'Arkiv-{n}/{rep}' for n in INAPP_EXTRAS for rep in INAPP_REPS}
+    assert set(sums) == expected == set(pixels), f'{root}: manifests do not list exactly the expected files'
+    for rel in sorted(expected):
+        data = (root / rel).read_bytes()
+        assert hashlib.sha256(data).hexdigest() == sums[rel], f'{rel}: checksum'
+        assert {kind for kind, _ in png_chunks(data)} == {b'IHDR', b'IDAT', b'IEND'}, f'{rel}: chunks'
+        width, height, rgba = decode_png(data, rel)
+        assert width == height == INAPP_REPS[rel.split('/')[1]], f'{rel}: {width}x{height}'
+        assert pixel_digest(width, height, rgba) == pixels[rel], f'{rel}: pixels differ from PIXELS.sha256'
+    return len(expected)
+
+
 def verify_app(app):
     verify_metadata(plistlib.loads((app / 'Contents/Info.plist').read_bytes()))
     verify_branding()
@@ -271,6 +295,11 @@ def verify_app(app):
     resources = app / 'Contents/Resources'
     packaged = {p.name for p in resources.glob('Arkiv-*.icns')}
     assert packaged == {f'Arkiv-{name}.icns' for name in ICONS}, f'Unexpected document icons: {sorted(packaged)}'
+    verify_inapp()
+    bundled_inapp = sorted(str(p.relative_to(resources / 'DocumentIconsInApp')) for p in (resources / 'DocumentIconsInApp').rglob('*') if p.is_file())
+    assert bundled_inapp == sorted(read_manifest(INAPP / 'SHA256SUMS')), f'Unexpected in-app icon files: {bundled_inapp}'
+    for rel in bundled_inapp:
+        assert (resources / 'DocumentIconsInApp' / rel).read_bytes() == (INAPP / rel).read_bytes(), f'{rel}: packaged bytes differ'
     spec = importlib.util.spec_from_file_location('package_icons', Path(__file__).resolve().parent / 'package-document-icons.py')
     packager = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(packager)
@@ -308,5 +337,6 @@ if __name__ == '__main__':
     else:
         verify_metadata(plistlib.loads(Path('Resources/Info.plist').read_bytes()))
         verify_sources()
+        verify_inapp()
         verify_branding()
-        print('Document icon sources, registrations and branding verified')
+        print('Document icon sources, in-app extras, registrations and branding verified')

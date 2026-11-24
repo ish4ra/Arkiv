@@ -124,8 +124,11 @@ public struct ThemeCatalogVerifier: Sendable {
                   let files = theme.pack.files, (1...ThemeLimits.files).contains(files) else {
                 throw reject("theme \(theme.id) has invalid sizes.")
             }
+            // Previews: every covered icon, plus the in-app extras the pack carries.
             let previewNames = theme.preview.files.map(\.name)
-            guard Set(previewNames) == Set(theme.coverage.map { "Arkiv-\($0).png" }), previewNames.count == theme.coverage.count,
+            let inApp = Set(DocumentIconExtra.allCases.map(\.rawValue))
+            let expected = Set(theme.coverage.map { "Arkiv-\($0).png" }).union(theme.extras.filter(inApp.contains).map { "Arkiv-\($0).png" })
+            guard Set(previewNames) == expected, previewNames.count == expected.count,
                   theme.preview.files.allSatisfy({ $0.width == 128 && $0.height == 128 && (1...ThemeLimits.fileBytes).contains($0.size) && ThemeText.validHex($0.sha256) }) else {
                 throw reject("theme \(theme.id) has invalid previews.")
             }

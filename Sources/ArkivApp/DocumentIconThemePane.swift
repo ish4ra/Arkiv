@@ -36,6 +36,10 @@ final class DocumentIconThemePane: NSView, NSTableViewDataSource, NSTableViewDel
     let refreshButton = NSButton(title: "Refresh Catalogue", target: nil, action: nil)
     private(set) var previewViews: [DocumentIconName: NSImageView] = [:]
     private var previewCaptions: [DocumentIconName: NSTextField] = [:]
+    /// Compound-suffix and split-volume artwork Arkiv uses in its own windows.
+    private(set) var extraPreviewViews: [DocumentIconExtra: NSImageView] = [:]
+    private var extraCaptions: [DocumentIconExtra: NSTextField] = [:]
+    let extrasHeading = NSTextField(labelWithString: "Inside Arkiv only: .tar.gz, .tar.bz2, .tar.xz, .tar.zst, .tzst and split 7z volumes. Finder shows the family icon for these names.")
     private var previewTask: Task<Void, Never>?
     private(set) var previewsShownFor: String?
     private var active = false
@@ -63,6 +67,7 @@ final class DocumentIconThemePane: NSView, NSTableViewDataSource, NSTableViewDel
         previewTask?.cancel(); previewTask = nil
         previewsShownFor = nil
         for view in previewViews.values { view.image = nil }
+        for view in extraPreviewViews.values { view.image = nil }
         manager.onChange = nil
         manager.deactivate()
     }
@@ -133,14 +138,42 @@ final class DocumentIconThemePane: NSView, NSTableViewDataSource, NSTableViewDel
             _ = grid.addRow(with: Array(cells[start..<min(start + 6, cells.count)]))
         }
 
+        let extrasGrid = NSGridView(numberOfColumns: 6, rows: 0)
+        extrasGrid.rowSpacing = 4; extrasGrid.columnSpacing = 18
+        var extraCells: [NSView] = []
+        for extra in DocumentIconExtra.allCases {
+            let image = NSImageView()
+            image.imageScaling = .scaleProportionallyUpOrDown
+            image.translatesAutoresizingMaskIntoConstraints = false
+            image.widthAnchor.constraint(equalToConstant: 40).isActive = true
+            image.heightAnchor.constraint(equalToConstant: 40).isActive = true
+            image.setAccessibilityLabel("\(extra.label) document icon inside Arkiv")
+            let caption = NSTextField(labelWithString: extra.label)
+            caption.font = .systemFont(ofSize: NSFont.smallSystemFontSize - 1)
+            caption.textColor = .secondaryLabelColor
+            caption.alignment = .center
+            let cell = NSStackView(views: [image, caption])
+            cell.orientation = .vertical; cell.spacing = 1
+            extraPreviewViews[extra] = image; extraCaptions[extra] = caption
+            extraCells.append(cell)
+        }
+        _ = extrasGrid.addRow(with: extraCells)
+        extrasHeading.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        extrasHeading.textColor = .secondaryLabelColor
+        extrasHeading.lineBreakMode = .byWordWrapping
+        extrasHeading.maximumNumberOfLines = 2
+        extrasHeading.cell?.wraps = true
+
         let actions = NSStackView(views: [downloadButton, applyButton, removeButton, progress, cancelButton])
         actions.spacing = 8
-        let detail = NSStackView(views: [nameLabel, detailLabel, summaryLabel, grid, sizeLabel, actions, statusLabel])
+        let detail = NSStackView(views: [nameLabel, detailLabel, summaryLabel, grid, extrasHeading, extrasGrid, sizeLabel, actions, statusLabel])
         detail.orientation = .vertical; detail.alignment = .leading; detail.spacing = 10
         detail.setCustomSpacing(4, after: nameLabel)
         detail.setCustomSpacing(16, after: summaryLabel)
-        detail.setCustomSpacing(14, after: grid)
-        for view in [summaryLabel, statusLabel] { view.widthAnchor.constraint(equalTo: detail.widthAnchor).isActive = true }
+        detail.setCustomSpacing(12, after: grid)
+        detail.setCustomSpacing(4, after: extrasHeading)
+        detail.setCustomSpacing(14, after: extrasGrid)
+        for view in [summaryLabel, statusLabel, extrasHeading] { view.widthAnchor.constraint(equalTo: detail.widthAnchor).isActive = true }
 
         let body = NSStackView(views: [scroll, detail])
         body.alignment = .top; body.spacing = 20
@@ -153,7 +186,7 @@ final class DocumentIconThemePane: NSView, NSTableViewDataSource, NSTableViewDel
         catalogLabel.textColor = .secondaryLabelColor
         catalogLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        let finder = note("Downloaded themes apply inside Arkiv: archive contents, the window title and Archive Info. Finder and Quick Look keep Arkiv’s bundled Seal Dark document icons until a safe, supported way to change them is available. Arkiv never modifies its app bundle, your archives or your default apps.")
+        let finder = note("Downloaded themes apply inside Arkiv: archive contents, the window title and Archive Info. Finder keeps Arkiv’s bundled Seal Dark document icons, and only when Arkiv is the default app for a file type. Showing themes in Finder through an optional Quick Look thumbnail setting is planned for a later version. Arkiv never modifies its app bundle, your archives or your default apps.")
 
         let stack = NSStackView(views: [title, intro, body, footer, finder])
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 10
@@ -165,7 +198,7 @@ final class DocumentIconThemePane: NSView, NSTableViewDataSource, NSTableViewDel
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
             stack.topAnchor.constraint(equalTo: topAnchor, constant: 18),
             stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -16),
-            body.heightAnchor.constraint(equalToConstant: 330),
+            body.heightAnchor.constraint(equalToConstant: 410),
         ])
         for view in [intro, body, footer, finder] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
     }
@@ -330,13 +363,21 @@ final class DocumentIconThemePane: NSView, NSTableViewDataSource, NSTableViewDel
             previewCaptions[name]?.stringValue = covered.contains(name) ? name.label : "\(name.label) · system"
             view.alphaValue = covered.contains(name) ? 1 : 0.35
         }
+        let extras = Set(entry.extrasCoverage)
+        for (extra, view) in extraPreviewViews {
+            view.image = nil
+            // A theme without the dedicated artwork uses its family icon inside Arkiv.
+            extraCaptions[extra]?.stringValue = extras.contains(extra) ? extra.label : "\(extra.label) · family"
+            view.alphaValue = extras.contains(extra) ? 1 : 0.35
+        }
         guard active else { return }
         let id = entry.id
         previewTask = Task { [weak self] in
             guard let self else { return }
             let images = await self.manager.previews(for: id)
             guard !Task.isCancelled, self.shownID == id else { return }
-            for (name, view) in self.previewViews { view.image = images[name] }
+            for (name, view) in self.previewViews { view.image = images[.icon(name)] }
+            for (extra, view) in self.extraPreviewViews { view.image = images[.extra(extra)] }
             if images.isEmpty, entry.catalog != nil, entry.installed == nil {
                 self.statusLabel.stringValue += " Preview unavailable while offline."
             }
