@@ -16,6 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Record Keka's document-type registration
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: scripts/research-keka-document-types.sh build/research
       - uses: actions/upload-artifact@v6
         with:

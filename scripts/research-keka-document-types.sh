@@ -12,7 +12,7 @@ out=${1:?usage: research-keka-document-types.sh <report directory>}
 mkdir -p "$out"
 work=$(mktemp -d)
 trap 'hdiutil detach -quiet "$work/mnt" 2>/dev/null || true; rm -rf "$work"' EXIT
-curl -sSfL https://api.github.com/repos/aonez/Keka/releases/latest -o "$work/release.json"
+gh api repos/aonez/Keka/releases/latest > "$work/release.json"
 python3 - "$work/release.json" > "$work/asset" <<'PY'
 import json, sys
 release = json.load(open(sys.argv[1]))
@@ -64,7 +64,7 @@ for appex in sorted(os.listdir(plugins)) if os.path.isdir(plugins) else []:
 PY
 # Documented behaviour, from the public wiki (text only).
 if git clone -q --depth 1 https://github.com/aonez/Keka.wiki.git "$work/wiki" 2>/dev/null; then
-  { echo "Wiki commit: $(git -C "$work/wiki" rev-parse HEAD)"; grep -rn -i -E 'tar\.xz|\btxz\b|\.xz\b|default app|file association|extension|icon|\.001|part1' "$work/wiki" --include='*.md' | sed "s#$work/wiki/##" | head -200; } > "$out/keka-wiki.txt"
+  { echo "Wiki commit: $(git -C "$work/wiki" rev-parse HEAD)"; grep -rn -i -E 'tar\.xz|\btxz\b|\.xz\b|default app|file association|extension|icon|\.001|part1' "$work/wiki" --include='*.md' | sed "s#$work/wiki/##" | sed -n '1,200p'; } > "$out/keka-wiki.txt"
 else
   echo 'Wiki not reachable' > "$out/keka-wiki.txt"
 fi
