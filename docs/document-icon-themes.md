@@ -58,20 +58,37 @@ A native AppKit pane (`Sources/ArkivApp/DocumentIconThemePane.swift`):
 
 | Surface | State |
 | --- | --- |
-| Archive rows inside Arkiv (nested archives such as `inner.zip`) | **Implemented.** 16 pt artwork of the selected theme; other files keep their system icons |
+| Archive rows inside Arkiv (nested archives such as `inner.zip`, `inner.tar.xz`, `set.7z.001`) | **Implemented.** 16 pt artwork of the selected theme, including compound-suffix and split-volume artwork; other files keep their system icons |
 | Window title-bar proxy icon of an open archive | **Implemented** |
 | Archive Info | **Implemented** (64 pt) |
 | Finder document icons (icon, list, column views, Get Info) | **Not changed.** Finder reads `CFBundleTypeIconFile` from the signed bundle; there is no supported way to point it elsewhere |
 | Quick Look thumbnails | **Not implemented.** An opt-in, bundled `QLThumbnailProvider` remains the candidate (milestone 4); packs already carry the TAR.\* and volume artwork it would need |
 | Per-file custom icons | **Rejected.** They would write into users' files |
 
-Formats map to icons exactly as in `Resources/Info.plist`, using the last
-extension: `name.tar.gz` gets GZIP, `.tgz` gets TGZ and `.tzst` gets ZSTD.
-Generic numeric suffixes such as `.7z.001` are never claimed. Theme changes
-apply immediately to every open window, through the
-`ArkivDocumentIconThemeDidChange` notification; no restart is needed. A
-partial theme (Classic) falls back to the system icon for the formats it never
-had.
+**Which artwork a name gets** (full table:
+[format and icon coverage](format-icon-coverage.md)):
+* **Inside Arkiv**, the longest suffix wins, case-insensitively.
+  * `.tar.gz`, `.tar.bz2`, `.tar.xz`, `.tar.zst` and `.tzst` use their
+    preserved compressed-TAR artwork; `.tgz`, `.tbz2`/`.tbz` and `.txz` use
+    TGZ, TBZ2 and TXZ.
+  * Split 7z volumes use the volume artwork, by exactly the engine's own rule
+    (`.7z.` followed only by digits). A bare `.001` is never assumed to be 7z.
+  * Names only choose artwork; archive detection stays content-based.
+* **Bundled Seal Dark** ships this in-app artwork as PNGs in
+  `Contents/Resources/DocumentIconsInApp`, at 16 pt and the 128 pt tier, 1×
+  and 2×: 24 files, 307,048 bytes.
+  * They come from the archived 26501 generator through the verified pipeline.
+  * Their pixels are pinned in `Resources/DocumentIconsInApp/PIXELS.sha256`.
+* **Downloaded themes** use the extras in their packs. A theme without one
+  falls back to its family icon (TAR.XZ → TXZ, TZST → ZSTD, 7z volume → 7z),
+  and a theme without that either (Classic) keeps the system icon.
+* **Finder** follows `Resources/Info.plist` and the type macOS assigns to the
+  **last** extension. So `name.tar.gz` shows GZIP, `name.tar.xz` shows XZ and
+  `.tzst` shows ZSTD, and only while Arkiv is the default app for that type.
+  Generic numeric suffixes are never claimed.
+
+Theme changes apply immediately to every open window, through the
+`ArkivDocumentIconThemeDidChange` notification; no restart is needed.
 
 ## Architecture
 
@@ -316,42 +333,123 @@ nothing in it is built into the app.
 * **Publishing** is the manual `publish` job of
   `.github/workflows/document-icon-themes.yml`: `workflow_dispatch` with
   `publish: true`, on `main` only, in the protected `document-icon-themes`
-  environment. In order, it:
-  1. signs with the theme key
-  2. verifies the signature, and the published catalogue it replaces
-  3. checks that the version increases and every asset matches the signed
-     size and SHA-256
-  4. uploads the assets, and requires each to download back byte-identical
-  5. only then advances the catalogue branch
+  environment, after a maintainer approves the deployment. See
+  [publication safety](#publication-safety) for the order of steps and how
+  interrupted runs resume.
 
 ## Provisioning (maintainer)
 
-None of this has been done; there is no production theme key yet. CI signs
-only with throwaway keys generated per job.
+There is no production theme key yet, and none should ever be generated in a
+cloud session or CI. CI signs only with throwaway keys from `test-key`, which
+must never be configured in GitHub.
 
-1. On a trusted Mac, outside any repository, create the dedicated key:
+**Commands** (`scripts/document-icon-theme-catalog.swift`):
+
+| Command | Purpose |
+| --- | --- |
+| `production-key <folder>` | The real key pair. The folder must be outside any Git checkout. Refuses to overwrite anything. Writes the private key with mode 0600 in a 0700 folder and never prints it; prints the public key and its key ID |
+| `verify-keypair` | Checks that `ARKIV_THEME_PRIVATE_ED_KEY` belongs to `ARKIV_THEME_PUBLIC_ED_KEY`, and refuses either if it equals a Sparkle key. Prints key IDs only. The publish job runs it before signing |
+| `test-key <folder>` | Throwaway keys for CI and local tests only |
+
+**On your Apple Silicon Mac** (Xcode Command Line Tools and the GitHub CLI,
+`brew install gh`, signed in with `gh auth login`):
+
+1. Generate the key **outside the repository**. Run this from your Arkiv
+   checkout (the folder must not exist inside it):
 
    ```bash
-   swift scripts/document-icon-theme-catalog.swift test-key ~/arkiv-theme-key
+   swift scripts/document-icon-theme-catalog.swift production-key ~/ArkivThemeSigning
    ```
 
-   Despite the subcommand's name, this is an ordinary Ed25519 key pair:
-   `theme-test-signing.key` (private, base64 seed) and `theme-test-signing.pub`.
-   Store the private key in your password manager, never in the repository,
-   and never reuse Sparkle's key (the tools refuse it).
-2. In GitHub, Settings → Environments → **New environment**
-   `document-icon-themes`: add **required reviewers**, restrict it to `main`,
-   and add the secret `ARKIV_THEME_PRIVATE_ED_KEY` (the private key file's
-   contents).
-3. In Settings → Secrets and variables → Actions → **Variables**, add the
-   repository variable `ARKIV_THEME_PUBLIC_ED_KEY` (the public key). Builds made
-   after this embed it, which enables downloads in Settings.
-4. Delete the local key file once it is stored.
-5. To publish: Actions → **Document icon themes** → Run workflow on `main` with
-   **publish** checked, then approve the deployment after reviewing the
-   inventory and screenshots of that run.
-6. Rotation: add the new public key alongside the old one (the verifier
-   accepts any configured key), ship a build, then sign with the new key.
+   It prints the public key and a key ID, and writes
+   `~/ArkivThemeSigning/arkiv-theme-signing.key` (private, mode 0600) and
+   `arkiv-theme-signing.pub`.
+2. Optionally check the pair, without printing the private key:
+
+   ```bash
+   ARKIV_THEME_PRIVATE_ED_KEY="$(cat ~/ArkivThemeSigning/arkiv-theme-signing.key)" ARKIV_THEME_PUBLIC_ED_KEY="$(cat ~/ArkivThemeSigning/arkiv-theme-signing.pub)" swift scripts/document-icon-theme-catalog.swift verify-keypair
+   ```
+
+3. In GitHub, **Settings → Environments → New environment**
+   `document-icon-themes`:
+   * add yourself under **Required reviewers**
+   * under **Deployment branches and tags**, choose *Selected branches* and allow only `main`
+4. Store the private key as an environment secret, reading it from the file so
+   it never appears in your shell history:
+
+   ```bash
+   gh secret set ARKIV_THEME_PRIVATE_ED_KEY --repo ish4ra/Arkiv --env document-icon-themes < ~/ArkivThemeSigning/arkiv-theme-signing.key
+   ```
+
+5. Store the public key as a repository variable. Builds made after this embed
+   it, which turns on downloads in Settings:
+
+   ```bash
+   gh variable set ARKIV_THEME_PUBLIC_ED_KEY --repo ish4ra/Arkiv < ~/ArkivThemeSigning/arkiv-theme-signing.pub
+   ```
+
+6. Move the private key into your password manager (or another offline
+   backup). Then delete the local copy:
+
+   ```bash
+   rm -P ~/ArkivThemeSigning/arkiv-theme-signing.key
+   ```
+
+   If the key is lost, publish with a new key after shipping a build that
+   trusts it (rotation, below).
+7. Never reuse Sparkle's key: `production-key`, `sign`, `verify-keypair` and
+   the build all refuse it.
+
+**Publishing:** Actions → **Document icon themes** → *Run workflow* on `main`
+with **publish** checked. Review the run's inventory, then approve the
+`document-icon-themes` deployment. The publish job:
+1. checks that the key pair matches
+2. signs the catalogue, then publishes as described under [publication safety](#publication-safety)
+
+**Rotation:**
+1. Add the new public key next to the old one. The verifier accepts any
+   configured key; the build embeds one today, so extend
+   `ArkivDocumentIconThemePublicEDKey` handling before a rotation.
+2. Ship a build that trusts both keys.
+3. Then switch the secret to the new key.
+
+## Publication safety
+
+`scripts/publish-document-icon-themes.py` never exposes an incomplete
+catalogue, and every step can be retried safely:
+
+1. **Checks before anything is uploaded:**
+   * the signature verifies, as does the signature of the catalogue it replaces
+   * the catalogue version increases
+   * a theme version that was already published keeps exactly the same pack and preview
+   * every asset of this release matches the signed size and SHA-256
+   * every asset refers to a `document-icon-themes-v*` release, never `dev-*`, `updates` or `development-updates`
+2. **Draft release:** the release `document-icon-themes-v<N>` is created as a
+   **draft**, which is invisible to the public and never "Latest". Assets are
+   uploaded, then compared with GitHub's own SHA-256 digests.
+   * A rerun completes or repairs its own draft: it deletes partial or wrong
+     uploads and uploads what is missing.
+   * Nothing is overwritten.
+3. **Publishing the release:** only a complete, verified draft is published,
+   as a prerelease with `--latest=false`. A release that is already published
+   is accepted only if it is complete and identical; published assets are
+   never changed.
+4. **Before the catalogue:** every asset the catalogue references, including
+   those in older theme releases, must download back byte-identical from its
+   public URL.
+5. **The catalogue, last:** it is committed to the single-file
+   `document-icon-themes` branch with a normal push. A concurrent publication
+   is rejected, and history is never rewritten.
+   * The workflow's `concurrency` group also serialises runs.
+   * A failed push is retried by rerunning, which finds the published release
+     complete.
+
+These paths are covered by `PublicationRecoveryTests`:
+* interrupted and corrupted uploads
+* a tampered public download
+* a rejected catalogue push
+* an immutable published release
+* repeated publication
 
 ## Remaining real-Mac acceptance
 

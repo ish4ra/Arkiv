@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import struct
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -144,26 +145,190 @@ class PublicationSafetyTests(unittest.TestCase):
         self.assertIn("releases/download/dev-{version}/Arkiv-universal.zip", channel, 'Sparkle only follows dev-<build> releases')
         self.assertNotIn('document-icon-themes', channel)
 
-    def test_plan_rejects_rollback_and_foreign_assets(self):
+    def asset(self, tag, name, data):
+        return {'url': f'https://github.com/ish4ra/Arkiv/releases/download/{tag}/{name}', 'size': len(data),
+                'sha256': hashlib.sha256(data).hexdigest()}
+
+    def theme(self, tag, ident='a', version=1, pack=b'pack', preview=b'prev'):
+        return {'id': ident, 'version': version, 'pack': self.asset(tag, f'{ident}-{version}.arkivtheme', pack),
+                'preview': self.asset(tag, f'{ident}-{version}.preview.arkivtheme', preview)}
+
+    def dist(self, directory, files):
+        dist = Path(directory)
+        for name, data in files.items():
+            (dist / name).write_bytes(data)
+        return dist
+
+    def test_plan_rejects_rollback_foreign_assets_and_changed_versions(self):
         with tempfile.TemporaryDirectory() as directory:
-            dist = Path(directory)
-            (dist / 'a-1.arkivtheme').write_bytes(b'pack')
-            (dist / 'a-1.preview.arkivtheme').write_bytes(b'prev')
-            def asset(tag, name, data):
-                return {'url': f'https://github.com/ish4ra/Arkiv/releases/download/{tag}/{name}', 'size': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
-            good = [{'pack': asset('document-icon-themes-v2', 'a-1.arkivtheme', b'pack'), 'preview': asset('document-icon-themes-v2', 'a-1.preview.arkivtheme', b'prev')}]
-            tag, assets = self.publisher.plan(dist, self.envelope(2, good), self.envelope(1, []))
+            dist = self.dist(directory, {'a-1.arkivtheme': b'pack', 'a-1.preview.arkivtheme': b'prev'})
+            good = [self.theme('document-icon-themes-v2')]
+            tag, own, referenced = self.publisher.plan(dist, self.envelope(2, good), self.envelope(1, []))
             self.assertEqual(tag, 'document-icon-themes-v2')
-            self.assertEqual(len(assets), 2)
-            with self.assertRaises(SystemExit):
+            self.assertEqual(sorted(own), ['a-1.arkivtheme', 'a-1.preview.arkivtheme'])
+            self.assertEqual(len(referenced), 2)
+            with self.assertRaises(SystemExit):  # same or older version
                 self.publisher.plan(dist, self.envelope(2, good), self.envelope(2, []))
             for tag in ['dev-30001', 'development-updates', 'updates']:
-                bad = [{'pack': asset(tag, 'a-1.arkivtheme', b'pack'), 'preview': good[0]['preview']}]
+                bad = [dict(good[0], pack=self.asset(tag, 'a-1.arkivtheme', b'pack'))]
                 with self.assertRaises(SystemExit):
                     self.publisher.plan(dist, self.envelope(3, bad), None)
-            tampered = [{'pack': asset('document-icon-themes-v2', 'a-1.arkivtheme', b'other'), 'preview': good[0]['preview']}]
+            with self.assertRaises(SystemExit):  # bytes differ from the signed catalogue
+                self.publisher.plan(dist, self.envelope(2, [self.theme('document-icon-themes-v2', pack=b'other')]), None)
+            # A published theme version can never change; a new version can.
+            published = self.envelope(1, [self.theme('document-icon-themes-v1')])
+            (dist / 'a-2.arkivtheme').write_bytes(b'pack2'); (dist / 'a-2.preview.arkivtheme').write_bytes(b'prev')
+            changed = [self.theme('document-icon-themes-v2', pack=b'pack')]
+            changed[0]['pack']['sha256'] = '0' * 64
             with self.assertRaises(SystemExit):
-                self.publisher.plan(dist, self.envelope(2, tampered), None)
+                self.publisher.plan(dist, self.envelope(2, changed), published)
+            tag, own, referenced = self.publisher.plan(dist, self.envelope(2, [self.theme('document-icon-themes-v1'),
+                self.theme('document-icon-themes-v2', version=2, pack=b'pack2')]), published)
+            self.assertEqual(sorted(own), ['a-2.arkivtheme', 'a-2.preview.arkivtheme'], 'Unchanged packs keep their old release')
+            with self.assertRaises(SystemExit):  # an older release this catalogue never published
+                self.publisher.plan(dist, self.envelope(3, [self.theme('document-icon-themes-v1')]), None)
+            with self.assertRaises(SystemExit):
+                payload = json.dumps({'schema': 2, 'catalogVersion': 9, 'themes': []}).encode()
+                self.publisher.plan(dist, json.dumps({'payload': base64.b64encode(payload).decode()}).encode(), None)
+
+
+class FakeGitHub:
+    """Releases in memory, with switchable faults."""
+    def __init__(self, files):
+        self.releases, self.files, self.log = {}, files, []
+        self.fail_upload, self.corrupt_upload, self.serve = set(), set(), {}
+
+    def release(self, tag):
+        r = self.releases.get(tag)
+        if r is None:
+            return None
+        return {'id': tag, 'draft': r['draft'], 'prerelease': r['prerelease'],
+                'assets': {n: {'id': n, 'size': len(d), 'sha256': hashlib.sha256(d).hexdigest()} for n, d in r['assets'].items()}}
+
+    def create_draft(self, tag, target, title, notes):
+        assert tag not in self.releases
+        self.releases[tag] = {'draft': True, 'prerelease': True, 'assets': {}}
+        self.log.append(('create-draft', tag))
+
+    def upload(self, tag, path):
+        if path.name in self.fail_upload:
+            raise OSError('connection reset')
+        assert path.name not in self.releases[tag]['assets'], 'uploads never overwrite'
+        data = path.read_bytes()
+        self.releases[tag]['assets'][path.name] = data[:-1] if path.name in self.corrupt_upload else data
+        self.log.append(('upload', path.name))
+
+    def delete_asset(self, asset_id):
+        for r in self.releases.values():
+            assert r['draft'], 'published assets are never deleted'
+            r['assets'].pop(asset_id, None)
+        self.log.append(('delete', asset_id))
+
+    def publish(self, tag):
+        self.releases[tag]['draft'] = False
+        self.log.append(('publish', tag))
+
+    def download(self, url):
+        tag, name = url.rsplit('/', 2)[-2:]
+        if name in self.serve:
+            return self.serve[name]
+        r = self.releases.get(tag)
+        if r is None or r['draft'] or name not in r['assets']:
+            raise OSError('404')
+        return r['assets'][name]
+
+
+class FakeBranch:
+    def __init__(self, published=None):
+        self.catalogue, self.pushes, self.reject = published, [], False
+
+    def read(self):
+        return ('parent' if self.catalogue else None), self.catalogue
+
+    def advance(self, envelope, parent):
+        if self.reject:
+            raise subprocess.CalledProcessError(1, 'git push', b'rejected: fetch first')
+        self.catalogue = envelope
+        self.pushes.append(envelope)
+
+
+class PublicationRecoveryTests(unittest.TestCase):
+    publisher = PublicationSafetyTests.publisher
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dist = Path(self.tmp.name)
+        self.helper = PublicationSafetyTests()
+        self.files = {'a-1.arkivtheme': b'pack-a', 'a-1.preview.arkivtheme': b'prev-a', 'b-1.arkivtheme': b'pack-b',
+                      'b-1.preview.arkivtheme': b'prev-b'}
+        for name, data in self.files.items():
+            (self.dist / name).write_bytes(data)
+        tag = 'document-icon-themes-v1'
+        self.envelope = self.helper.envelope(1, [self.helper.theme(tag, 'a', pack=b'pack-a', preview=b'prev-a'),
+                                                 self.helper.theme(tag, 'b', pack=b'pack-b', preview=b'prev-b')])
+        self.github, self.branch = FakeGitHub(self.files), FakeBranch()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_publish(self):
+        self.publisher.time.sleep = lambda _: None
+        return self.publisher.publish(self.dist, self.envelope, self.github, self.branch, lambda _: None, 'sha')
+
+    def test_fresh_publication_builds_a_draft_and_publishes_the_catalogue_last(self):
+        self.assertEqual(self.run_publish(), ('document-icon-themes-v1', 'published'))
+        self.assertEqual(self.github.log[0], ('create-draft', 'document-icon-themes-v1'))
+        self.assertEqual(self.github.log[-1], ('publish', 'document-icon-themes-v1'))
+        self.assertEqual(self.branch.pushes, [self.envelope])
+
+    def test_interrupted_upload_never_exposes_the_catalogue_and_resumes(self):
+        self.github.fail_upload = {'b-1.arkivtheme'}
+        with self.assertRaises(OSError):
+            self.run_publish()
+        self.assertTrue(self.github.releases['document-icon-themes-v1']['draft'], 'An incomplete release stays a draft')
+        self.assertEqual(self.branch.pushes, [], 'No catalogue for an incomplete release')
+        self.github.fail_upload = set()
+        self.assertEqual(self.run_publish()[1], 'published')
+        self.assertEqual([e for e in self.github.log if e[0] == 'upload'].count(('upload', 'a-1.arkivtheme')), 1, 'Resumed, not restarted')
+        self.assertEqual(self.branch.pushes, [self.envelope])
+
+    def test_corrupted_draft_asset_is_replaced(self):
+        self.github.corrupt_upload = {'a-1.arkivtheme'}
+        with self.assertRaises(SystemExit):
+            self.run_publish()
+        self.assertTrue(self.github.releases['document-icon-themes-v1']['draft'])
+        self.github.corrupt_upload = set()
+        self.run_publish()
+        self.assertIn(('delete', 'a-1.arkivtheme'), self.github.log)
+        self.assertEqual(self.github.releases['document-icon-themes-v1']['assets']['a-1.arkivtheme'], b'pack-a')
+
+    def test_public_mismatch_blocks_the_catalogue(self):
+        self.github.serve = {'b-1.preview.arkivtheme': b'tampered'}
+        with self.assertRaises(SystemExit):
+            self.run_publish()
+        self.assertEqual(self.branch.pushes, [])
+
+    def test_failed_catalogue_push_is_retried_safely(self):
+        self.branch.reject = True
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.run_publish()
+        self.assertFalse(self.github.releases['document-icon-themes-v1']['draft'])
+        self.branch.reject = False
+        self.assertEqual(self.run_publish()[1], 'already published')
+        self.assertEqual(self.branch.pushes, [self.envelope])
+
+    def test_published_release_is_immutable(self):
+        self.run_publish()
+        self.branch = FakeBranch()  # e.g. the catalogue branch was lost: same version again
+        self.github.releases['document-icon-themes-v1']['assets']['a-1.arkivtheme'] = b'other'
+        with self.assertRaises(SystemExit):
+            self.run_publish()
+        self.assertEqual(self.branch.pushes, [])
+
+    def test_concurrent_or_repeated_publication_is_refused(self):
+        self.run_publish()
+        with self.assertRaises(SystemExit):  # the branch now holds version 1
+            self.run_publish()
 
 
 @unittest.skipUnless(PACKS, 'set ARKIV_THEME_PACKS to the output of build.py')

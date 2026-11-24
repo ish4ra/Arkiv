@@ -119,6 +119,28 @@ jobs:
           fi
           echo "ARKIV_THEME_PUBLIC_ED_KEY=$ARKIV_THEME_PUBLIC_ED_KEY" >> "$GITHUB_ENV"
           rm -rf "$RUNNER_TEMP/theme-test-key"
+      - name: Signing-key provisioning safeguards (throwaway keys only)
+        run: |
+          tool=scripts/document-icon-theme-catalog.swift
+          dir="$RUNNER_TEMP/provisioning"
+          swift $tool production-key "$dir" | tee "$RUNNER_TEMP/production-key.out"
+          test "$(stat -f %Lp "$dir/arkiv-theme-signing.key")" = 600
+          test "$(stat -f %Lp "$dir")" = 700
+          if grep -F "$(cat "$dir/arkiv-theme-signing.key")" "$RUNNER_TEMP/production-key.out"; then echo '::error::The private key was printed'; exit 1; fi
+          before=$(shasum -a 256 "$dir/arkiv-theme-signing.key")
+          if swift $tool production-key "$dir"; then echo '::error::An existing key was overwritten'; exit 1; fi
+          test "$before" = "$(shasum -a 256 "$dir/arkiv-theme-signing.key")"
+          if swift $tool production-key "$PWD/build/never-here"; then echo '::error::A key was written inside the checkout'; exit 1; fi
+          test ! -e build/never-here/arkiv-theme-signing.key
+          ARKIV_THEME_PRIVATE_ED_KEY="$(cat "$dir/arkiv-theme-signing.key")" ARKIV_THEME_PUBLIC_ED_KEY="$(cat "$dir/arkiv-theme-signing.pub")" swift $tool verify-keypair
+          swift $tool test-key "$dir/other"
+          if ARKIV_THEME_PRIVATE_ED_KEY="$(cat "$dir/arkiv-theme-signing.key")" ARKIV_THEME_PUBLIC_ED_KEY="$(cat "$dir/other/theme-test-signing.pub")" swift $tool verify-keypair; then
+            echo '::error::A mismatched key pair passed'; exit 1
+          fi
+          if ARKIV_THEME_PRIVATE_ED_KEY="$(cat "$dir/arkiv-theme-signing.key")" ARKIV_THEME_PUBLIC_ED_KEY="$(cat "$dir/arkiv-theme-signing.pub")" SPARKLE_PUBLIC_ED_KEY="$(cat "$dir/arkiv-theme-signing.pub")" swift $tool verify-keypair; then
+            echo '::error::A key equal to the Sparkle key passed'; exit 1
+          fi
+          rm -rf "$dir" "$RUNNER_TEMP/production-key.out"
       - name: Download, verify and install every pack; capture Settings screenshots
         env:
           ARKIV_THEME_PACKS: ${{ github.workspace }}/build/theme-packs
@@ -161,6 +183,7 @@ jobs:
           if [[ -z "$ARKIV_THEME_PRIVATE_ED_KEY" || -z "$ARKIV_THEME_PUBLIC_ED_KEY" ]]; then
             echo '::error::Set the ARKIV_THEME_PRIVATE_ED_KEY secret and ARKIV_THEME_PUBLIC_ED_KEY variable on the document-icon-themes environment.'; exit 1
           fi
+          swift scripts/document-icon-theme-catalog.swift verify-keypair
           swift scripts/document-icon-theme-catalog.swift sign build/theme-packs/catalog-payload.json build/theme-packs/catalog.json
           unset ARKIV_THEME_PRIVATE_ED_KEY
           python3 scripts/publish-document-icon-themes.py build/theme-packs build/theme-packs/catalog.json
