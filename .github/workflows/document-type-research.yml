@@ -1,0 +1,24 @@
+name: Document type research
+# Read-only research for docs/keka-comparison.md: how Keka's official release
+# registers archive types. Prints metadata only; no third-party artwork is kept.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/document-type-research.yml'
+      - 'scripts/research-keka-document-types.sh'
+permissions:
+  contents: read
+jobs:
+  keka:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Record Keka's document-type registration
+        run: scripts/research-keka-document-types.sh build/research
+      - uses: actions/upload-artifact@v6
+        with:
+          name: keka-document-type-research
+          path: build/research
+          if-no-files-found: error

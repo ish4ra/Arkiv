@@ -104,6 +104,12 @@ jobs:
           ARKIV_PROMISE_ZIP="$PWD/build/Arkiv-${ARKIV_ARCH}.zip" ARKIV_PROMISE_OUTPUT="$PWD/build/promised-package" scripts/ci-check.sh package-promise swift test --filter DragPackagePromiseTests -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
           python3 scripts/verify-extracted-package.py build/Arkiv.app build/promised-package/Arkiv.app
           scripts/ci-check.sh promised-app scripts/verify-app.sh build/promised-package/Arkiv.app "$ARKIV_ARCH"
+      - name: Document icon coverage diagnostic (informational; throwaway-runner default-handler experiment)
+        # Reports, per archive suffix, the type macOS assigns, Arkiv's declared icon, the
+        # default handler and the icon Icon Services returns, then repeats the check with
+        # Arkiv temporarily the default for ZIP and XZ on this ephemeral runner only.
+        continue-on-error: true
+        run: swift scripts/diagnose-document-icon-coverage.swift --app build/Arkiv.app --ci-default-handler-experiment
       - name: Validate update archive and appcast generation
         if: matrix.architecture == 'universal'
         run: |
