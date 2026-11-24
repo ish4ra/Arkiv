@@ -2,7 +2,7 @@
  "comment": "Authoritative archive-format and document-icon coverage. Engine detection is content-based; names only choose icons, creation suffixes and split-7z grouping. Finder columns describe what Finder shows when Arkiv is the default handler for the type (see docs/format-icon-coverage.md). Tests: tests/test_format_icon_coverage.py and Tests/ArkivThemesTests/DocumentIconArtworkTests.swift.",
  "statuses": {
   "supported": "Supported and correctly mapped (Finder and inside Arkiv)",
-  "finder-limited": "Supported; Arkiv shows dedicated artwork, Finder shows the family icon because macOS types the name by its last extension",
+  "finder-limited": "Supported; Arkiv shows dedicated artwork. Finder types the name by its last extension, so it shows the family icon (or the system icon for a numbered volume)",
   "planned": "Planned or unsupported format: no claim, no registration, no dedicated artwork in use",
   "unrelated": "Not an archive type Arkiv can identify by name: never claimed"
  },
