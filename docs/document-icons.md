@@ -25,9 +25,9 @@ are pinned by `branding/app-icon-preservation.json`.
 | `Arkiv-TXZ.icns` | tape spiral + XZ medallion, iris fold | `org.tukaani.tar-xz-archive` (declared by macOS) | `.txz` |
 
 Every type is registered as **Viewer** with **LSHandlerRank Alternate**.
-Imported declarations are unchanged from before this family, apart from the
-icon references. Arkiv exports no types and never changes a default
-application.
+Imported declarations conform to `public.data` and `public.archive` (see
+[the TAR.XZ investigation](#tarxz-and-imported-type-investigation)). Arkiv
+exports no types and never changes a default application.
 
 ## Alias decisions
 
@@ -111,6 +111,48 @@ the file.
 
 Arkiv will not reset caches, change default applications, modify users'
 archives or register generic numeric extensions to work around this.
+
+## TAR.XZ and imported-type investigation
+
+**Observed on a real Mac:** ZIP files show Arkiv's Seal Dark icon, but
+`Sparkle-2.10.0.tar.xz` shows the generic macOS XZ icon.
+
+**Confirmed on macOS 15 CI runners** with
+`scripts/diagnose-document-icon-coverage.swift`:
+* `.tar.xz` files, in any letter case and including `Sparkle-2.10.0.tar.xz`,
+  are typed `org.tukaani.xz-archive` from their last extension. The compound
+  tag `tar.xz` resolves to no type at all, so no app can give `.tar.xz` its own
+  Finder icon.
+* Arkiv's XZ document type uses that same identifier, with `Arkiv-XZ.icns`, and
+  Arkiv is registered as a handler for it. The registration is correct.
+* On a stock Mac, **Archive Utility** is the default app for ZIP, TAR, GZIP,
+  BZIP2, XZ, TGZ, TBZ2 and TXZ. Arkiv registers as `Alternate` and never takes
+  the default, so Finder draws the default app's icon.
+
+**Root cause:** Arkiv is the default app for ZIP on that Mac, but not for XZ.
+Finder therefore draws Archive Utility's XZ icon. It is not a missing resource
+or a UTI mismatch. **To check it on your Mac:**
+`swift scripts/diagnose-document-icon-coverage.swift --file ~/Downloads/Sparkle-2.10.0.tar.xz`
+prints the default app for the file. **To change it:** Get Info → Open with →
+Arkiv → Change All. Finder then shows the Seal Dark XZ icon for every `.xz` and
+`.tar.xz`. A Sparkle update keeps the same bundle identifier and document types,
+so it does not change which app is the default.
+
+**A real registration bug found during the audit, and fixed:** `.rar`, `.zst`
+and `.tzst` stayed *dynamic* types even in a fresh process, although
+LaunchServices listed Arkiv's imported declarations as active and trusted. Those
+declarations conformed only to `public.archive`, while lookup by filename
+extension matches types conforming to `public.data`. Keka's declarations conform
+to both. Arkiv's imported declarations now conform to `public.data` and
+`public.archive`. `scripts/verify-document-icons.py` and
+`tests/test_document_icons.py` enforce this, and the CI experiment re-checks the
+lookups in a fresh process.
+
+**Not resolved by CI:** after the throwaway runner made Arkiv the default for
+XZ, the icon returned in the same process did not change within 30 s. The
+experiment now repeats the check in a fresh process to separate in-process
+caching from Finder behaviour. The real-Mac test after **Change All** is the
+deciding check.
 
 ## Themes and archives
 

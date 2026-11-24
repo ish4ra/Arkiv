@@ -99,8 +99,19 @@ class DocumentIconTests(unittest.TestCase):
         for ext in ['tbz2', 'tbz', 'txz', 'tar.gz', 'tar.bz2', 'tar.xz', 'tar.zst']:
             self.assertNotIn(ext, extensions)
         changed = copy.deepcopy(self.info)
-        changed['UTImportedTypeDeclarations'].append({'UTTypeIdentifier': 'org.gnu.gnu-zip-tar-archive', 'UTTypeConformsTo': ['public.archive'],
+        changed['UTImportedTypeDeclarations'].append({'UTTypeIdentifier': 'org.gnu.gnu-zip-tar-archive', 'UTTypeConformsTo': ['public.data', 'public.archive'],
                                                       'UTTypeTagSpecification': {'public.filename-extension': ['tgz']}})
+        with self.assertRaises(AssertionError):
+            icons.verify_metadata(changed)
+
+    def test_imported_types_conform_to_public_data(self):
+        # Without public.data, UTType(filenameExtension:) (which looks up types
+        # conforming to public.data) leaves .rar, .zst and .tzst as dynamic
+        # types, so no document icon can apply. Observed on macOS 15 in CI.
+        for declaration in self.info['UTImportedTypeDeclarations']:
+            self.assertEqual(declaration['UTTypeConformsTo'], ['public.data', 'public.archive'], declaration['UTTypeIdentifier'])
+        changed = copy.deepcopy(self.info)
+        changed['UTImportedTypeDeclarations'][1]['UTTypeConformsTo'] = ['public.archive']
         with self.assertRaises(AssertionError):
             icons.verify_metadata(changed)
 

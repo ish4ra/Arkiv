@@ -78,7 +78,10 @@ def verify_metadata(info):
     assert set(imported) == set(IMPORTED)
     for uti, extensions in IMPORTED.items():
         assert imported[uti]['UTTypeTagSpecification']['public.filename-extension'] == extensions, uti
-        assert imported[uti]['UTTypeConformsTo'] == ['public.archive'], uti
+        # public.data is required: UTType(filenameExtension:) and Finder look up
+        # types conforming to public.data, so a type conforming only to
+        # public.archive stays unresolved (a dynamic type) for its extension.
+        assert imported[uti]['UTTypeConformsTo'] == ['public.data', 'public.archive'], uti
     assert not set(SYSTEM_DECLARED) & set(imported), 'System-declared types are not redeclared'
     assert not info.get('UTExportedTypeDeclarations'), 'Arkiv does not own these standard formats'
     verify_no_generic_extensions(info)

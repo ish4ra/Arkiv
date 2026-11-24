@@ -1,6 +1,6 @@
 // Read-only document-icon coverage diagnostic for Finder.
 //
-//   swift scripts/diagnose-document-icon-coverage.swift [--app /Applications/Arkiv.app] [--file <archive>]...
+//   swift scripts/diagnose-document-icon-coverage.swift [--app /Applications/Arkiv.app] [--file <archive>]... [--only-files]
 //
 // For every archive suffix Arkiv knows (including case variants, compound
 // suffixes such as .tar.xz, split-7z volumes and unrelated numeric suffixes)
@@ -11,7 +11,8 @@
 //   * the default handler, and whether Arkiv is registered as a handler at all
 //   * whether the icon Icon Services returns (what Finder and Get Info draw) is
 //     Arkiv's bundled icon for that type
-// --file adds the same report for existing files, which are only read.
+// --file adds the same report for existing files, which are only read;
+// --only-files skips the sample files.
 //
 // It never registers apps, changes default applications, resets caches or
 // writes to anything but its own temporary folder.
@@ -33,7 +34,8 @@ func option(_ name: String) -> [String] {
     return values
 }
 let experiment = args.contains("--ci-default-handler-experiment")
-args.removeAll { $0 == "--ci-default-handler-experiment" }
+let onlyFiles = args.contains("--only-files")
+args.removeAll { $0 == "--ci-default-handler-experiment" || $0 == "--only-files" }
 let appArg = option("--app").first
 let files = option("--file")
 
@@ -121,8 +123,10 @@ func report(_ url: URL, label: String, quiet: Bool = false) -> (verdict: String,
     return (verdict, arkivIcon)
 }
 
-print("\n== Sample files (empty, in \(folder.path))")
-for url in sampleURLs { _ = report(url, label: url.lastPathComponent) }
+if !onlyFiles {
+    print("\n== Sample files (empty, in \(folder.path))")
+    for url in sampleURLs { _ = report(url, label: url.lastPathComponent) }
+}
 if !files.isEmpty {
     print("\n== Your files (read only)")
     for path in files {
@@ -155,7 +159,7 @@ if experiment {
     let probe = folder.appendingPathComponent("probe.swift")
     try? Data("""
     import UniformTypeIdentifiers
-    for ext in ["rar", "zst", "tzst", "7z", "xz"] {
+    for ext in ["rar", "RAR", "zst", "tzst", "7z", "xz", "txz", "tgz", "tbz2", "tbz", "tar.xz"] {
         let t = UTType(filenameExtension: ext)
         print("fresh process: .\\(ext) -> \\(t?.identifier ?? "none") declared=\\(t?.isDeclared ?? false)")
     }
@@ -183,6 +187,14 @@ if experiment {
     }
     print("waited \(Double(attempt) / 2) s")
     for url in watched { _ = report(url, label: "after: " + url.lastPathComponent) }
+    // The same check in a fresh process, so no icon cached by this process
+    // can hide the change (this script, run again on the watched files only).
+    let rar = folder.appendingPathComponent("fresh.rar"), zst = folder.appendingPathComponent("fresh.zst")
+    for url in [rar, zst] { FileManager.default.createFile(atPath: url.path, contents: Data()) }
+    print("-- fresh process, Arkiv still the default for ZIP and XZ:")
+    let fresh = Process(); fresh.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
+    fresh.arguments = [#filePath, "--app", app.path, "--only-files"] + (watched + [rar, zst]).flatMap { ["--file", $0.path] }
+    try? fresh.run(); fresh.waitUntilExit()
     for type in types {
         if let old = previous[type] { _ = LSSetDefaultRoleHandlerForContentType(type as CFString, .all, old as CFString) }
     }
