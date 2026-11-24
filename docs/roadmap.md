@@ -17,6 +17,16 @@ feature is finished. Nothing below is in current builds unless the
 | 6 | **Split ZIP support** | `.z01`/`.zip.001` sets; [multipart](multipart.md) |
 | 7 | **Remaining archive-engine features** | The rest of the queue below, in its existing relative order |
 
+**Permanent rule for every format milestone (5, 6 and 7 included):** a new
+archive format, alias or volume scheme ships only with its document-icon
+coverage: bundled default artwork, coverage in every theme family, extension
+and alias mapping, safe registration where macOS can type it, in-app icons,
+updated theme and preview packs, and a row in
+[`format-icon-coverage.json`](format-icon-coverage.md) with passing coverage
+tests. See [ARKIV_SPEC.md](../ARKIV_SPEC.md#document-icon-coverage-for-every-archive-format-permanent-requirement-added-2026-11-24).
+For example, multipart RAR (milestone 5) must decide how its first and later
+volumes are identified before the preserved RAR-volume artwork is used.
+
 Rules for milestones 2–4:
 * The refined **C · Seal Dark** family from build 26501 stays the default and
   the only bundled document-icon family.

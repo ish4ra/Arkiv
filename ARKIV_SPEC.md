@@ -780,6 +780,17 @@ Create a coherent family for:
 - ZST
 These may use subtle format labels and should share Arkiv's visual language without becoming the app icon.
 
+DOCUMENT ICON COVERAGE FOR EVERY ARCHIVE FORMAT (permanent requirement, added 2026-11-24)
+Adding read or create support for an archive format, alias or volume scheme is not complete until all of these exist:
+- default document artwork in the bundled family (Finder ICNS where macOS can type the name, in-app artwork otherwise)
+- the same coverage in every downloadable theme family and variation, or a documented, approved exception (as for the Classic reproduction)
+- correct extension and alias mapping, including compound suffixes, matched case-insensitively and longest first
+- safe macOS document registration where a distinct type exists (Viewer/Alternate, never generic numeric suffixes, never taking default handlers)
+- native in-app icon support (archive rows, title bar, Archive Info, Settings previews)
+- updated theme packs and preview packs, rebuilt by the reproducible pipeline
+- a row in docs/format-icon-coverage.json, with automated coverage tests passing
+New artwork needs explicit visual approval before it reaches production resources. Planned artwork must stay clearly separate from implemented engine support.
+
 BRAND SYSTEM
 Keep branding restrained:
 - signature app icon
