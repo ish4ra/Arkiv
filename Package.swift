@@ -36,9 +36,7 @@ dependencies.append(.package(url: "https://github.com/sparkle-project/Sparkle", 
 products.append(.executable(name: "Arkiv", targets: ["ArkivApp"]))
 // Optional document-icon themes: CryptoKit, ImageIO and AppKit are system
 // frameworks, so this adds no dependency. macOS only.
-// Settings-only code that is never on a hot path, so release builds optimize it for size.
-targets.append(.target(name: "ArkivThemes", dependencies: ["ArkivCore"],
-    swiftSettings: [.unsafeFlags(["-Osize"], .when(configuration: .release))]))
+targets.append(.target(name: "ArkivThemes", dependencies: ["ArkivCore"]))
 targets.append(.target(name: "ArkivThemesTestSupport", dependencies: ["ArkivThemes"], path: "Tests/ArkivThemesTestSupport"))
 targets.append(.testTarget(name: "ArkivThemesTests", dependencies: ["ArkivThemes", "ArkivThemesTestSupport", "ArkivCore"]))
 targets.append(.executableTarget(name: "ArkivApp", dependencies: ["ArkivCore", "ArkivPresentation", "ArkivFinderIntegration", "ArkivThemes", .product(name: "Sparkle", package: "Sparkle")],
