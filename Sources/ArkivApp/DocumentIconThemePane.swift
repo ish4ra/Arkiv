@@ -201,7 +201,10 @@ final class DocumentIconThemePane: NSView, NSTableViewDataSource, NSTableViewDel
         let index = rows.firstIndex { if case .theme(let e) = $0 { return e.id == shownID } else { return false } }
             ?? rows.firstIndex { if case .theme = $0 { return true } else { return false } }
         if let index {
-            if table.selectedRow != index { table.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false) }
+            if table.selectedRow != index {
+                table.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
+                table.scrollRowToVisible(index)
+            }
             if case .theme(let entry) = rows[index] { shownID = entry.id }
         }
         updateDetail()
@@ -216,6 +219,7 @@ final class DocumentIconThemePane: NSView, NSTableViewDataSource, NSTableViewDel
     func show(_ id: String) {
         guard let index = rows.firstIndex(where: { if case .theme(let e) = $0 { return e.id == id } else { return false } }) else { return }
         table.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
+        table.scrollRowToVisible(index)
         shownID = id
         updateDetail()
     }
