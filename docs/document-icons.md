@@ -148,10 +148,21 @@ to both. Arkiv's imported declarations now conform to `public.data` and
 `tests/test_document_icons.py` enforce this, and the CI experiment re-checks the
 lookups in a fresh process.
 
-**Not resolved by CI:** after the throwaway runner made Arkiv the default for
-XZ, the icon returned in the same process did not change within 30 s. The
-experiment now repeats the check in a fresh process to separate in-process
-caching from Finder behaviour. The real-Mac test after **Change All** is the
+**Confirmed after the fix (macOS 15 CI, build 29601):** `.rar`, `.RAR`, `.zst`,
+`.tzst`, `.tar.zst` and `.part1.rar` resolve to Arkiv's declared types in a
+fresh process. Arkiv is the only handler for those types, so it is their
+default, and Icon Services returns exactly Arkiv's icon for them (mean pixel
+difference 0.00 from the bundled ICNS). This proves that Finder's icon source
+uses Arkiv's document icons wherever Arkiv is the default app.
+
+**Not settled by CI:** after the throwaway runner made Arkiv the default for ZIP
+and XZ through `LSSetDefaultRoleHandlerForContentType` (status 0, the default
+read back as Arkiv), Icon Services kept returning the previous ZIP and XZ icons
+after 30 s, in the same process and in a fresh one. Those types are also
+declared by Archive Utility. A real Mac contradicts this for ZIP: after Get Info
+→ **Change All**, Finder and Get Info show the Seal Dark ZIP icon. So the
+runner result is most likely an icon cache that a headless runner, with no
+Finder session, never refreshes. The real-Mac **Change All** test for XZ is the
 deciding check.
 
 ## Themes and archives
