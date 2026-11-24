@@ -161,6 +161,17 @@ final class DocumentIconThemeEndToEndTests: XCTestCase {
         // Same window through Core Animation, to tell offscreen-capture artefacts
         // (the tab labels) from real drawing problems.
         try captureLayer(controller.window!, output.appendingPathComponent("01b-bundled-default-dark-layer-render.png"))
+        try capture(controller.window!, output.appendingPathComponent("01c-bundled-default-dark-window-appearance.png"), windowAppearance: true)
+        // Contrast of the tab labels against the tab control in each capture.
+        // Near zero means the labels are invisible in that capture. Logged, not
+        // asserted: the deciding check is a real Mac (docs: real-Mac acceptance).
+        let ink = try ["01-bundled-default-dark", "01b-bundled-default-dark-layer-render", "01c-bundled-default-dark-window-appearance"].map {
+            try tabLabelInk(output.appendingPathComponent($0 + ".png"), controller.window!)
+        }
+        let report = String(format: "Tab label contrast (share of tab-strip pixels): cacheDisplay %.1f%%, Core Animation layer render %.1f%%, cacheDisplay in the window's appearance %.1f%%",
+                            ink[0] * 100, ink[1] * 100, ink[2] * 100)
+        print(report)
+        try Data((report + "\n").utf8).write(to: output.appendingPathComponent("tab-label-contrast.txt"))
         XCTAssertEqual(controller.window?.contentView?.subviews.compactMap { $0 as? NSTabView }.first?.tabViewItems.map(\.label),
                        ["General", "Updates", "Finder Integration", "Appearance"])
         try await shot("02-available-seal-wine-dark", "seal-wine")
@@ -206,12 +217,46 @@ final class DocumentIconThemeEndToEndTests: XCTestCase {
     }
 
     /// The window as AppKit draws it, including the title bar (the frame view).
-    @MainActor func capture(_ window: NSWindow, _ url: URL) throws {
+    /// `windowAppearance` draws with the window's appearance as the current
+    /// drawing appearance, as on screen; plain cacheDisplay may not.
+    @MainActor func capture(_ window: NSWindow, _ url: URL, windowAppearance: Bool = false) throws {
         let view = try XCTUnwrap(window.contentView?.superview ?? window.contentView)
         view.layoutSubtreeIfNeeded()
         view.displayIfNeeded()
         let rep = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
-        view.cacheDisplay(in: view.bounds, to: rep)
+        if windowAppearance {
+            window.effectiveAppearance.performAsCurrentDrawingAppearance { view.cacheDisplay(in: view.bounds, to: rep) }
+        } else {
+            view.cacheDisplay(in: view.bounds, to: rep)
+        }
         try XCTUnwrap(rep.representation(using: .png, properties: [:])).write(to: url)
+    }
+
+    /// Share of pixels in the tab control's strip whose luminance differs
+    /// clearly from the strip's dominant colour: the label text (and a few
+    /// divider pixels). The strip is measured where AppKit places it and, for
+    /// a capture whose rows are flipped, mirrored; the larger value is returned.
+    @MainActor func tabLabelInk(_ url: URL, _ window: NSWindow) throws -> Double {
+        let frameView = try XCTUnwrap(window.contentView?.superview ?? window.contentView)
+        let tabView = try XCTUnwrap(window.contentView?.subviews.compactMap { $0 as? NSTabView }.first)
+        let rect = tabView.convert(tabView.bounds, to: frameView)
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: Data(contentsOf: url)))
+        let sx = Double(rep.pixelsWide) / frameView.bounds.width, sy = Double(rep.pixelsHigh) / frameView.bounds.height
+        let edgeFromTop = frameView.isFlipped ? rect.minY : frameView.bounds.height - rect.maxY
+        func ink(_ centre: Double) -> Double {
+            let y0 = max(0, Int((centre - 8) * sy)), y1 = min(rep.pixelsHigh, Int((centre + 8) * sy))
+            let x0 = max(0, Int((rect.midX - 170) * sx)), x1 = min(rep.pixelsWide, Int((rect.midX + 170) * sx))
+            guard y1 > y0, x1 > x0 else { return 0 }
+            var luminance: [Int] = []
+            for y in y0..<y1 { for x in x0..<x1 {
+                guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
+                luminance.append(Int((0.299 * c.redComponent + 0.587 * c.greenComponent + 0.114 * c.blueComponent) * 255))
+            } }
+            var histogram = [Int](repeating: 0, count: 256)
+            for l in luminance { histogram[max(0, min(255, l))] += 1 }
+            let dominant = histogram.indices.max { histogram[$0] < histogram[$1] } ?? 0
+            return Double(luminance.filter { abs($0 - dominant) > 64 }.count) / Double(max(1, luminance.count))
+        }
+        return max(ink(edgeFromTop), ink(frameView.bounds.height - edgeFromTop))
     }
 }
