@@ -61,28 +61,13 @@ jobs:
         run: scripts/ci-check.sh seven-add swift test --filter 'SevenZip(Addition|Deletion|Rename|Replacement)Tests' -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
       - name: ZIP replacement compatibility regression
         run: scripts/ci-check.sh zip-replacement swift test --filter ZIPReplacementTests -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
-      - name: TEMPORARY crash bisect (one process per test; informational)
-        continue-on-error: true
-        run: |
-          swift build --build-tests -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip" > /dev/null 2>&1 || true
-          for t in test01Baseline test02SearchToolbarItem test03MenuToolbarItemAndGroup test04ToolbarSwapAndTitlebar test05PathControl test06WelcomeOnly test07BrowserWindowIdle test08BrowserWindowLoaded test09BrowserWindowNeverShownNoLoad test10SettingsWindow test11WorkspaceObserverAndAccessibilityFlags test12FinderStatus; do
-            if swift test --skip-build --filter "ZZCrashBisectTests.$t" -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip" > "/tmp/bisect-$t.log" 2>&1; then r=pass; else r=FAIL; fi
-            grep -q "freed pointer" "/tmp/bisect-$t.log" && r="$r (freed pointer)"
-            echo "BISECT $t: $r"
-          done
       - name: Native Delete confirmation regression
-        env:
-          # Symbolized backtrace if a test process crashes (diagnostic only).
-          SWIFT_BACKTRACE: enable=yes,interactive=no,symbolicate=full
         run: scripts/ci-check.sh delete-confirmation swift test --filter BrowserWindowTests.testDeleteConfirmationCancellationRefreshAndSound -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
       - name: Native ZIP folder editing regressions
         run: scripts/ci-check.sh folder-edits swift test --filter 'BrowserWindowTests.test(Folder(Replacement|Update)|SelectedFileUpdate)' -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
       - name: Native Open, Quick Look and nested archive regressions
         run: scripts/ci-check.sh quick-look swift test --filter '(Archive(QuickLook|Open|OpenSession)Tests|NestedArchiveTests)' -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
       - name: Swift tests (native runner architecture)
-        env:
-          # Symbolized backtrace if a test process crashes (diagnostic only).
-          SWIFT_BACKTRACE: enable=yes,interactive=no,symbolicate=full
         run: scripts/ci-check.sh swift swift test --parallel -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
       - name: Validate branding dimensions, transparency, and checksums
         run: |

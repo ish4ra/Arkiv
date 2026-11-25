@@ -59,9 +59,11 @@ final class WelcomeView: ArkivCanvasView {
             button.widthAnchor.constraint(greaterThanOrEqualToConstant: 190).isActive = true
         }
         openButton.keyEquivalent = "\r"
-        createButton.widthAnchor.constraint(equalTo: openButton.widthAnchor).isActive = true
 
         let identity = NSStackView(views: [iconView, title, tagline, openButton, createButton])
+        // Only once both buttons share an ancestor: AppKit raises an exception
+        // for a constraint between views in different hierarchies.
+        createButton.widthAnchor.constraint(equalTo: openButton.widthAnchor).isActive = true
         identity.orientation = .vertical; identity.alignment = .leading; identity.spacing = 8
         identity.setCustomSpacing(14, after: iconView)
         identity.setCustomSpacing(2, after: title)
