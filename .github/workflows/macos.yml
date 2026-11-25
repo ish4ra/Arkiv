@@ -61,6 +61,15 @@ jobs:
         run: scripts/ci-check.sh seven-add swift test --filter 'SevenZip(Addition|Deletion|Rename|Replacement)Tests' -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
       - name: ZIP replacement compatibility regression
         run: scripts/ci-check.sh zip-replacement swift test --filter ZIPReplacementTests -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
+      - name: TEMPORARY crash bisect (one process per test; informational)
+        continue-on-error: true
+        run: |
+          swift build --build-tests -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip" > /dev/null 2>&1 || true
+          for t in test01Baseline test02SearchToolbarItem test03MenuToolbarItemAndGroup test04ToolbarSwapAndTitlebar test05PathControl test06WelcomeOnly test07BrowserWindowIdle test08BrowserWindowLoaded test09BrowserWindowNeverShownNoLoad test10SettingsWindow test11WorkspaceObserverAndAccessibilityFlags test12FinderStatus; do
+            if swift test --skip-build --filter "ZZCrashBisectTests.$t" -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip" > "/tmp/bisect-$t.log" 2>&1; then r=pass; else r=FAIL; fi
+            grep -q "freed pointer" "/tmp/bisect-$t.log" && r="$r (freed pointer)"
+            echo "BISECT $t: $r"
+          done
       - name: Native Delete confirmation regression
         env:
           # Symbolized backtrace if a test process crashes (diagnostic only).
