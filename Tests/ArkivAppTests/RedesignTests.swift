@@ -39,7 +39,7 @@ final class RedesignTests: XCTestCase {
         }
         XCTAssertFalse(controller.isBusy)
     }
-    private func table(_ controller: BrowserWindowController) throws -> NSTableView {
+    private func archiveTable(_ controller: BrowserWindowController) throws -> NSTableView {
         try XCTUnwrap(descendants(controller.window!.contentView!).compactMap { $0 as? NSTableView }.first)
     }
     private func row(named name: String, in table: NSTableView) -> Int? {
@@ -62,7 +62,7 @@ final class RedesignTests: XCTestCase {
         let window = try XCTUnwrap(controller.window)
         let welcome = controller.welcome
         XCTAssertFalse(welcome.isHiddenOrHasHiddenAncestor)
-        XCTAssertEqual(welcome.recentButtons.map(\.toolTip), [recent.path], "Missing and duplicate recents are left out")
+        XCTAssertEqual(welcome.recentButtons.compactMap(\.toolTip), [recent.path], "Missing and duplicate recents are left out")
         XCTAssertTrue(welcome.dropZone.isHidden, "The drop zone stands in only when there is no history")
         XCTAssertTrue(window.titlebarAppearsTransparent)
         XCTAssertEqual(window.titleVisibility, .hidden)
@@ -135,7 +135,7 @@ final class RedesignTests: XCTestCase {
                       "Every item has a label for the palette, VoiceOver and Icon and Text mode")
 
         // Path bar: archive, then folders; clicking navigates.
-        let table = try table(controller)
+        let table = try archiveTable(controller)
         let albums = try XCTUnwrap(row(named: "Albums", in: table))
         controller.activate(row: albums)
         XCTAssertEqual(controller.pathControl.pathItems.map(\.title), [archive.lastPathComponent, "Albums"])
@@ -168,7 +168,7 @@ final class RedesignTests: XCTestCase {
         let windows = [BrowserWindowController(preferences: preferences), BrowserWindowController(preferences: preferences)]
         defer { windows.forEach { $0.close() } }
         for window in windows { window.load(archive); try await waitForLoad(window) }
-        let tables = try windows.map(table)
+        let tables = try windows.map(archiveTable)
         XCTAssertEqual(tables.map(\.rowHeight), [26, 26], "Standard density keeps the existing 26 pt rows")
         tables[0].selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
 
@@ -191,8 +191,8 @@ final class RedesignTests: XCTestCase {
         // A new window (or a relaunch) reads the stored choices.
         let reopened = BrowserWindowController(preferences: AppPreferences(defaults: defaults))
         defer { reopened.close() }
-        XCTAssertEqual(try table(reopened).rowHeight, 34)
-        XCTAssertTrue(try table(reopened).usesAlternatingRowBackgroundColors)
+        XCTAssertEqual(try archiveTable(reopened).rowHeight, 34)
+        XCTAssertTrue(try archiveTable(reopened).usesAlternatingRowBackgroundColors)
         preferences.restoreAppearanceDefaults()
         XCTAssertEqual(tables[0].rowHeight, 26)
         XCTAssertFalse(tables[0].usesAlternatingRowBackgroundColors)
@@ -219,7 +219,7 @@ final class RedesignTests: XCTestCase {
         let windows = [BrowserWindowController(documentIcons: provider), BrowserWindowController(documentIcons: provider)]
         defer { windows.forEach { $0.close() } }
         for window in windows { window.showWindow(nil); window.load(archive); try await waitForLoad(window) }
-        let tables = try windows.map(table)
+        let tables = try windows.map(archiveTable)
         let rows = try tables.map { try XCTUnwrap(row(named: "fonts.zip", in: $0)) }
         tables[0].selectRowIndexes(IndexSet(integer: rows[0]), byExtendingSelection: false)
         func pixelWidths(_ index: Int) -> Set<Int> {

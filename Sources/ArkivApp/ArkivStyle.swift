@@ -36,15 +36,15 @@ enum ArkivStyle {
 
     // MARK: Accent
     /// Every value carries white text at 4.5:1 or better (selection, default buttons).
-    static func color(for accent: AppAccent) -> NSColor {
-        switch accent {
-        case .arkiv: return dynamic(light: srgb(0x7E3F55), dark: srgb(0x8E4A61))
-        case .jade: return dynamic(light: srgb(0x2F7A64), dark: srgb(0x33806A))
-        case .brass: return dynamic(light: srgb(0x87612F), dark: srgb(0x957035))
-        case .graphite: return dynamic(light: srgb(0x5F5A64), dark: srgb(0x6E6873))
-        case .system: return .controlAccentColor
-        }
-    }
+    static func color(for accent: AppAccent) -> NSColor { accentColors[accent] ?? .controlAccentColor }
+    /// One instance per accent, so views can compare the colour they hold.
+    private static let accentColors: [AppAccent: NSColor] = [
+        .arkiv: dynamic(light: srgb(0x7E3F55), dark: srgb(0x8E4A61)),
+        .jade: dynamic(light: srgb(0x2F7A64), dark: srgb(0x33806A)),
+        .brass: dynamic(light: srgb(0x87612F), dark: srgb(0x957035)),
+        .graphite: dynamic(light: srgb(0x5F5A64), dark: srgb(0x6E6873)),
+        .system: .controlAccentColor,
+    ]
     /// nil means "draw what macOS draws".
     static func customAccent(_ accent: AppAccent) -> NSColor? { accent == .system ? nil : color(for: accent) }
 

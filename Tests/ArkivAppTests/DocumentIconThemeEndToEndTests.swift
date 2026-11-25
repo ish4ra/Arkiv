@@ -160,9 +160,10 @@ final class DocumentIconThemeEndToEndTests: XCTestCase {
         try await shot("01-bundled-default-dark", "seal-dark")
         // Same window through Core Animation and in the window's own drawing
         // appearance, to tell offscreen-capture artefacts from real drawing
-        // problems. Build 30701's NSTabView labels measured near zero only in
-        // plain cacheDisplay; the redesign replaces the tabs with a sidebar,
-        // whose labels are measured the same way here.
+        // problems. Build 30701's NSTabView labels measured the same in all
+        // three captures (12.5% of tab-strip pixels on both runners, run
+        // 45511900002), so CI never reproduced invisible labels. The redesign
+        // replaces the tabs with a sidebar, whose labels are measured here.
         try captureLayer(controller.window!, output.appendingPathComponent("01b-bundled-default-dark-layer-render.png"))
         try capture(controller.window!, output.appendingPathComponent("01c-bundled-default-dark-window-appearance.png"), windowAppearance: true)
         let ink = try ["01-bundled-default-dark", "01b-bundled-default-dark-layer-render", "01c-bundled-default-dark-window-appearance"].map {

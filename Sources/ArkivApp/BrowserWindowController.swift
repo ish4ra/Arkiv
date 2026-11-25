@@ -1239,10 +1239,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         guard let snapshot else { window.subtitle = ""; return }
         var parts: [String] = []
         if let parent = nestedParentName { parts.append("Inside \(parent)") }
-        if let format = snapshot.metadata.format { parts.append(format) }
-        let files = snapshot.metadata.fileCount
+        let metadata = snapshot.metadata
+        if let format = metadata?.format { parts.append(format) }
+        let files = metadata?.fileCount ?? snapshot.entries.filter { $0.kind == .file }.count
         parts.append(files == 1 ? "1 file" : "\(Self.number(files)) files")
-        parts.append(ByteCountFormatter.string(fromByteCount: Int64(clamping: snapshot.metadata.physicalSize), countStyle: .file))
+        if let size = metadata?.physicalSize {
+            parts.append(ByteCountFormatter.string(fromByteCount: Int64(clamping: size), countStyle: .file))
+        }
         window.subtitle = parts.joined(separator: " · ")
     }
     private static func number<T: BinaryInteger>(_ value: T) -> String {
