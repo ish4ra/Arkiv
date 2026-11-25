@@ -105,6 +105,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
         window.contentView = makeContent()
         updates.onSettingsChange = { [weak self] in self?.refresh() }
         NotificationCenter.default.addObserver(self, selector: #selector(themeDidChange(_:)), name: .arkivDocumentIconThemeDidChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(preferencesDidChange(_:)), name: .arkivAppearancePreferencesDidChange, object: preferences)
         window.center()
         select(.general)
         refresh()
@@ -358,6 +359,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
             themeName.stringValue = currentThemeName()
         }
     }
+    @objc private func preferencesDidChange(_ notification: Notification) { refresh() }
     @objc private func themeDidChange(_ notification: Notification) {
         if window?.isVisible == true { themeName.stringValue = currentThemeName() }
         preview.reloadIcons()

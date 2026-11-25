@@ -121,8 +121,16 @@ class ConfigurationTests(unittest.TestCase):
         self.assertNotIn('DocumentIconThemeManager', main)
         self.assertNotIn('refreshCatalog', main)
         settings = (ROOT / 'Sources/ArkivApp/SettingsWindowController.swift').read_text()
-        self.assertIn('appearance.view = NSView()', settings, 'The theme pane is a placeholder until the tab is shown')
+        # The sidebar's Document Icons pane is the only place the theme pane
+        # (and its manager) is made; Settings opens on General.
+        self.assertIn('if pane == .documentIcons { return themePane }', settings, 'The theme pane is built only for its own pane')
         self.assertIn('let pane = DocumentIconThemePane(manager: makeThemeManager())', settings)
+        self.assertIn('select(.general)', settings)
+        self.assertEqual(settings.count('DocumentIconThemeManager('), 1, 'Only the lazily called default factory constructs a manager')
+        for source in ['BrowserWindowController.swift', 'WelcomeView.swift', 'ArkivStyle.swift', 'SettingsForm.swift']:
+            text = (ROOT / 'Sources/ArkivApp' / source).read_text()
+            self.assertNotIn('DocumentIconThemeManager', text, source)
+            self.assertNotIn('refreshCatalog', text, source)
 
 
 class PublicationSafetyTests(unittest.TestCase):

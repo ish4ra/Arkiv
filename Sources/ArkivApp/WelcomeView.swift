@@ -82,7 +82,11 @@ final class WelcomeView: ArkivCanvasView {
         let columns = NSStackView(views: [identity, recents])
         columns.orientation = .horizontal; columns.alignment = .top; columns.spacing = 44
         columns.translatesAutoresizingMaskIntoConstraints = false
-        recents.widthAnchor.constraint(equalToConstant: 300).isActive = true
+        // 300 pt when there is room; narrower (never below 220 pt) at the minimum window width.
+        let preferred = recents.widthAnchor.constraint(equalToConstant: 300)
+        preferred.priority = .defaultHigh
+        preferred.isActive = true
+        recents.widthAnchor.constraint(greaterThanOrEqualToConstant: 220).isActive = true
         addSubview(columns)
 
         let hint = NSTextField(labelWithString: "Drop archives anywhere in this window to open them.   ⌘O Open   ⇧⌘N Create   ⌘, Settings")
@@ -105,7 +109,8 @@ final class WelcomeView: ArkivCanvasView {
         NSLayoutConstraint.activate([
             columns.centerXAnchor.constraint(equalTo: centerXAnchor),
             columns.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -16),
-            columns.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 32),
+            columns.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 28),
+            columns.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -28),
             columns.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 16),
             footer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: ArkivStyle.gutter),
             footer.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -ArkivStyle.gutter),

@@ -75,6 +75,17 @@ jobs:
           (cd branding && shasum -a 256 -c SHA256SUMS)
       - name: Build and verify development application
         run: scripts/ci-check.sh app scripts/build-app.sh
+      - name: Genuine UI screenshots of the redesigned windows (headless CI rendering)
+        env:
+          ARKIV_UI_SCREENSHOTS: ${{ github.workspace }}/build/ui-screenshots
+          ARKIV_APP: ${{ github.workspace }}/build/Arkiv.app
+        run: scripts/ci-check.sh ui-screenshots swift test --filter UIScreenshotTests -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: Arkiv-${{ matrix.architecture }}-ui-screenshots
+          path: build/ui-screenshots
+          if-no-files-found: warn
       - name: Finder action URL delivery diagnostic (packaged app)
         run: scripts/ci-check.sh finder-handoff swift scripts/diagnose-finder-handoff.swift build/Arkiv.app
       - name: Finder Sync system registration diagnostic (packaged extension)

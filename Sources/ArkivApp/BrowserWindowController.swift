@@ -126,7 +126,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         NotificationCenter.default.addObserver(self, selector: #selector(documentIconThemeDidChange(_:)),
                                                name: .arkivDocumentIconThemeDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(appearancePreferencesDidChange(_:)),
-                                               name: .arkivAppearancePreferencesDidChange, object: nil)
+                                               name: .arkivAppearancePreferencesDidChange, object: preferences)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(accessibilityDisplayOptionsDidChange(_:)),
                                                name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
         browserToolbar.delegate = self

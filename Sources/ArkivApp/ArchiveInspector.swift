@@ -7,7 +7,7 @@ import ArkivCore
 /// redrawn when the theme changes while the sheet is open), its name and a
 /// one-line summary; then every property in a single aligned grid on a card.
 final class ArchiveInspector: NSWindowController {
-    private let iconView = NSImageView()
+    let iconView = NSImageView()
     private let iconProvider: () -> NSImage?
 
     convenience init(metadata: ArchiveMetadata, icon: NSImage? = nil) {
