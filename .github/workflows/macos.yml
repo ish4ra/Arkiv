@@ -86,6 +86,22 @@ jobs:
           name: Arkiv-${{ matrix.architecture }}-ui-screenshots
           path: build/ui-screenshots
           if-no-files-found: warn
+      - name: Quick Look thumbnail prototype feasibility (informational; app copy on this runner only)
+        # Builds prototypes/quicklook-thumbnail into a copy of build/Arkiv.app,
+        # registers that copy on this ephemeral runner and asks qlmanage for
+        # thumbnails. The shipped app, DMG and ZIP never contain the prototype.
+        continue-on-error: true
+        run: prototypes/quicklook-thumbnail/diagnose.sh build/Arkiv.app
+      - uses: actions/upload-artifact@v6
+        if: always()
+        continue-on-error: true
+        with:
+          name: Arkiv-${{ matrix.architecture }}-quicklook-prototype-report
+          path: |
+            build/thumbnail-prototype/report
+            build/thumbnail-prototype/*.txt
+            build/thumbnail-prototype/*.log
+          if-no-files-found: warn
       - name: Finder action URL delivery diagnostic (packaged app)
         run: scripts/ci-check.sh finder-handoff swift scripts/diagnose-finder-handoff.swift build/Arkiv.app
       - name: Finder Sync system registration diagnostic (packaged extension)
