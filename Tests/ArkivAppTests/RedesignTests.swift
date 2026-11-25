@@ -248,16 +248,19 @@ final class RedesignTests: XCTestCase {
         XCTAssertEqual(relaunched.effectiveSelection, .installed(id: "folio", version: 1))
         XCTAssertNotNil(relaunched.icon(forFileName: "a.zip", points: 16), "Installed themes work offline")
 
-        // A damaged installed theme falls back to Seal Dark and tells every consumer.
+        // A damaged installed theme (same sizes, wrong bytes, so it still
+        // loads) falls back to Seal Dark when drawn and tells every consumer.
         let damaged = expectation(forNotification: .arkivDocumentIconThemeDidChange, object: relaunched)
-        let files = try FileManager.default.subpathsOfDirectory(atPath: sandbox.store.directory(id: "folio", version: 1).path).filter { $0.hasSuffix(".png") }
-        for file in files { try Data("damaged".utf8).write(to: sandbox.store.directory(id: "folio", version: 1).appendingPathComponent(file)) }
-        let reread = sandbox.provider()
-        XCTAssertNil(reread.icon(forFileName: "b.zip", points: 32), "Damaged artwork is never drawn")
-        XCTAssertEqual(reread.damagedTheme, "folio")
-        XCTAssertEqual(reread.effectiveSelection, .bundled)
+        let folder = sandbox.store.directory(id: "folio", version: 1)
+        for file in try FileManager.default.subpathsOfDirectory(atPath: folder.path) where file.hasSuffix(".png") {
+            var bytes = try Data(contentsOf: folder.appendingPathComponent(file))
+            bytes[bytes.count - 1] ^= 0xFF
+            try bytes.write(to: folder.appendingPathComponent(file))
+        }
+        XCTAssertNil(relaunched.icon(forFileName: "b.zip", points: 128), "Damaged artwork is never drawn")
+        XCTAssertEqual(relaunched.damagedTheme, "folio")
+        XCTAssertEqual(relaunched.effectiveSelection, .bundled)
         await fulfillment(of: [damaged], timeout: 5)
-        _ = relaunched
 
         // Removing the active theme switches back before deleting files.
         try manager.remove("folio")
