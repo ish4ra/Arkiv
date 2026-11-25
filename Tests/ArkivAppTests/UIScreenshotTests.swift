@@ -61,12 +61,15 @@ final class UIScreenshotTests: XCTestCase {
         NSApp.appearance = NSAppearance(named: .darkAqua)
 
         // Welcome
-        let welcome = BrowserWindowController(documentIcons: icons, preferences: preferences, recentArchives: { recents })
+        let welcome = BrowserWindowController(documentIcons: icons)
+        welcome.preferences = preferences
+        welcome.recentArchives = { recents }
         defer { welcome.close() }
         welcome.window?.setContentSize(NSSize(width: 940, height: 600))
         welcome.showWindow(nil)
         try await shot(welcome.window!, "01-welcome-recents-dark")
-        let empty = BrowserWindowController(documentIcons: icons, preferences: preferences)
+        let empty = BrowserWindowController(documentIcons: icons)
+        empty.preferences = preferences
         defer { empty.close() }
         empty.window?.setContentSize(NSSize(width: 940, height: 600))
         empty.showWindow(nil)
@@ -78,7 +81,8 @@ final class UIScreenshotTests: XCTestCase {
         NSApp.appearance = NSAppearance(named: .darkAqua)
 
         // Archive browser
-        let browser = BrowserWindowController(documentIcons: icons, preferences: preferences)
+        let browser = BrowserWindowController(documentIcons: icons)
+        browser.preferences = preferences
         defer { browser.close() }
         browser.window?.setContentSize(NSSize(width: 1100, height: 640))
         browser.showWindow(nil)
@@ -125,8 +129,10 @@ final class UIScreenshotTests: XCTestCase {
         // Settings
         let settings = SettingsWindowController(preferences: preferences, recents: RecentArchives(urls: { recents }, note: { _ in }, clear: {}),
             updates: UpdateController(publicKey: { nil }, makeDriver: { fatalError("Keyless build") }), showFinder: {},
-            themeManager: { DocumentIconThemeManager(environment: sandbox.environment(keys: []), provider: icons) },
-            finderEnabled: { false }, currentThemeName: { "Seal Dark (included with Arkiv)" }, documentIcons: icons)
+            themeManager: { DocumentIconThemeManager(environment: sandbox.environment(keys: []), provider: icons) })
+        settings.finderEnabled = { false }
+        settings.currentThemeName = { "Seal Dark (included with Arkiv)" }
+        settings.preview.documentIcons = icons
         defer { settings.close() }
         for (pane, name) in [(SettingsWindowController.Pane.general, "13-settings-general"), (.appearance, "14-settings-appearance"),
                              (.updates, "15-settings-updates"), (.documentIcons, "16-settings-document-icons-unconfigured")] {

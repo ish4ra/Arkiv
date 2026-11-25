@@ -57,7 +57,8 @@ final class RedesignTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let recent = root.appendingPathComponent("backup.7z"), missing = root.appendingPathComponent("gone.zip")
         try Data([1, 2, 3]).write(to: recent)
-        let controller = BrowserWindowController(recentArchives: { [recent, missing, recent] })
+        let controller = BrowserWindowController()
+        controller.recentArchives = { [recent, missing, recent] }
         defer { controller.close() }
         let window = try XCTUnwrap(controller.window)
         let welcome = controller.welcome
@@ -101,7 +102,7 @@ final class RedesignTests: XCTestCase {
             }
         }
 
-        let empty = BrowserWindowController(recentArchives: { [] })
+        let empty = BrowserWindowController()
         defer { empty.close() }
         XCTAssertFalse(empty.welcome.dropZone.isHidden)
         XCTAssertTrue(empty.welcome.recentButtons.isEmpty)
@@ -116,7 +117,8 @@ final class RedesignTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let archive = try Self.fixtureArchive(in: root)
         let (defaults, cleanup) = try isolatedDefaults(); defer { cleanup() }
-        let controller = BrowserWindowController(columnPreferences: BrowserColumnPreferences(defaults: defaults), preferences: AppPreferences(defaults: defaults))
+        let controller = BrowserWindowController(columnPreferences: BrowserColumnPreferences(defaults: defaults))
+        controller.preferences = AppPreferences(defaults: defaults)
         defer { controller.close() }
         controller.showWindow(nil)
         controller.load(archive)
@@ -165,7 +167,8 @@ final class RedesignTests: XCTestCase {
         let archive = try Self.fixtureArchive(in: root)
         let (defaults, cleanup) = try isolatedDefaults(); defer { cleanup() }
         let preferences = AppPreferences(defaults: defaults)
-        let windows = [BrowserWindowController(preferences: preferences), BrowserWindowController(preferences: preferences)]
+        let windows = [BrowserWindowController(), BrowserWindowController()]
+        windows.forEach { $0.preferences = preferences }
         defer { windows.forEach { $0.close() } }
         for window in windows { window.load(archive); try await waitForLoad(window) }
         let tables = try windows.map(archiveTable)
@@ -189,7 +192,8 @@ final class RedesignTests: XCTestCase {
         XCTAssertNil((tables[0].rowView(atRow: 0, makeIfNecessary: true) as? ArchiveRowView)?.accent, "System accent draws what macOS draws")
 
         // A new window (or a relaunch) reads the stored choices.
-        let reopened = BrowserWindowController(preferences: AppPreferences(defaults: defaults))
+        let reopened = BrowserWindowController()
+        reopened.preferences = AppPreferences(defaults: defaults)
         defer { reopened.close() }
         XCTAssertEqual(try archiveTable(reopened).rowHeight, 34)
         XCTAssertTrue(try archiveTable(reopened).usesAlternatingRowBackgroundColors)
@@ -278,8 +282,10 @@ final class RedesignTests: XCTestCase {
         var made = 0
         let controller = SettingsWindowController(preferences: preferences, recents: RecentArchives(urls: { [] }, note: { _ in }, clear: {}),
             updates: UpdateController(publicKey: { nil }, makeDriver: { fatalError("Keyless build") }), showFinder: {},
-            themeManager: { made += 1; return DocumentIconThemeManager(environment: sandbox.environment(keys: []), provider: sandbox.provider()) },
-            finderEnabled: { false }, currentThemeName: { "Seal Dark (included with Arkiv)" }, documentIcons: sandbox.provider())
+            themeManager: { made += 1; return DocumentIconThemeManager(environment: sandbox.environment(keys: []), provider: sandbox.provider()) })
+        controller.finderEnabled = { false }
+        controller.currentThemeName = { "Seal Dark (included with Arkiv)" }
+        controller.preview.documentIcons = sandbox.provider()
         defer { controller.close() }
         controller.present()
         let window = try XCTUnwrap(controller.window)

@@ -54,8 +54,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
     private let recents: RecentArchives
     private let updates: UpdateController
     private let showFinder: () -> Void
-    private let finderEnabled: () -> Bool
-    private let currentThemeName: () -> String
+    /// Finder Sync status; replaced in tests.
+    var finderEnabled: () -> Bool = { FIFinderSyncController.isExtensionEnabled }
+    /// Name of the document icon theme in use; replaced in tests.
+    var currentThemeName: () -> String = SettingsWindowController.installedThemeName
     private let makeThemeManager: @MainActor () -> DocumentIconThemeManager
     private var themePaneStorage: DocumentIconThemePane?
 
@@ -83,16 +85,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
     private let updateStatus = NSTextField(wrappingLabelWithString: "")
 
     init(preferences: AppPreferences, recents: RecentArchives, updates: UpdateController, showFinder: @escaping () -> Void,
-         themeManager: @escaping @MainActor () -> DocumentIconThemeManager = { DocumentIconThemeManager(environment: .standard(), provider: .shared) },
-         finderEnabled: @escaping () -> Bool = { FIFinderSyncController.isExtensionEnabled },
-         currentThemeName: @escaping () -> String = SettingsWindowController.installedThemeName,
-         documentIcons: DocumentIconProvider = .shared) {
+         themeManager: @escaping @MainActor () -> DocumentIconThemeManager = { DocumentIconThemeManager(environment: .standard(), provider: .shared) }) {
+        // Same parameter list as build 30701; test seams are properties (see
+        // BrowserWindowController.init).
         self.preferences = preferences; self.recents = recents
         self.updates = updates; self.showFinder = showFinder
         self.makeThemeManager = themeManager
-        self.finderEnabled = finderEnabled
-        self.currentThemeName = currentThemeName
-        preview = AppearancePreview(documentIcons: documentIcons)
+        preview = AppearancePreview(documentIcons: .shared)
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: Self.contentSize),
                               styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView], backing: .buffered, defer: false)
         window.title = "Settings"
@@ -470,7 +469,8 @@ final class AppearancePreview: NSView, NSTableViewDataSource, NSTableViewDelegat
     private let table = NSTableView()
     private let card = ArkivCardView()
     private var height: NSLayoutConstraint!
-    private let documentIcons: DocumentIconProvider
+    /// Replaced in tests and screenshots; the app uses the shared provider.
+    var documentIcons: DocumentIconProvider { didSet { reloadIcons() } }
     private var density: BrowserDensity = .standard
     private var accent: AppAccent = .arkiv
     /// Built through the public index, exactly as an opened archive is.

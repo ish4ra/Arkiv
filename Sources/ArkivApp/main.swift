@@ -77,7 +77,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func newWindow(_ sender: Any?) { makeWindow().showWindow(nil) }
     private func makeWindow() -> BrowserWindowController {
         let recents = self.recents
-        let controller = BrowserWindowController(preferences: preferences, recentArchives: { recents.recentURLs })
+        let controller = BrowserWindowController()
+        controller.preferences = preferences
+        controller.recentArchives = { recents.recentURLs }
         windows.append(controller)
         controller.onOpenURLs = { [weak self, weak controller] urls in
             for url in urls { self?.open(url, preferred: controller?.windowID) }

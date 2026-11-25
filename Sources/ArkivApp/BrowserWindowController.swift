@@ -49,7 +49,23 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     let browserToolbar = NSToolbar(identifier: "ArkivBrowser.v2")
     private let welcomeToolbar = NSToolbar(identifier: "ArkivWelcome")
     private(set) var searchItem: NSSearchToolbarItem?
-    private let preferences: AppPreferences
+    /// Presentation preferences (density, accent, alternating rows). Set
+    /// after creation; every window shares the app's instance. A property
+    /// rather than an initializer argument (see the note on `init`).
+    var preferences = AppPreferences() {
+        didSet {
+            NotificationCenter.default.removeObserver(self, name: .arkivAppearancePreferencesDidChange, object: oldValue)
+            NotificationCenter.default.addObserver(self, selector: #selector(appearancePreferencesDidChange(_:)),
+                                                   name: .arkivAppearancePreferencesDidChange, object: preferences)
+        applyPresentation(density: preferences.density, accent: preferences.accent, alternatingRows: preferences.alternatingRows)
+            applyPresentation(density: preferences.density, accent: preferences.accent, alternatingRows: preferences.alternatingRows)
+        }
+    }
+    /// Recent archives for the welcome canvas (NSDocumentController history).
+    var recentArchives: () -> [URL] {
+        get { welcome.recentURLs }
+        set { welcome.recentURLs = newValue; welcome.reloadRecents() }
+    }
     /// Set by the app for windows opened from inside another archive.
     var nestedParentName: String? { didSet { updateSubtitle() } }
     var onOpenURLs: (([URL]) -> Void)?
@@ -93,9 +109,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
          requestArchivePassword: @escaping (URL, Bool, NSWindow?, @escaping (String?) -> Void) -> Void = {
              ArchivePasswordPrompt.ask(archive: $0, retry: $1, parent: $2, completion: $3)
          },
-         documentIcons: DocumentIconProvider = .shared,
-         preferences: AppPreferences = AppPreferences(),
-         recentArchives: @escaping () -> [URL] = { [] }) {
+         documentIcons: DocumentIconProvider = .shared) {
+        // This parameter list is kept as it was in build 30701. A version
+        // with two more defaulted parameters coincided with an existing async
+        // AppKit test aborting in the Swift task allocator ("freed pointer
+        // was not the last allocation") on Apple Silicon CI, so presentation
+        // settings are properties instead.
         self.worker = worker
         self.documentIcons = documentIcons
         self.columnPreferences = columnPreferences
@@ -104,9 +123,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         self.openFileLauncher = openFileLauncher
         self.prepareOpenFile = prepareOpenFile
         self.requestArchivePassword = requestArchivePassword
-        self.preferences = preferences
-        density = preferences.density
-        accent = ArkivStyle.customAccent(preferences.accent)
+        density = .standard
+        accent = ArkivStyle.customAccent(.arkiv)
         // The table scrolls under the translucent unified toolbar; the welcome
         // canvas runs up behind a transparent title bar.
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 940, height: 600),
@@ -119,7 +137,6 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
         window.toolbarStyle = .unified
-        welcome.recentURLs = recentArchives
         welcome.documentIcons = documentIcons
         welcome.reloadRecents()
         window.contentView = makeContent()
@@ -127,6 +144,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                                                name: .arkivDocumentIconThemeDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(appearancePreferencesDidChange(_:)),
                                                name: .arkivAppearancePreferencesDidChange, object: preferences)
+        applyPresentation(density: preferences.density, accent: preferences.accent, alternatingRows: preferences.alternatingRows)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(accessibilityDisplayOptionsDidChange(_:)),
                                                name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
         browserToolbar.delegate = self
