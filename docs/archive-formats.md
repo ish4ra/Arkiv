@@ -4,9 +4,9 @@ These are **fixture results on Linux with libarchive 3.7.4 and in [macOS CI](htt
 
 | Format | Browse/extract evidence | Create/modify | Encryption/multipart/comments/integrity command |
 | --- | --- | --- | --- |
-| ZIP | Stored and Deflate; nested Unicode paths, empty, corrupt CRC | Default creation: Store/Deflate; [ZIP32 additions](zip-additions.md), [Delete / Rename / Replace File](zip-edits.md) | Test reads data/checks CRC and WinZip AES authentication; encrypted editing/ZIP64 AES/multipart deferred |
+| ZIP | Stored and Deflate; nested Unicode paths, empty, corrupt CRC | Default creation: Store/Deflate; [ZIP32 additions](zip-additions.md), [Delete / Rename / New Folder / Replace and Update File or Folder](zip-edits.md) | Test reads data/checks CRC and WinZip AES authentication; encrypted editing/ZIP64 AES/multipart deferred |
 | TAR | Regular files, nested paths, symlinks/hardlinks; special entries skipped with warnings | PAX TAR creation; gzip/bzip2/XZ wrappers and aliases; no editing | Test checks structure/readability; warning: no payload checksum |
-| 7z | LZMA/LZMA2; plain/encrypted fixtures and round trips | Create LZMA2; no modification | AES-256 content, optional filenames; full-data/CRC Test; bounded split 7z read/create |
+| 7z | LZMA/LZMA2; plain/encrypted fixtures and round trips | Create LZMA2; [Add / Delete / Rename / Replace File](sevenzip.md) on eligible single-volume, non-solid archives, plain or encrypted | AES-256 content, optional filenames; full-data/CRC Test; bounded split 7z read/create |
 | RAR5 | Stored/compressed, four files, Unicode and safe links; [evidence](rar-compatibility.md) | Never create or modify | Full decoded CRC testing; encrypted/solid/multipart rejected |
 | RAR4 | Store/Normal/Best, hierarchy, empty directories, Unicode; [evidence](rar-compatibility.md) | Never create or modify | Full decoded CRC testing; encrypted/solid/multipart rejected |
 | GZIP / BZIP2 / XZ standalone | One logical regular file, complete bounded checksum validation; Open/Quick Look/drag | Single-file creation, fixed levels 6/9/6; no editing | No encryption; one complete stream only; [limits](standalone-compression.md) |

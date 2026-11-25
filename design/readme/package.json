@@ -1,0 +1,13 @@
+{
+  "name": "arkiv-readme-media",
+  "private": true,
+  "description": "Design-time renderer for the README hero animation. Never shipped in or required by the app build.",
+  "type": "module",
+  "engines": { "node": ">=22.0.0" },
+  "scripts": {
+    "render": "node render-hero.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
