@@ -1,142 +1,218 @@
-# Arkiv
+<div align="center">
 
-A native macOS archive manager, built for the depth of tools like 7-Zip and WinRAR and designed properly for the Mac.
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset="docs/media/arkiv-hero.jpg">
+  <img src="docs/media/arkiv-hero.gif" width="100%" alt="Arkiv — Archives, reimagined for Mac. The Arkiv app icon beside the Seal Dark document icons for TAR, 7z, ZIP, RAR and Zstandard.">
+</picture>
 
-Arkiv opens an archive as a browsable container rather than unpacking everything at once. Browse folders, search, preview and open individual files, extract exactly what you need, create ZIP, encrypted 7z and compressed TAR archives, and edit supported ZIPs, all from a native AppKit app with Finder integration. No Electron, no web views, and no Homebrew or command-line tools to install.
+<br>
 
-[![macOS CI](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml/badge.svg?branch=main)](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml)
+**Arkiv is a native macOS archive manager with the depth of 7-Zip and WinRAR, designed properly for the Mac.**<br>
+Browse an archive like a folder, take only what you need, and create, verify and edit archives — in a small Swift and AppKit app.
+
+[**Download**](#download-and-install) &nbsp;·&nbsp; [**User guide**](docs/user-guide.md) &nbsp;·&nbsp; [**Formats**](#supported-formats) &nbsp;·&nbsp; [**Roadmap**](#roadmap) &nbsp;·&nbsp; [**Report an issue**](https://github.com/ish4ra/Arkiv/issues)
+
+[![macOS CI](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml/badge.svg?branch=main)](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml?query=branch%3Amain)
+[![Document icon themes](https://github.com/ish4ra/Arkiv/actions/workflows/document-icon-themes.yml/badge.svg?branch=main)](https://github.com/ish4ra/Arkiv/actions/workflows/document-icon-themes.yml?query=branch%3Amain)
+
+<sub>macOS 13 or later &nbsp;·&nbsp; Apple Silicon and Intel &nbsp;·&nbsp; Development builds</sub>
+
+</div>
 
 > [!NOTE]
-> **Arkiv is in active early development.** Development builds are available for testing on macOS 13 or later (Apple Silicon and Intel). They are ad-hoc signed and **not notarized**, and there is no stable public release yet. Several core workflows still await real-Mac validation. See [what is implemented](docs/feature-matrix.md).
+> **Arkiv is in active early development.** Development builds are ad-hoc signed and **not notarized**, and there is no stable release yet. Several workflows still await validation on a real Mac; see the [feature matrix](docs/feature-matrix.md).
 
-## Highlights
+## Why Arkiv
 
-- **Native archive browser.** A Finder-like table with sortable, resizable columns, multi-selection, folder navigation (Back, Forward, Up), archive-wide search and multiple windows.
-- **Selective extraction.** Extract the current selection or the whole archive, with progress and cancellation. Existing files are never overwritten.
-- **Open, Quick Look and nested archives.** Open a file from a private temporary copy in its default app, press Space to preview it, or open an archive stored inside another archive in a new window, without extracting the rest of the outer archive.
-- **Create ZIP and 7z.** ZIP is the default. 7z adds LZMA2 compression and optional AES-256 encryption, including encrypted filenames.
-- **Edit ZIP archives.** Add files and folders, delete, rename, or replace a single file. Every edit is verified before it replaces the original.
-- **Finder integration.** An **Arkiv** submenu in Finder's context menu to extract, test and compress, with Services as a fallback.
-- **Drag in and out.** Drag entries to Finder, and drag Finder items into writable ZIPs.
-- **Test Archive.** Read and verify archive data without extracting anything.
+<table>
+<tr>
+<td width="33%" valign="top">
 
-**Settings:** Arkiv → Settings… (⌘,) offers persisted System/Light/Dark appearance (Dark by default), recent-history clearing, existing Sparkle update controls, and Finder setup guidance. See [Settings](docs/settings.md).
+**Native to the core**<br>
+Swift and AppKit throughout: a real Mac table, menus, sheets and shortcuts. No Electron, no web views, no Homebrew.
 
-## Format support
+</td>
+<td width="33%" valign="top">
 
-Arkiv only lists a format as supported once it passes automated fixture tests. Recognising a file extension does not mean every compression method or variant inside it works.
+**Light by design**<br>
+Bundles only what the default experience needs. Optional content downloads on demand. No background services.
 
-| Format | Browse & extract | Create | Edit existing | Encryption | Test Archive |
-| --- | --- | --- | --- | --- | --- |
-| **ZIP** | Store, Deflate | Store, Deflate (default format) | Add, Delete, Rename, Replace File¹ | WinZip AES-256 creation; AES-128/192/256 reading | Data, CRC and AES authentication |
-| **7z** | LZMA, LZMA2 | LZMA2 | — | AES-256, optional encrypted filenames | Data and CRC |
-| **ZSTD / TAR.ZST / TZST** | Standalone or decoded TAR; optional checksum | One file or PAX TAR hierarchy | — | — | [Bounded frame policy](docs/zstandard.md) |
-| **GZIP / BZIP2 / XZ** standalone | One file; bounded checksum validation | One regular file | — | — | Complete stream checks |
-| **TAR**, **tar.gz/tgz**, **tar.bz2/tbz2**, **tar.xz/txz** | Yes; bounded single-stream decoding | TAR, gzip, bzip2, XZ | — | — | Readability; compressed-stream checks² |
-| **RAR4 / RAR5** | Verified variants³ | Never | — | — | Stored/compressed, read-only |
+</td>
+<td width="33%" valign="top">
 
-¹ Ordinary single-disk ZIP32 archives. Encrypted, ZIP64 and multipart ZIPs are read-only.
-² TAR has no per-entry content checksum, so a passing test is reported as a warning. Compressed wrappers are validated separately.
-³ Independent RAR4 Store/Normal/Best and RAR5 stored/compressed fixtures are verified. Encryption, solid and multipart RAR remain unsupported. See the [RAR compatibility matrix](docs/rar-compatibility.md) for exact evidence and limits.
+**Open without unpacking**<br>
+Browse, search, Quick Look and open single files from an archive without extracting the rest.
 
-**Not yet verified, so not advertised:** additional RAR methods/filters, ZIPX, disk images and the other formats in the [specification](ARKIV_SPEC.md). No support is claimed until fixture tests pass.
+</td>
+</tr>
+<tr>
+<td valign="top">
 
-**Known unsupported:** encrypted ZIP editing, ZIP64 AES, legacy ZipCrypto, non-7z multipart creation/reading, and RAR creation. See [format evidence](docs/archive-formats.md) for details.
+**Take only what you need**<br>
+Extract a selection or everything, with progress and cancellation. Existing files are never overwritten.
 
-## Using Arkiv
+</td>
+<td valign="top">
 
-### Browse, open and extract
+**Create and edit**<br>
+ZIP, 7z (AES-256, split volumes), TAR and Zstandard. Add, delete, rename and replace inside eligible ZIP and 7z archives.
 
-Open an archive with **File → Open Archive…** (⌘O), by double-clicking a ZIP or TAR once Arkiv is set as its handler, or through Finder. Folders open on double-click. App and framework bundles appear as packages; use **Show Package Contents** to look inside.
+</td>
+<td valign="top">
 
-- **Extract Selected…** (⌘E) and **Extract All…** (⇧⌘E) write to a new folder in the destination you choose.
-- **Open** launches a single file in its default app from a private temporary copy. Changes to that copy are **not** written back to the archive, and the copy is removed when the archive window closes, so save elsewhere anything you want to keep.
-- **Quick Look** (Space) previews one regular file using the same temporary copy.
-- **Nested archives:** double-clicking an entry whose contents are a supported archive, or choosing **Open as Archive**, opens it in a new Arkiv window. Only that entry is extracted, to the same private temporary workspace. Encrypted inner archives use the normal password prompt. Changes made inside a nested ZIP affect only its temporary copy and are never written back to the outer archive. Arkiv does not open nested archives automatically or browse them in the current window.
-- **Search** (⌘F) filters by name across the whole archive. **Back** (⌘[), **Forward** (⌘]) and **Parent Folder** (⌘↑) handle navigation.
+**Safety first**<br>
+Hostile-path defences, private staging, verified transactional edits and bounded resources, covered by regression tests.
 
-Encrypted 7z archives ask for a password when opened, with retry on a wrong password. Passwords are never saved. Extraction preserves symbolic links and safe executable permission bits, including inside app and framework bundles. See [extraction compatibility](docs/extraction-compatibility.md), [open files and Quick Look](docs/open-files.md) and [nested archives](docs/nested-archives.md).
+</td>
+</tr>
+<tr>
+<td valign="top">
 
-### Create archives
+**Finder integration**<br>
+An Arkiv submenu to extract, test and compress, with Services as a fallback.
 
-Use **File → Create Archive…** (⇧⌘N) or Finder's **Add to Archive…** to choose a name, destination, format and compression method. ZIP offers Store or Deflate. 7z offers LZMA2 with optional AES-256 encryption and optional encrypted filenames. **Compress with Password…** uses 7z, because ZIP encryption has not yet passed interoperability testing. Arkiv never falls back silently to legacy ZipCrypto.
+</td>
+<td valign="top">
 
-TAR, TAR + gzip, TAR + bzip2 and TAR + XZ are also available in the same dialog, including `.tgz`, `.tbz2` and `.txz` aliases. They use fixed bounded settings and do not support passwords or editing. **GZIP, BZIP2 and XZ single-file** options are also available for exactly one regular file (`database.sql` → `database.sql.gz`). For multiple files/folders, choose a container such as TAR. See [standalone compression](docs/standalone-compression.md).
+**Signed in-app updates**<br>
+Sparkle verifies every update's EdDSA signature and always asks before installing.
 
-New archives are reopened and verified before they appear, and existing files are never replaced: name clashes become `Name (2).zip` and so on. See [creation](docs/creation.md) and [7z and AES-256](docs/sevenzip.md).
+</td>
+<td valign="top">
 
-### Edit ZIP archives
+**Document icon themes**<br>
+The Seal Dark icons are included. Twenty preserved alternative themes are prepared as optional downloads.
 
-For eligible ZIPs, Arkiv can:
+</td>
+</tr>
+</table>
 
-- **Add Files…** and **Add Folder…** to the archive root, or drag Finder items onto the current folder or a folder row
-- **Delete…** (⌘⌫) files and folders, after confirmation
-- **Rename…** one file or folder within its current folder
-- **Replace File…**: swap one file's contents for a file on disk, keeping its name and path in the archive
+<!--
+  Screenshots: genuine real-Mac captures are pending. docs/media/README.md lists
+  exactly what to capture (archive browser, Create Archive, search, extraction,
+  Archive Info, Finder submenu, Appearance settings) and how to add them here.
+-->
 
-Each edit builds a complete replacement archive, verifies it, and then swaps it in atomically. If anything fails or you cancel before that point, the original is left untouched. Updating folders or several files at once, creating new folders, and editing 7z, TAR or RAR are not yet available. See [ZIP additions](docs/zip-additions.md), [ZIP edits](docs/zip-edits.md) and [drag-in](docs/drag-in.md).
+## Document icons
 
-### Drag and drop
+Arkiv ships one document-icon family, **Seal Dark**, drawn in the same aubergine, brass and jade as the app icon. It covers every format Arkiv registers with macOS:
 
-Drag files or folders from Arkiv into Finder. Nothing is extracted until you drop, and Finder's chosen destination is never overwritten. Drag-in works only for writable ZIPs. Read-only archives do not accept drops. See [drag-out](docs/drag-out.md).
+<p align="center">
+<img src="docs/media/artwork/seal-dark/ZIP-128.png" width="60" alt="ZIP">
+<img src="docs/media/artwork/seal-dark/7z-128.png" width="60" alt="7z">
+<img src="docs/media/artwork/seal-dark/TAR-128.png" width="60" alt="TAR">
+<img src="docs/media/artwork/seal-dark/RAR-128.png" width="60" alt="RAR">
+<img src="docs/media/artwork/seal-dark/GZIP-128.png" width="60" alt="GZIP">
+<img src="docs/media/artwork/seal-dark/BZIP2-128.png" width="60" alt="BZIP2">
+<img src="docs/media/artwork/seal-dark/XZ-128.png" width="60" alt="XZ">
+<img src="docs/media/artwork/seal-dark/ZSTD-128.png" width="60" alt="Zstandard">
+<img src="docs/media/artwork/seal-dark/TGZ-128.png" width="60" alt="TGZ">
+<img src="docs/media/artwork/seal-dark/TBZ2-128.png" width="60" alt="TBZ2">
+<img src="docs/media/artwork/seal-dark/TXZ-128.png" width="60" alt="TXZ">
+</p>
 
-### Test Archive
+Every earlier design is preserved as an **optional theme**, downloaded individually from **Settings → Appearance → Document Icon Theme** rather than bundled with the app. A representative selection, shown from the original archived artwork:
 
-**File → Test Archive** (⌘T) reads and checks the open archive without writing any files. **Test Archive File…** (⇧⌘T) checks an archive that may be too damaged to open. Results distinguish OK, Warning, Corrupt, CRC Error, Wrong Password and Unsupported Method where the format allows. See [integrity checks](docs/integrity.md).
+<table>
+<tr>
+<td align="center" width="25%"><img src="docs/media/artwork/seal-dark-restored/ZIP-256.png" width="56" alt=""><img src="docs/media/artwork/seal-dark-restored/7z-256.png" width="56" alt=""><img src="docs/media/artwork/seal-dark-restored/TAR-256.png" width="56" alt=""><br><sub><b>Restored Readability</b><br>C · Seal</sub></td>
+<td align="center" width="25%"><img src="docs/media/artwork/seal-dark-aubergine/ZIP-256.png" width="56" alt=""><img src="docs/media/artwork/seal-dark-aubergine/7z-256.png" width="56" alt=""><img src="docs/media/artwork/seal-dark-aubergine/TAR-256.png" width="56" alt=""><br><sub><b>Original Aubergine</b><br>C · Seal</sub></td>
+<td align="center" width="25%"><img src="docs/media/artwork/seal-wine/ZIP-256.png" width="56" alt=""><img src="docs/media/artwork/seal-wine/7z-256.png" width="56" alt=""><img src="docs/media/artwork/seal-wine/TAR-256.png" width="56" alt=""><br><sub><b>Seal Wine</b><br>C · Seal</sub></td>
+<td align="center" width="25%"><img src="docs/media/artwork/seal-noir/ZIP-256.png" width="56" alt=""><img src="docs/media/artwork/seal-noir/7z-256.png" width="56" alt=""><img src="docs/media/artwork/seal-noir/TAR-256.png" width="56" alt=""><br><sub><b>Seal Noir</b><br>C · Seal</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="docs/media/artwork/seal/ZIP-256.png" width="56" alt=""><img src="docs/media/artwork/seal/7z-256.png" width="56" alt=""><img src="docs/media/artwork/seal/TAR-256.png" width="56" alt=""><br><sub><b>Seal Original</b><br>C · Seal</sub></td>
+<td align="center"><img src="docs/media/artwork/folio/ZIP-256.png" width="56" alt=""><img src="docs/media/artwork/folio/7z-256.png" width="56" alt=""><img src="docs/media/artwork/folio/TAR-256.png" width="56" alt=""><br><sub><b>Folio</b><br>A · Folio</sub></td>
+<td align="center"><img src="docs/media/artwork/folio-dark/ZIP-256.png" width="56" alt=""><img src="docs/media/artwork/folio-dark/7z-256.png" width="56" alt=""><img src="docs/media/artwork/folio-dark/TAR-256.png" width="56" alt=""><br><sub><b>Folio Dark</b><br>A · Folio</sub></td>
+<td align="center"><img src="docs/media/artwork/strata/ZIP-256.png" width="56" alt=""><img src="docs/media/artwork/strata/7z-256.png" width="56" alt=""><img src="docs/media/artwork/strata/TAR-256.png" width="56" alt=""><br><sub><b>Strata</b><br>B · Strata</sub></td>
+</tr>
+</table>
 
-## Finder integration
+The full set is 20 themes: these eight, the original partial **Classic** icons (ZIP, 7z, TAR and RAR only) and 11 design variations. The [theme inventory](docs/document-icon-theme-inventory.md) lists each one's source and download size (0.54–8.86 MB).
 
-Arkiv includes a Finder extension that adds an **Arkiv** submenu to Finder's context menu:
+- **Inside Arkiv**, a selected theme changes archive rows, the window's proxy icon and Archive Info immediately.
+- **In Finder and Quick Look**, documents keep the bundled Seal Dark icons, shown while Arkiv is the default app for that type. macOS reads them from the signed app; Arkiv never modifies its bundle or changes your default apps.
+- Themes are verified against a signed catalogue, stored outside the app, and keep working offline once installed.
 
-| Selection | Actions |
-| --- | --- |
-| One ZIP, 7z or uncompressed TAR | Open in Arkiv · Extract Here · Extract to "Name/" · Extract To… · Test Archive |
-| Files and folders (up to 128, in the same folder) | Add to Archive… · Compress to "Name.zip" · Compress to "Name.7z" · Compress with Password… |
+> [!IMPORTANT]
+> **Theme downloads are not live yet.** The signed catalogue has not been published, and current builds do not yet contain its production key. Until then, Settings reports that theme downloads are not configured in this build, and Seal Dark stays in use. [Details](docs/document-icon-themes.md).
 
-**Enabling it:** macOS requires you to turn the extension on yourself. Arkiv shows a setup window on first launch, also available from **Arkiv → Finder Integration…**, with a button and manual instructions:
+## Supported formats
 
-- **macOS 15 and later:** System Settings → General → Login Items & Extensions → Extensions → Finder → enable **Arkiv Finder**
-- **macOS 13–14:** System Settings → Privacy & Security → Extensions → Finder Extensions → enable **Arkiv Finder**
+A format is listed only once automated fixture tests pass. Recognising an extension does not mean every method inside it works.
 
-**Scope:** the submenu appears only for items inside your home folder. For archives elsewhere, such as external drives, use the fallback **Services** menu: right-click → Services → *Open in Arkiv*, *Extract Here with Arkiv*, *Extract to Folder with Arkiv* or *Extract To… with Arkiv*. These Services cover one ZIP or uncompressed TAR at a time. Enable them under System Settings → Keyboard → Keyboard Shortcuts → Services if needed.
+| Format | Browse & extract | Create | Edit | Encryption | Test | Split volumes |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| <img src="docs/media/artwork/seal-dark/ZIP-32@2x.png" width="20" alt=""> **ZIP** | Store, Deflate | Yes, the default | Yes¹ | AES-256² | Data, CRC, AES | — |
+| <img src="docs/media/artwork/seal-dark/7z-32@2x.png" width="20" alt=""> **7z** | LZMA, LZMA2 | LZMA2 | Yes³ | AES-256, names too | Data, CRC | Read, create⁴ |
+| <img src="docs/media/artwork/seal-dark/TAR-32@2x.png" width="20" alt=""> **TAR**⁵ | Yes | Yes | — | — | Structure⁶ | — |
+| <img src="docs/media/artwork/seal-dark/ZSTD-32@2x.png" width="20" alt=""> **Zstandard**⁵ | One frame | Yes | — | — | Checksum⁷ | — |
+| <img src="docs/media/artwork/seal-dark/GZIP-32@2x.png" width="20" alt=""> **GZIP, BZIP2, XZ** | One file | One file | — | — | Full stream | — |
+| <img src="docs/media/artwork/seal-dark/RAR-32@2x.png" width="20" alt=""> **RAR4, RAR5** | Verified variants⁸ | Never | Never | — | Full CRC | Planned |
 
-Extract Here and Extract to Folder run immediately, play a short completion sound and never overwrite or merge existing items. See [Finder Sync](docs/finder-sync.md) and [Services](docs/finder-integration.md), including real-Mac test steps.
+<p><sub>
+¹ Add, delete, rename, new folder, replace and update files and folders, in ordinary single-disk ZIP32 without encryption; encrypted, ZIP64 and multipart ZIPs are read-only.<br>
+² AES-256 creation with visible filenames; AES-128/192/256 reading (WinZip AE-1/AE-2).<br>
+³ Add, delete, rename and replace a file in single-volume, non-solid 7z with supported methods and metadata, including eligible encrypted archives; solid and split 7z are read-only.<br>
+⁴ <code>.7z.001</code> sets of 2–128 parts, up to 4 GiB.<br>
+⁵ TAR includes <code>.tar.gz</code>/<code>.tgz</code>, <code>.tar.bz2</code>/<code>.tbz2</code> and <code>.tar.xz</code>/<code>.txz</code>; Zstandard covers <code>.zst</code>, <code>.tar.zst</code> and <code>.tzst</code>. Single compressed stream only.<br>
+⁶ TAR has no per-entry checksum, so a passing test is reported as a warning; compressed wrappers are checked separately.<br>
+⁷ A frame without a checksum produces a warning.<br>
+⁸ RAR4 Store/Normal/Best and RAR5 stored/compressed; encrypted, solid and multipart RAR are rejected (<a href="docs/rar-compatibility.md">RAR matrix</a>).
+</sub></p>
 
-## Install a development build
+**Not supported:** RAR creation, encrypted ZIP editing, ZIP64 AES, legacy ZipCrypto, split ZIP, Zstandard dictionaries and multi-frame streams, ZIPX and disk images. Details: [format evidence](docs/archive-formats.md) · [ZIP AES](docs/zip-aes.md) · [7z](docs/sevenzip.md) · [split 7z](docs/multipart.md) · [compressed TAR](docs/compressed-tar.md) · [Zstandard](docs/zstandard.md) · [standalone compression](docs/standalone-compression.md).
 
-There is no stable release yet. Two kinds of development build exist:
+## Download and install
 
-| Source | What it is | Use it for |
+<p align="center"><a href="https://github.com/ish4ra/Arkiv/releases/tag/dev-30201"><b>Download Arkiv development build 30201</b></a> &nbsp;·&nbsp; Universal &nbsp;·&nbsp; macOS 13 or later</p>
+
+There is no stable release yet. **Universal** builds run on both Apple Silicon and Intel Macs; **arm64** builds run on Apple Silicon only.
+
+| Option | Best for | Where |
 | --- | --- | --- |
-| [GitHub Actions artifacts](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml?query=branch%3Amain) | arm64 and Universal DMGs (and ZIPs) from each CI run, with SHA-256 checksums | First installation |
-| [Development prereleases](https://github.com/ish4ra/Arkiv/releases) (`dev-<build>`) | Signed Universal ZIPs published for Sparkle | Signed, user-confirmed in-app updates |
+| **Signed development release** (Universal) | The quickest first install, on any supported Mac; no GitHub account needed | [Releases](https://github.com/ish4ra/Arkiv/releases): open the newest **Arkiv Development _build_** (currently [`dev-30201`](https://github.com/ish4ra/Arkiv/releases/tag/dev-30201)) and download `Arkiv-universal.zip` |
+| **Development DMG** (arm64 or Universal) | A smaller Apple Silicon–only build, or a disk image | [macOS foundation runs on `main`](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml?query=branch%3Amain+is%3Asuccess) → **Artifacts** (sign in to GitHub): `Arkiv-arm64-development-dmg` or `Arkiv-universal-development-dmg`, each with a SHA-256 checksum |
+| **In-app updates** | Staying current after the first install | **Arkiv → Check for Updates…** |
 
-**First installation:**
+The Releases page also lists other prereleases, such as document icon theme packs. Those are not Arkiv builds: choose a release named **Arkiv Development**.
 
-1. Sign in to GitHub, open a successful `main` run of the **macOS foundation** workflow, and download **`Arkiv-arm64-development-dmg`** (Apple Silicon) or **`Arkiv-universal-development-dmg`** (Apple Silicon or Intel).
-2. Unzip GitHub's artifact wrapper. Optionally verify the image with `shasum -a 256 -c Arkiv-*-development.dmg.sha256`.
-3. Open the DMG, drag **Arkiv.app** to **Applications**, eject the volume and launch Arkiv from Applications.
+**First installation**
 
-**Gatekeeper:** these builds are ad-hoc signed, not Developer ID signed, and not notarized. macOS may block the first launch with a warning that it could not verify the app. If you trust the build, try to open it once, then go to **System Settings → Privacy & Security** and choose **Open Anyway**. Do not disable Gatekeeper globally. See [release details](docs/release.md#signing-notarization-and-gatekeeper).
+1. Unzip the download (for an Actions artifact, unzip GitHub's wrapper first, then optionally run `shasum -a 256 -c Arkiv-*-development.dmg.sha256`).
+2. Drag **Arkiv.app** to **Applications** and open it from there.
+3. These builds are ad-hoc signed, not Developer ID signed, and **not notarized**, so macOS may say it could not verify Arkiv. If you trust this repository, try to open Arkiv once, then choose **System Settings → Privacy & Security → Open Anyway**. Do not disable Gatekeeper globally. See [signing, notarization and Gatekeeper](docs/release.md#signing-notarization-and-gatekeeper).
 
-**Updates:** after installing once, use **Arkiv → Check for Updates…**. Sparkle installs updates only after verifying their EdDSA signature, and always asks before installing. This proves an update came from this project's signing key; it is not Apple notarization. See [development updates](docs/updates.md).
+**Updates:** after that, **Check for Updates…** downloads the newest `Arkiv-universal.zip` and installs it only after Sparkle verifies its EdDSA signature against the key built into Arkiv, and only with your confirmation. This proves an update came from this project; it is not Apple notarization. See [development updates](docs/updates.md).
 
 ## Safety and privacy
 
-Correctness and data safety come before features and polish.
-
-- **The input archive is never modified** by browsing, testing or extraction. Edits to ZIPs are transactional and verified.
-- **Extraction stays inside the destination you choose.** Path traversal, absolute paths, link tricks and unsafe special files are rejected, and output is staged privately before it is published. Hostile-archive cases are covered by automated regression tests.
+- **Your archive is never modified** by browsing, testing or extracting. Edits are transactional and verified before they replace the original.
+- **Extraction stays inside the folder you choose.** Path traversal, absolute paths, link tricks and unsafe special files are rejected, and output is staged privately before it is published.
 - **No silent overwrites.** Extraction, creation and Finder actions never replace or merge existing files.
-- **Resource limits.** Extraction is capped at 100,000 entries and 20 GiB of output.
-- **Passwords are never persisted.** They are not saved, logged or passed through URLs. Opening an encrypted 7z does decode it to a private temporary plaintext spool on disk, kept while the archive is open and deleted on normal cleanup. A crash can leave it behind, and deletion is not secure erasure.
-- **No accounts, telemetry or background network services.** The only network activity is Sparkle's update checks and downloads.
+- **Bounded resources.** Extraction is capped at 100,000 entries and 20 GiB of output.
+- **Passwords are never stored**, logged or passed through URLs. Opening an encrypted archive decodes it to a private temporary file that is deleted on normal cleanup; a crash can leave it behind, and deletion is not secure erasure.
+- **No account, telemetry or background service.** Arkiv contacts the network only for:
+  - **Updates:** Sparkle's update checks (on request, or on a schedule only if you allow it) and update downloads.
+  - **Document icon themes:** the signed theme catalogue, requested only while **Settings → Appearance** is shown or when you choose Refresh Catalogue; preview images for the theme you are viewing; and a theme pack, only when you click Download. Installed themes work offline.
 
-These protections have known limits. For example, the Finder extension's handoff URL does not authenticate its sender, and macOS metadata such as extended attributes and timestamps is not restored. See [security and known limits](docs/security.md).
+These protections have known limits. For example, the Finder extension's handoff does not authenticate its sender, and extended attributes and timestamps are not restored. See [security and known limits](docs/security.md).
+
+## Roadmap
+
+| State | What |
+| --- | --- |
+| **Published** in development build 30201 | Archive browser, search and Quick Look · extraction · ZIP, 7z, TAR and Zstandard creation · ZIP and 7z editing · split 7z · RAR reading · Finder integration · signed Sparkle updates · Settings · document icon theme manager (inactive until activation) |
+| **Awaiting production activation** | Optional document icon theme downloads: the maintainer must provision the theme signing key and publish the first signed catalogue ([launch guide](docs/document-icon-theme-launch.md)) |
+| **Awaiting real-Mac validation** | Broader Finder extension acceptance · Finder rendering of the document icons · the Appearance theme pane · app icon at Dock and Finder sizes · ZIP and TAR associations |
+| **Next** | 3 · Native Appearance settings and UI customization → 4 · Finder and Quick Look customization feasibility → 5 · RAR multipart reading → 6 · Split ZIP → 7 · Remaining archive-engine work |
+| **Planned** | More RAR methods, encrypted ZIP editing, editing more formats, archive comments · checksums, split/combine, benchmark, command-line companion · a Quick Look extension for archives · Developer ID signing and notarization |
+
+The complete queue is in the [roadmap](docs/roadmap.md), the current state of every feature in the [feature matrix](docs/feature-matrix.md), and the full plan in the [specification](ARKIV_SPEC.md).
 
 ## Build from source
 
-Requires macOS 13 or later, Xcode command-line tools with Swift 5.9+, and Python 3 for the fixture tests.
+Requires macOS 13 or later, the Xcode command-line tools with Swift 5.9+, and Python 3 for the fixture tests.
 
 ```sh
 python3 scripts/build-sevenzip.py
@@ -147,64 +223,31 @@ scripts/build-dmg.sh
 open build/Arkiv-arm64-development.dmg
 ```
 
-The app builds for arm64 by default. Set `ARKIV_ARCH=universal` for both build scripts to produce a Universal app. On Linux you can build and test the archive engine (`ArkivCore`), but not the AppKit app. See [release and build details](docs/release.md).
+The app builds for arm64 by default; set `ARKIV_ARCH=universal` for both build scripts to produce a Universal app. On Linux you can build and test the archive engine (`ArkivCore`), but not the AppKit app.
 
-**Architecture in brief:** a Swift Package Manager project with an AppKit app (`ArkivApp`) on top of a UI-independent engine (`ArkivCore`), so a future command-line tool can reuse it. ZIP, TAR and RAR go through the system libarchive. 7z uses a pinned, bundled build of the official 7-Zip source, with the RAR code excluded. Arkiv never shells out to external tools. See [architecture](docs/architecture.md).
-
-## Roadmap
-
-The owner's current order (details in [roadmap](docs/roadmap.md)):
-
-1. Lossless icon optimization and CI reliability (integrated)
-2. Downloadable document icon theme packs (implemented, in review)
-3. Native Appearance Settings and UI customization
-4. Safe Finder and Quick Look customization feasibility
-5. RAR multipart reading
-6. Split ZIP support
-7. Remaining archive-engine features
-
-The full queue is preserved. Planned work that is **not** in current builds:
-
-- **Formats:** additional RAR methods/filters, RAR multipart (milestone 5), split ZIP (milestone 6) and other multipart archives. TAR creation, listed here earlier, is implemented.
-- **Archive work:** encrypted ZIP after interoperability testing, general multi-selection and update-by-date operations, editing more formats, archive comments
-- **Tools:** checksums, split/combine, benchmark, a command-line companion
-- **App:** A Quick Look extension for archives in Finder remains planned. [Settings](docs/settings.md), [Open Recent](docs/open-recent.md), advanced browser columns and Archive Info are implemented.
-- **Distribution:** Developer ID signing and notarization, and the final app icon
-- **Customization (milestones 2–4, no longer after the archive-engine work):** downloadable theme packs with Settings → Appearance → Document Icon Theme (implemented, in review), then native UI customization, then a Finder/Quick Look feasibility study. The bundled refined Seal Dark family (build 26501) stays the default; every other preserved design is an optional, signed, download-on-demand theme stored outside the app bundle and applied inside Arkiv. See [document icon themes](docs/document-icon-themes.md).
-- **Lightweight by design:** bundle only what the default experience needs, download optional content on demand, and add no background services or new runtime frameworks.
-
-The full plan is in [`ARKIV_SPEC.md`](ARKIV_SPEC.md), the execution order in the [roadmap](docs/roadmap.md) and its current status in the [feature matrix](docs/feature-matrix.md).
+Arkiv is a Swift package: an AppKit app (`ArkivApp`) on a UI-independent engine (`ArkivCore`) that a future command-line tool can reuse. ZIP, TAR and RAR use the system libarchive; 7z uses a pinned build of the official 7-Zip source with the RAR code excluded. Arkiv never shells out to external tools. See [architecture](docs/architecture.md) and [release and build details](docs/release.md).
 
 ## Documentation
 
-| Topic | Documents |
+| | |
 | --- | --- |
-| Status | [Feature matrix](docs/feature-matrix.md) · [Format evidence](docs/archive-formats.md) |
-| Using Arkiv | [Creation](docs/creation.md) · [ZIP additions](docs/zip-additions.md) · [ZIP edits](docs/zip-edits.md) · [Open & Quick Look](docs/open-files.md) · [Nested archives](docs/nested-archives.md) · [Drag-in](docs/drag-in.md) · [Drag-out](docs/drag-out.md) · [Test Archive](docs/integrity.md) |
-| Finder | [Finder Sync extension](docs/finder-sync.md) · [Services fallback](docs/finder-integration.md) |
-| Safety | [Security](docs/security.md) · [Extraction compatibility](docs/extraction-compatibility.md) · [7z backend](docs/sevenzip.md) |
-| Development | [Architecture](docs/architecture.md) · [Release & builds](docs/release.md) · [Updates](docs/updates.md) · [Browser UI notes](docs/ui-refinement.md) |
+| **Using Arkiv** | [User guide](docs/user-guide.md) · [Settings](docs/settings.md) · [Finder Sync](docs/finder-sync.md) · [Services fallback](docs/finder-integration.md) · [Updates](docs/updates.md) |
+| **Formats** | [Format evidence](docs/archive-formats.md) · [Feature matrix](docs/feature-matrix.md) · [Creation](docs/creation.md) · [ZIP edits](docs/zip-edits.md) · [7z](docs/sevenzip.md) · [RAR](docs/rar-compatibility.md) · [Integrity](docs/integrity.md) |
+| **Document icons** | [Document icons](docs/document-icons.md) · [Themes](docs/document-icon-themes.md) · [Theme inventory](docs/document-icon-theme-inventory.md) · [Format icon coverage](docs/format-icon-coverage.md) · [Branding](branding/README.md) |
+| **Safety** | [Security and limits](docs/security.md) · [Extraction compatibility](docs/extraction-compatibility.md) |
+| **Development** | [Architecture](docs/architecture.md) · [Release and builds](docs/release.md) · [Roadmap](docs/roadmap.md) · [Specification](ARKIV_SPEC.md) · [README media](docs/media/README.md) |
+
+Found a problem? [Open an issue](https://github.com/ish4ra/Arkiv/issues) with your macOS version, Mac model, Arkiv build (Arkiv → About Arkiv) and the steps to reproduce it. Please never attach archives that contain private data or passwords.
 
 ## Licensing
 
-**Arkiv has not selected a project-wide license yet**, and the repository has no root `LICENSE` file.
+**Arkiv has not selected a project-wide licence yet**, and the repository has no root `LICENSE` file.
 
-Third-party components keep their own licenses:
+Third-party components keep their own licences:
 
-- **7-Zip:** Arkiv bundles a library built from a pinned subset of the official 7-Zip 26.04 source, under LGPL-2.1-or-later (some files public domain), with no RAR code. Arkiv's bridge to this library is also LGPL-2.1-or-later. Source and rebuild instructions are in [`Vendor/7zip`](Vendor/7zip/README.md) and [7z backend](docs/sevenzip.md).
+- **7-Zip:** Arkiv bundles a library built from a pinned subset of the official 7-Zip 26.04 source, under LGPL-2.1-or-later (some files public domain), with no RAR code. Arkiv's bridge to this library is also LGPL-2.1-or-later. Source and rebuild instructions are in [`Vendor/7zip`](Vendor/7zip/README.md) and the [7z backend](docs/sevenzip.md) notes.
 - **libarchive:** Arkiv uses the macOS system copy. Its BSD-licensed headers are included for building.
-- **Sparkle 2.10.0:** bundled for updates. Its license file is included in the app.
+- **Sparkle 2.10.0:** bundled for updates. Its licence file is included in the app.
+- **Inter Display 4.0** (SIL Open Font License 1.1, [`OFL.txt`](design/document-icons/fonts/OFL.txt)) renders document-icon and README-banner lettering at design time; no font is bundled in the app.
 
 See [third-party notices](docs/third-party-licenses.md).
-
-Archive document icons (Seal Dark family) are provided for ZIP, 7z, RAR, TAR, GZIP, BZIP2, XZ, Zstandard, TGZ, TBZ2 and TXZ when macOS associates them with Arkiv. This does not change default handlers or expand RAR compatibility. See [document icons and Finder checks](docs/document-icons.md).
-
-See [compressed TAR](docs/compressed-tar.md) for stream integrity, temporary-disk limits and read-only compatibility boundaries.
-
-Zstandard is available for single-file `.zst` and compressed TAR (`.tar.zst`, `.tzst`): browse, extract, Test, Open, Quick Look, drag-out and Create Archive/Finder Add to Archive. ZIP remains the creation default. See [ZSTD frame policy, resource limits and testing](docs/zstandard.md).
-
-RAR4/RAR5 Phase 1 now has fixture-backed stored/compressed reading, extraction and full-data integrity testing. RAR remains read-only; encryption, solid and multipart variants are explicitly unsupported in this phase. See the [RAR compatibility matrix](docs/rar-compatibility.md) for verified methods, metadata, security policy and real-Mac checks.
-
-[WinZip AES ZIP support](docs/zip-aes.md) covers authenticated Store/Deflate reading and AES-256 creation; filenames remain visible and encrypted editing stays disabled.
-
-Split 7z reading: conventional `.7z.001` sets support browse, Test, extraction, Open/Quick Look and drag-out, including verified encrypted sets. Multipart input remains read-only. New 7z archives can also be split using the existing Create Archive Advanced controls (100 MB–4 GB presets or a custom byte size). See [naming, limits, publication guarantees and diagnostics](docs/multipart.md).

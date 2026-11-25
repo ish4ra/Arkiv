@@ -94,7 +94,7 @@ not be concatenated through this byte-stream reader.
 5. Replace a part while an archive is open; subsequent extraction/Open/drag must
    fail safely. Cancel reconstruction and check cleanup. Test on Intel and arm64.
 
-## Split creation — Phase 2 development branch
+## Split creation — Phase 2
 
 Create Archive (also Finder → Add to Archive) → 7z → Advanced → Split into volumes.
 No splitting remains the default; ZIP remains the default creation format. Direct

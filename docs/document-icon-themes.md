@@ -1,11 +1,15 @@
 # Document icon themes
 
 **Status:** downloadable theme packs and **Settings → Appearance → Document
-Icon Theme** are implemented (roadmap milestone 2, in review). Selected themes
-apply **inside Arkiv's own windows**. Finder and Quick Look keep the bundled
-Seal Dark icons; changing them safely is unproven and remains milestone 4.
-No production theme packs or signed catalogue are published yet; that needs
-the maintainer steps under [provisioning](#provisioning-maintainer).
+Icon Theme** are implemented and integrated (roadmap milestone 2, `d70c14c`,
+first shipped in development build 30201). Selected themes apply **inside
+Arkiv's own windows**. Finder and Quick Look keep the bundled Seal Dark icons;
+changing them safely is unproven and remains milestone 4.
+
+**Awaiting production activation:** no production theme packs or signed
+catalogue are published yet, and no build trusts a production theme key, so
+Settings reports that theme downloads are not configured. The maintainer's
+step-by-step activation is in the [launch guide](document-icon-theme-launch.md).
 
 ## What users get
 
@@ -338,6 +342,10 @@ nothing in it is built into the app.
   interrupted runs resume.
 
 ## Provisioning (maintainer)
+
+For the complete, step-by-step first launch (encrypted key storage, environment
+protection, publication, the trusting app build and verification), follow the
+[launch guide](document-icon-theme-launch.md). This section is the reference.
 
 There is no production theme key yet, and none should ever be generated in a
 cloud session or CI. CI signs only with throwaway keys from `test-key`, which

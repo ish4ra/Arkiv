@@ -1,0 +1,160 @@
+<!doctype html>
+<!--
+  Arkiv README hero scene. Design-time only: rendered to docs/media by
+  render-hero.mjs and never loaded by GitHub or the app.
+
+  Every image is an original, unmodified production asset:
+    - the Tension Seal app icon  (branding/Arkiv-AppIcon-512.png)
+    - Seal Dark document icons   (Resources/DocumentIcons/*/icon_256x256.png)
+  They are only placed, scaled and moved. Colours are the production values
+  from scripts/render-icon.swift and design/document-icons (see README.md).
+
+  window.renderFrame(t) poses the scene at loop phase t in [0, 1). Every
+  motion is periodic in t, so frame 0 follows the last frame seamlessly.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "Inter Display"; font-weight: 600; src: url("../document-icons/fonts/InterDisplay-SemiBold.otf"); }
+  @font-face { font-family: "Inter Display"; font-weight: 700; src: url("../document-icons/fonts/InterDisplay-Bold.otf"); }
+
+  :root {
+    /* App icon (scripts/render-icon.swift) */
+    --plum-hi: #703A47;   /* clasp gradient start: srgb(0.44, 0.23, 0.28) */
+    --plum-lo: #301A2B;   /* clasp gradient end:   srgb(0.19, 0.10, 0.17) */
+    --jade-hi: #CFF0D4;   /* seal stud:            srgb(0.81, 0.94, 0.83) */
+    --jade-lo: #4A9C82;   /*                       srgb(0.29, 0.61, 0.51) */
+    /* Seal Dark surface (design/document-icons/seal-dark.mjs) */
+    --page-hi: #4C2C3F;
+    --page-lo: #1E111A;
+    --spine-lo: #0C060A;  /* midnight plum */
+    --brass-hi: #F4E2B8;
+    --brass-mid: #CDA66C;
+    --brass-lo: #8C6538;
+    --ivory: #F5E9DE;
+    --sweep: -0.4;        /* gold sweep position, 0..1 across the wordmark */
+  }
+  html, body { margin: 0; width: 1280px; height: 440px; overflow: hidden; background: var(--spine-lo); }
+  .scene {
+    position: relative; width: 1280px; height: 440px; overflow: hidden;
+    background:
+      radial-gradient(900px 520px at 22% 40%, rgba(112, 58, 71, 0.55), rgba(112, 58, 71, 0) 70%),
+      radial-gradient(700px 520px at 82% 62%, rgba(76, 44, 63, 0.65), rgba(76, 44, 63, 0) 72%),
+      linear-gradient(160deg, var(--page-lo) 0%, #160C13 55%, var(--spine-lo) 100%);
+    font-family: "Inter Display", sans-serif;
+  }
+  /* Archive-inspired detail: the brass spine hairline and ledger rules of the document icons. */
+  .spine {
+    position: absolute; left: 44px; top: 0; bottom: 0; width: 1px;
+    background: linear-gradient(180deg, rgba(205,166,108,0) 0%, rgba(205,166,108,0.42) 30%, rgba(205,166,108,0.42) 70%, rgba(205,166,108,0) 100%);
+  }
+  .stud {
+    position: absolute; left: 39px; top: 215px; width: 11px; height: 11px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #F0FFF6 0%, var(--jade-hi) 40%, var(--jade-lo) 100%);
+    box-shadow: 0 0 0 2px rgba(205,166,108,0.85), 0 2px 4px rgba(0,0,0,0.6);
+  }
+  .rules {
+    position: absolute; right: 0; top: 0; width: 640px; height: 440px;
+    background: repeating-linear-gradient(180deg, rgba(245,233,222,0) 0 43px, rgba(245,233,222,0.035) 43px 44px);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 45%, #000 100%);
+  }
+  .glow {
+    position: absolute; left: 70px; top: 90px; width: 260px; height: 260px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(74,156,130,1) 0%, rgba(74,156,130,0) 68%);
+    opacity: 0.16;
+  }
+  .mark { position: absolute; left: 100px; top: 120px; width: 200px; height: 200px; }
+  .wordmark {
+    position: absolute; left: 330px; top: 128px; margin: 0;
+    font-weight: 700; font-size: 92px; line-height: 1; letter-spacing: -1.5px;
+    color: transparent;
+    background-image: linear-gradient(105deg,
+      var(--ivory) calc((var(--sweep) - 0.16) * 100%),
+      var(--brass-hi) calc((var(--sweep) - 0.05) * 100%),
+      #FFF6DE calc(var(--sweep) * 100%),
+      var(--brass-hi) calc((var(--sweep) + 0.05) * 100%),
+      var(--ivory) calc((var(--sweep) + 0.16) * 100%));
+    -webkit-background-clip: text; background-clip: text;
+  }
+  .rule {
+    position: absolute; left: 334px; top: 240px; width: 300px; height: 1px;
+    background-image:
+      linear-gradient(90deg, rgba(244,226,184,0) calc((var(--sweep) - 0.12) * 100%), rgba(255,246,222,0.95) calc(var(--sweep) * 100%), rgba(244,226,184,0) calc((var(--sweep) + 0.12) * 100%)),
+      linear-gradient(90deg, rgba(205,166,108,0.9), rgba(205,166,108,0));
+  }
+  .tagline {
+    position: absolute; left: 334px; top: 258px; margin: 0;
+    font-weight: 600; font-size: 29px; letter-spacing: -0.2px; color: var(--brass-mid);
+  }
+  .detail {
+    position: absolute; left: 335px; top: 304px; margin: 0;
+    font-weight: 600; font-size: 14px; letter-spacing: 2.6px; text-transform: uppercase;
+    color: rgba(245,233,222,0.52);
+  }
+  .doc { position: absolute; will-change: transform; }
+  .doc img { display: block; width: 100%; height: 100%; }
+  .doc::after { /* soft contact shadow; the artwork carries its own drop shadow */
+    content: ""; position: absolute; left: 18%; right: 18%; bottom: -10px; height: 14px; border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(0,0,0,0.55), rgba(0,0,0,0));
+    transform: translateY(var(--shadow-y, 0px)) scaleX(var(--shadow-s, 1));
+  }
+</style>
+</head>
+<body>
+<div class="scene">
+  <div class="rules"></div>
+  <div class="spine"></div>
+  <div class="stud"></div>
+  <div class="glow"></div>
+  <img class="mark" src="../../branding/Arkiv-AppIcon-512.png" alt="">
+  <h1 class="wordmark">Arkiv</h1>
+  <div class="rule"></div>
+  <p class="tagline">Archives, reimagined for Mac.</p>
+  <p class="detail">Native Swift &amp; AppKit archive manager</p>
+  <div id="docs"></div>
+</div>
+<script>
+  // Seal Dark document icons, back to front. cx/cy: resting centre; s: size; d: depth (0 back .. 1 front).
+  const ICONS = [
+    { name: 'TAR',  cx: 728,  cy: 196, s: 126, d: 0.15, phase: 0.18 },
+    { name: 'ZSTD', cx: 1172, cy: 196, s: 126, d: 0.15, phase: 0.62 },
+    { name: '7z',   cx: 836,  cy: 212, s: 152, d: 0.5,  phase: 0.40 },
+    { name: 'RAR',  cx: 1064, cy: 212, s: 152, d: 0.5,  phase: 0.86 },
+    { name: 'ZIP',  cx: 950,  cy: 226, s: 192, d: 1.0,  phase: 0.0  },
+  ];
+  const root = document.getElementById('docs');
+  const nodes = ICONS.map(icon => {
+    const el = document.createElement('div');
+    el.className = 'doc';
+    Object.assign(el.style, { left: (icon.cx - icon.s / 2) + 'px', top: (icon.cy - icon.s / 2) + 'px', width: icon.s + 'px', height: icon.s + 'px' });
+    const img = document.createElement('img');
+    img.src = `../../Resources/DocumentIcons/Arkiv-${icon.name}.iconset/icon_256x256.png`;
+    img.alt = '';
+    el.appendChild(img);
+    root.appendChild(el);
+    return el;
+  });
+
+  const TAU = Math.PI * 2;
+  const smooth = x => x * x * (3 - 2 * x);
+
+  window.renderFrame = (t) => {
+    const css = document.documentElement.style;
+    // Gold sweep: one pass per loop between t = 0.08 and 0.48, off-canvas otherwise.
+    const p = (t - 0.08) / 0.40;
+    css.setProperty('--sweep', p <= 0 || p >= 1 ? '-0.4' : (-0.25 + 1.5 * smooth(p)).toFixed(4));
+    // Documents float on phase-shifted sine paths; nearer icons rise a little more
+    // (parallax). Offsets snap to whole pixels so an icon's raster stays identical
+    // between steps, which keeps the GIF small; the jade glow is deliberately steady.
+    ICONS.forEach((icon, i) => {
+      const dy = Math.round(-(3 + 3 * icon.d) * Math.sin(TAU * (t + icon.phase)));
+      nodes[i].style.transform = `translateY(${dy}px)`;
+      nodes[i].style.setProperty('--shadow-y', -dy + 'px');
+      nodes[i].style.setProperty('--shadow-s', (1 + dy / 60).toFixed(4));
+    });
+  };
+  window.renderFrame(0);
+</script>
+</body>
+</html>
