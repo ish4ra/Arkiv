@@ -81,7 +81,7 @@ Sparkle verifies every update's EdDSA signature and always asks before installin
 <td valign="top">
 
 **Document icon themes**<br>
-The Seal Dark icons are included. Twenty preserved alternative themes are prepared as optional downloads.
+The Seal Dark icons are included. Twenty preserved alternative themes are optional signed downloads.
 
 </td>
 </tr>
@@ -111,7 +111,7 @@ Arkiv ships one document-icon family, **Seal Dark**, drawn in the same aubergine
 <img src="docs/media/artwork/seal-dark/TXZ-128.png" width="60" alt="TXZ">
 </p>
 
-Every earlier design is preserved as an **optional theme**, downloaded individually from **Settings → Appearance → Document Icon Theme** rather than bundled with the app. A representative selection, shown from the original archived artwork:
+Every earlier design is preserved as an **optional theme**, downloaded individually from **Settings → Document Icons** rather than bundled with the app. A representative selection, shown from the original archived artwork:
 
 <table>
 <tr>
@@ -130,12 +130,12 @@ Every earlier design is preserved as an **optional theme**, downloaded individua
 
 The full set is 20 themes: these eight, the original partial **Classic** icons (ZIP, 7z, TAR and RAR only) and 11 design variations. The [theme inventory](docs/document-icon-theme-inventory.md) lists each one's source and download size (0.54–8.86 MB).
 
-- **Inside Arkiv**, a selected theme changes archive rows, the window's proxy icon and Archive Info immediately.
-- **In Finder and Quick Look**, documents keep the bundled Seal Dark icons, shown while Arkiv is the default app for that type. macOS reads them from the signed app; Arkiv never modifies its bundle or changes your default apps.
+- **Inside Arkiv**, a selected theme changes archive rows, the window's proxy icon, the path bar, recent archives and Archive Info immediately, in every open window, without reopening anything.
+- **In Finder and Get Info**, documents keep the bundled Seal Dark icons, shown while Arkiv is the default app for that type. macOS reads them from the signed app; Arkiv never modifies its bundle or changes your default apps. A Quick Look thumbnail extension is being evaluated as a prototype ([feasibility report](docs/quicklook-thumbnail-feasibility.md)).
 - Themes are verified against a signed catalogue, stored outside the app, and keep working offline once installed.
 
-> [!IMPORTANT]
-> **Theme downloads are not live yet.** The signed catalogue has not been published, and current builds do not yet contain its production key. Until then, Settings reports that theme downloads are not configured in this build, and Seal Dark stays in use. [Details](docs/document-icon-themes.md).
+> [!NOTE]
+> **Theme downloads are live.** The signed production catalogue and all 20 packs are published, and development build 30701 contains the production key. The maintainer has loaded the catalogue and downloaded and applied Folio Dark on an Apple Silicon Mac; the complete real-Mac acceptance list is still open. [Details](docs/document-icon-themes.md).
 
 ## Supported formats
 
@@ -194,7 +194,7 @@ The Releases page also lists other prereleases, such as document icon theme pack
 - **Passwords are never stored**, logged or passed through URLs. Opening an encrypted archive decodes it to a private temporary file that is deleted on normal cleanup; a crash can leave it behind, and deletion is not secure erasure.
 - **No account, telemetry or background service.** Arkiv contacts the network only for:
   - **Updates:** Sparkle's update checks (on request, or on a schedule only if you allow it) and update downloads.
-  - **Document icon themes:** the signed theme catalogue, requested only while **Settings → Appearance** is shown or when you choose Refresh Catalogue; preview images for the theme you are viewing; and a theme pack, only when you click Download. Installed themes work offline.
+  - **Document icon themes:** the signed theme catalogue, requested only while **Settings → Document Icons** is shown or when you choose Refresh Catalogue; preview images for the theme you are viewing (never for the whole list); and a theme pack, only when you click Download. Installed themes work offline.
 
 These protections have known limits. For example, the Finder extension's handoff does not authenticate its sender, and extended attributes and timestamps are not restored. See [security and known limits](docs/security.md).
 
@@ -202,10 +202,10 @@ These protections have known limits. For example, the Finder extension's handoff
 
 | State | What |
 | --- | --- |
-| **Published** in development build 30201 | Archive browser, search and Quick Look · extraction · ZIP, 7z, TAR and Zstandard creation · ZIP and 7z editing · split 7z · RAR reading · Finder integration · signed Sparkle updates · Settings · document icon theme manager (inactive until activation) |
-| **Awaiting production activation** | Optional document icon theme downloads: the maintainer must provision the theme signing key and publish the first signed catalogue ([launch guide](docs/document-icon-theme-launch.md)) |
-| **Awaiting real-Mac validation** | Broader Finder extension acceptance · Finder rendering of the document icons · the Appearance theme pane · app icon at Dock and Finder sizes · ZIP and TAR associations |
-| **Next** | 3 · Native Appearance settings and UI customization → 4 · Finder and Quick Look customization feasibility → 5 · RAR multipart reading → 6 · Split ZIP → 7 · Remaining archive-engine work |
+| **Published** in development build 30701 | Archive browser, search and Quick Look · extraction · ZIP, 7z, TAR and Zstandard creation · ZIP and 7z editing · split 7z · RAR reading · Finder integration · signed Sparkle updates · Settings · document icon themes with the production catalogue (20 themes) |
+| **In review** | Complete UI redesign: welcome window, archive window, sidebar Settings, theme gallery, accent and density customization ([design](docs/ui-redesign.md)) · Quick Look thumbnail prototype and Finder feasibility report |
+| **Awaiting real-Mac validation** | The redesigned interface · complete theme acceptance (persistence, offline, removal, every in-app icon) · broader Finder extension acceptance · Finder rendering of the document icons · app icon at Dock and Finder sizes · ZIP and TAR associations |
+| **Next** | 5 · RAR multipart reading → 6 · Split ZIP → 7 · Remaining archive-engine work |
 | **Planned** | More RAR methods, encrypted ZIP editing, editing more formats, archive comments · checksums, split/combine, benchmark, command-line companion · a Quick Look extension for archives · Developer ID signing and notarization |
 
 The complete queue is in the [roadmap](docs/roadmap.md), the current state of every feature in the [feature matrix](docs/feature-matrix.md), and the full plan in the [specification](ARKIV_SPEC.md).

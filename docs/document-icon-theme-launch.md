@@ -287,7 +287,8 @@ On your Mac, with build 30201 or later installed in Applications:
    ```
 
    The first command must print the same value as step 8.
-3. **Settings → Appearance → Document Icon Theme** shows "Catalogue verified.
+3. **Settings → Document Icons** (Settings → Appearance → Document Icon Theme
+   in build 30701 and earlier) shows "Catalogue verified.
    20 themes available."
 4. Download a small theme (Folio, about 4.5 MB): watch the progress, then
    **Apply**. Open an archive containing a nested archive: its row, the

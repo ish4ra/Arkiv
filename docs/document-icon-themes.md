@@ -1,15 +1,19 @@
 # Document icon themes
 
-**Status:** downloadable theme packs and **Settings → Appearance → Document
-Icon Theme** are implemented and integrated (roadmap milestone 2, `d70c14c`,
-first shipped in development build 30201). Selected themes apply **inside
-Arkiv's own windows**. Finder and Quick Look keep the bundled Seal Dark icons;
-changing them safely is unproven and remains milestone 4.
+**Status:** downloadable theme packs and the **Settings → Document Icons**
+gallery are implemented and integrated (roadmap milestone 2, `d70c14c`, first
+shipped in development build 30201). Selected themes apply **inside Arkiv's
+own windows** and switch immediately, without reopening archives. Finder and
+Get Info keep the bundled Seal Dark icons; a Quick Look thumbnail prototype is
+evaluated separately ([feasibility report](quicklook-thumbnail-feasibility.md)).
 
-**Awaiting production activation:** no production theme packs or signed
-catalogue are published yet, and no build trusts a production theme key, so
-Settings reports that theme downloads are not configured. The maintainer's
-step-by-step activation is in the [launch guide](document-icon-theme-launch.md).
+**Production activation (verified by the maintainer):** the signed production
+catalogue and all 20 theme packs are published (`document-icon-themes-v1`),
+and build 30701 embeds the production theme public key. On a real Apple
+Silicon Mac the catalogue loads (20 themes available) and Folio Dark was
+downloaded and applied. Persistence across relaunch, offline use, removal,
+every in-app icon consumer and the redesigned gallery still need complete
+real-Mac acceptance ([checklist](#remaining-real-mac-acceptance)).
 
 ## What users get
 
@@ -27,46 +31,60 @@ step-by-step activation is in the [launch guide](document-icon-theme-launch.md).
   and verified against the archived pixel manifests. Nothing is redrawn,
   mocked up or simplified, and previews are the themes' own files.
 
-## Settings → Appearance → Document Icon Theme
+## Settings → Document Icons
 
-A native AppKit pane (`Sources/ArkivApp/DocumentIconThemePane.swift`):
+A native AppKit pane (`Sources/ArkivApp/DocumentIconThemePane.swift`),
+redesigned after build 30701:
 
-* **Theme list:** "Included with Arkiv" first, then each family. Variations
-  follow their family and are labelled as variations.
-* **Row status, in text and never by colour alone:** In use, Bundled,
-  Available with its download size, Downloading %, Installing, Installed,
-  Update available.
-* **Detail view:**
-  * name, family, kind and parent
-  * which formats a variation changes
-  * coverage notes (Classic)
-  * 11 previews of the theme's own 128 px artwork
-  * download and installed sizes
-* **Actions:**
-  * **Download**, with a progress bar and **Cancel**
-  * **Apply**
-  * **Remove**: removing the theme in use asks first, then switches to Seal Dark
-  * **Restore Default**
-  * **Refresh Catalogue**
-* **States:**
-  * verified catalogue
-  * offline, showing the last verified catalogue
-  * rejected or failed catalogue
-  * not configured (a build without a theme key; installed themes keep working)
+* **Banner:** the theme in use with its ZIP artwork, its family, whether it is
+  included or downloaded, and **Restore Default**.
+* **Theme list:** "Included with Arkiv" first, then each family under a fixed
+  heading. Headings no longer float: in build 30701 the list used
+  `floatsGroupRows` (the NSTableView default) with bare text-field group rows,
+  so the floating heading was drawn over the rows beneath it while scrolling.
+  Each theme shows a thumbnail, its name and a text status (never colour
+  alone): In use, Included, its download size, Downloading %, Installing,
+  Downloaded, Update available. A family's variations fold under their parent
+  theme behind **Show N variations**; showing a variation unfolds it. A
+  **filter** field matches names and families and lists matching variations
+  directly.
+* **Thumbnails without network:** list thumbnails come only from artwork
+  already on the Mac (the bundled icons, installed themes, or a preview pack
+  verified earlier). A theme never previewed shows a neutral placeholder;
+  nothing is downloaded to fill the list.
+* **Detail view:** name, family, kind and parent; Download (with its size),
+  Apply and Remove next to the title, with a progress bar and Cancel while
+  downloading; which formats a variation changes; coverage notes (Classic);
+  then one preview card of the theme's own 128 px artwork: the 11 Finder
+  formats in a 6-column grid and, under **Inside Arkiv only**, the six
+  compound-suffix and split-volume icons. Every cell has the same fixed width.
+  In build 30701 the in-app extras sat in an `NSGridView` whose columns took
+  the width of their captions (`.tar.bz2 · family`) plus 18 pt spacing, which
+  pushed those icons far apart; captions are now short labels, and artwork a
+  theme lacks is dimmed with an explanatory tooltip.
+* **Actions:** Download, Cancel, Apply, Remove (removing the theme in use
+  asks first, with a destructive button, then switches to Seal Dark),
+  Restore Default, Refresh Catalogue.
+* **States:** verified catalogue; offline, showing the last verified
+  catalogue; rejected or failed catalogue; not configured (a build without a
+  theme key; installed themes keep working).
 * **Boundary note, shown in the pane:** downloaded themes apply inside Arkiv;
-  Finder and Quick Look keep the bundled Seal Dark document icons until a
-  safe, supported way exists. Arkiv never modifies its app bundle, archives
-  or default apps.
+  Finder keeps the bundled Seal Dark document icons. Arkiv never modifies its
+  app bundle, archives or default apps.
 
 ## Where a theme applies
 
 | Surface | State |
 | --- | --- |
-| Archive rows inside Arkiv (nested archives such as `inner.zip`, `inner.tar.xz`, `set.7z.001`) | **Implemented.** 16 pt artwork of the selected theme, including compound-suffix and split-volume artwork; other files keep their system icons |
-| Window title-bar proxy icon of an open archive | **Implemented** |
-| Archive Info | **Implemented** (64 pt) |
+| Archive rows inside Arkiv (nested archives such as `inner.zip`, `inner.tar.xz`, `set.7z.001`) | **Implemented.** 16 pt (24 pt in Comfortable density) artwork of the selected theme, including compound-suffix and split-volume artwork; other files keep their system icons. Redrawn in place when the theme changes |
+| Window title-bar proxy icon of an open archive | **Implemented**, redrawn in place |
+| Path bar (archive item) | **Implemented**, redrawn in place |
+| Archive Info | **Implemented** (64 pt), redrawn while the sheet is open |
+| Welcome window recent archives | **Implemented** |
+| Password prompt and Finder operation progress panel | **Implemented** (artwork of the archive being unlocked or processed) |
+| Settings → Appearance preview and Document Icons banner | **Implemented** |
 | Finder document icons (icon, list, column views, Get Info) | **Not changed.** Finder reads `CFBundleTypeIconFile` from the signed bundle; there is no supported way to point it elsewhere |
-| Quick Look thumbnails | **Not implemented.** An opt-in, bundled `QLThumbnailProvider` remains the candidate (milestone 4); packs already carry the TAR.\* and volume artwork it would need |
+| Quick Look thumbnails | **Prototype only, not shipped.** A sandboxed `QLThumbnailProvider` is built into a copy of the app on CI runners; see the [feasibility report](quicklook-thumbnail-feasibility.md) |
 | Per-file custom icons | **Rejected.** They would write into users' files |
 
 **Which artwork a name gets** (full table:
@@ -452,7 +470,24 @@ catalogue, and every step can be retried safely:
    * A failed push is retried by rerunning, which finds the published release
      complete.
 
+6. **Finding the draft again:** GitHub can take a moment to list a draft it
+   has just created. In run [45578558002](https://github.com/ish4ra/Arkiv/actions/runs/45578558002)
+   attempt 1, the lookup right after creation returned nothing and
+   `complete_release` crashed with `TypeError: 'NoneType' object is not
+   subscriptable`; attempt 2 resumed the draft and published it. The draft is
+   now looked up again with a doubling wait (2, 4, 8, 16 and 32 s, about a
+   minute) after it is created and before each later step. It is created at
+   most once per run. If GitHub never lists it, publication stops with a
+   message to rerun, and nothing is uploaded, published or pushed. Two
+   releases with the same theme tag (possible for drafts, which have no tag
+   yet) stop publication instead of acting on whichever is listed first.
+   The published `document-icon-themes-v1` release and catalogue version 1
+   were not touched by this fix.
+
 These paths are covered by `PublicationRecoveryTests`:
+* delayed draft visibility (listed after several lookups; never listed, then
+  resumed by a rerun without a second draft; lost during uploads)
+* ambiguous drafts with the same tag, across result pages
 * interrupted and corrupted uploads
 * a tampered public download
 * a rejected catalogue push
@@ -461,23 +496,34 @@ These paths are covered by `PublicationRecoveryTests`:
 
 ## Remaining real-Mac acceptance
 
-Automated CI covers verification, installation, removal, failure handling and
-rendering of the pane. These need a person at a Mac:
+The maintainer has verified on a real Apple Silicon Mac (build 30701) that the
+production catalogue loads with 20 themes and that Folio Dark downloads and
+applies. Automated CI covers verification, installation, removal, failure
+handling, immediate in-app switching across windows, offline use after a
+simulated relaunch, damaged-theme fallback and rendering of the pane. These
+still need a person at a Mac:
 
-1. Open Settings, then the Appearance tab. The window grows, the catalogue
-   loads, and previews appear only for the selected theme. Other tabs stay compact.
+1. Open Settings → Document Icons. The catalogue loads, the banner names the
+   theme in use, the list headings stay put while scrolling, variations fold
+   and unfold, the filter works, and full previews appear only for the theme
+   being shown.
 2. Download a theme, watch the progress and Cancel it; download it again, then
-   Apply. Open archives update immediately: the rows of nested archives, the
-   title-bar proxy icon, and Archive Info.
-3. Quit and relaunch: the theme persists; Finder still shows Seal Dark.
+   Apply. With two archive windows and Archive Info open, every visible icon
+   updates at once without reopening anything: nested archive rows, the
+   title-bar proxy icon, the path bar, Archive Info, the welcome window's
+   recent archives.
+3. Quit and relaunch: the theme persists; Finder and Get Info still show Seal Dark.
 4. Turn Wi-Fi off and reopen the pane: an offline notice, installed themes
-   still apply, and previews of themes not downloaded are unavailable.
+   still apply, list thumbnails of previewed themes remain, and previews of
+   themes never shown are unavailable.
 5. Remove the theme in use: the confirmation appears and Arkiv returns to Seal Dark.
-6. Check VoiceOver labels and keyboard navigation in the list and buttons, in
-   light and dark appearance, and at 1× and 2×.
-7. Visually compare each theme's 16, 32 and 128 pt rendering in Arkiv with the
+6. Damage an installed theme (edit one PNG in its folder): Arkiv falls back to
+   Seal Dark everywhere and the pane says the theme is damaged.
+7. Check VoiceOver labels and keyboard navigation in the list, filter and
+   buttons, in light and dark appearance, and at 1× and 2×.
+8. Visually compare each theme's 16, 32 and 128 pt rendering in Arkiv with the
    archived review boards.
-8. Measure installed size (`du -sh ~/Library/Application\ Support/Arkiv/DocumentIconThemes`)
+9. Measure installed size (`du -sh ~/Library/Application\ Support/Arkiv/DocumentIconThemes`)
    and confirm that `/Applications/Arkiv.app` and its signature are unchanged
    (`codesign --verify --deep --strict`) after installing themes.
 
@@ -486,9 +532,9 @@ rendering of the pane. These need a person at a Mac:
 * **At launch: none.** No theme code runs, nothing is read and nothing is
   requested. `DocumentIconProvider` is created lazily on first use.
 * **No background agents, timers, login items or services.**
-* **Network:** only while the Appearance tab is shown (one catalogue request
-  of about 78 KB), plus user-started downloads and the preview pack (80–133 kB)
-  of a theme the user selects.
+* **Network:** only while Settings → Document Icons is shown (one catalogue
+  request of about 78 KB), plus user-started downloads and the preview pack
+  (80–210 kB) of a theme the user selects. List thumbnails never download.
 * **Disk:** only what the user downloads.
 * **Bundle:** no artwork was added. The new Swift code is the only bundle
   increase; see [size](#size-impact).
