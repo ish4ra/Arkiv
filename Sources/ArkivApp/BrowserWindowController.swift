@@ -50,8 +50,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     private let welcomeToolbar = NSToolbar(identifier: "ArkivWelcome")
     private(set) var searchItem: NSSearchToolbarItem?
     /// Presentation preferences (density, accent, alternating rows). Set
-    /// after creation; every window shares the app's instance. A property
-    /// rather than an initializer argument (see the note on `init`).
+    /// after creation; every window shares the app's instance.
     var preferences = AppPreferences() {
         didSet {
             NotificationCenter.default.removeObserver(self, name: .arkivAppearancePreferencesDidChange, object: oldValue)
@@ -110,11 +109,6 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
              ArchivePasswordPrompt.ask(archive: $0, retry: $1, parent: $2, completion: $3)
          },
          documentIcons: DocumentIconProvider = .shared) {
-        // This parameter list is kept as it was in build 30701. A version
-        // with two more defaulted parameters coincided with an existing async
-        // AppKit test aborting in the Swift task allocator ("freed pointer
-        // was not the last allocation") on Apple Silicon CI, so presentation
-        // settings are properties instead.
         self.worker = worker
         self.documentIcons = documentIcons
         self.columnPreferences = columnPreferences

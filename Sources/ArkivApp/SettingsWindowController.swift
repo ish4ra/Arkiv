@@ -86,8 +86,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
 
     init(preferences: AppPreferences, recents: RecentArchives, updates: UpdateController, showFinder: @escaping () -> Void,
          themeManager: @escaping @MainActor () -> DocumentIconThemeManager = { DocumentIconThemeManager(environment: .standard(), provider: .shared) }) {
-        // Same parameter list as build 30701; test seams are properties (see
-        // BrowserWindowController.init).
         self.preferences = preferences; self.recents = recents
         self.updates = updates; self.showFinder = showFinder
         self.makeThemeManager = themeManager
