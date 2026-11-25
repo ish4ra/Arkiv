@@ -44,17 +44,35 @@ final class DocumentIconThemeSettingsTests: XCTestCase {
         XCTAssertFalse(controller.isThemePaneLoaded)
         XCTAssertEqual(FixtureServer.requests(ThemeFixtures.catalogURL), 0, "No catalogue request until the pane is shown")
 
-        controller.showAppearance()
+        controller.showDocumentIcons()
         XCTAssertEqual(made, 1)
         let pane = controller.themePane
         try await waitUntil { pane.manager.catalogStatus == .current }
         XCTAssertEqual(FixtureServer.requests(ThemeFixtures.catalogURL), 1)
         XCTAssertGreaterThanOrEqual(controller.window!.frame.width, 820)
 
-        // Bundled default first, then the family; the variation follows its parent.
-        XCTAssertEqual(pane.rows.map { row -> String in
-            switch row { case .group(let title): return "# " + title; case .theme(let e): return e.id }
-        }, ["# Included with Arkiv", "seal-dark", "# Fixtures", "folio", "folio-variant"])
+        // Bundled default first, then the family; the variation folds under its parent.
+        func describe(_ rows: [DocumentIconThemePane.Row]) -> [String] {
+            rows.map { row -> String in
+                switch row {
+                case .group(let title): return "# " + title
+                case .theme(let e): return e.id
+                case .variations(let parent, let count, let expanded): return "\(expanded ? "-" : "+") \(parent) (\(count))"
+                }
+            }
+        }
+        XCTAssertEqual(describe(pane.rows), ["# Included with Arkiv", "seal-dark", "# Fixtures", "folio", "+ folio (1)"])
+        XCTAssertFalse(pane.table.floatsGroupRows, "Family headings never float over the rows beneath them")
+        pane.toggleVariations(of: "folio")
+        XCTAssertEqual(describe(pane.rows), ["# Included with Arkiv", "seal-dark", "# Fixtures", "folio", "- folio (1)", "folio-variant"])
+        pane.toggleVariations(of: "folio")
+        pane.filterField.stringValue = "VARIANT"
+        pane.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: pane.filterField))
+        XCTAssertEqual(describe(pane.rows), ["# Fixtures", "folio-variant"], "Filtering shows matching variations directly")
+        pane.filterField.stringValue = ""
+        pane.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: pane.filterField))
+        XCTAssertTrue(pane.currentLabel.stringValue.contains("Seal Dark"), "The banner names the theme in use")
+        XCTAssertNil(pane.manager.localThumbnail(for: "folio"), "No thumbnail for a theme never previewed: nothing is downloaded for the list")
         XCTAssertEqual(pane.shownID, "seal-dark")
         XCTAssertTrue(pane.removeButton.isHidden, "The bundled theme cannot be removed")
         XCTAssertTrue(pane.downloadButton.isHidden)
@@ -126,16 +144,16 @@ final class DocumentIconThemeSettingsTests: XCTestCase {
         FixtureServer.set(ThemeFixtures.catalogURL, .init(body: Data(), error: .notConnectedToInternet))
         let controller = settings { DocumentIconThemeManager(environment: self.sandbox.environment(), provider: provider) }
         defer { controller.close() }
-        controller.present(); controller.showAppearance()
+        controller.present(); controller.showDocumentIcons()
         let pane = controller.themePane
         try await waitUntil { if case .offline = pane.manager.catalogStatus { return true }; return false }
         XCTAssertTrue(pane.catalogLabel.stringValue.hasPrefix("Offline"))
-        XCTAssertEqual(pane.rows.count, 4, "The last verified catalogue is still listed")
+        XCTAssertEqual(pane.rows.count, 4, "The last verified catalogue is still listed (included group and theme, family group and theme)")
         XCTAssertTrue(pane.refreshButton.isEnabled)
 
         let unconfigured = settings { DocumentIconThemeManager(environment: self.sandbox.environment(keys: []), provider: provider) }
         defer { unconfigured.close() }
-        unconfigured.present(); unconfigured.showAppearance()
+        unconfigured.present(); unconfigured.showDocumentIcons()
         XCTAssertTrue(unconfigured.themePane.catalogLabel.stringValue.contains("not configured"))
         XCTAssertFalse(unconfigured.themePane.refreshButton.isEnabled)
         XCTAssertEqual(unconfigured.themePane.rows.count, 2)

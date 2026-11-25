@@ -29,9 +29,16 @@ final class BrowserWindowTests: XCTestCase {
             controller.onOpen = { requestedOpen = true }
             button.performClick(nil)
             XCTAssertTrue(requestedOpen)
-            let toolbar = window.toolbar!
-            XCTAssertEqual(controller.toolbarDefaultItemIdentifiers(toolbar).map(\.rawValue),
-                ["open", NSToolbarItem.Identifier.flexibleSpace.rawValue, "extract", "all", "test", "info"])
+            // The welcome canvas uses an empty toolbar of the same height;
+            // the archive toolbar replaces it when an archive opens.
+            XCTAssertTrue(window.toolbar !== controller.browserToolbar)
+            XCTAssertEqual(controller.toolbarDefaultItemIdentifiers(window.toolbar!), [])
+            XCTAssertEqual(controller.toolbarDefaultItemIdentifiers(controller.browserToolbar).map(\.rawValue),
+                ["navigation", NSToolbarItem.Identifier.flexibleSpace.rawValue, "open", NSToolbarItem.Identifier.space.rawValue, "extract", "all",
+                 NSToolbarItem.Identifier.space.rawValue, "add", "test", "info", "search"])
+            XCTAssertFalse(controller.toolbarDefaultItemIdentifiers(controller.browserToolbar).map(\.rawValue).contains("settings"),
+                "Settings stays in the menu and ⌘, by default; the gear is optional in the palette")
+            XCTAssertTrue(controller.toolbarAllowedItemIdentifiers(controller.browserToolbar).map(\.rawValue).contains("settings"))
             XCTAssertFalse(controller.validateMenuItem(NSMenuItem(title: "", action: #selector(BrowserWindowController.extractAll(_:)), keyEquivalent: "")))
             XCTAssertFalse(controller.validateMenuItem(NSMenuItem(title: "", action: #selector(BrowserWindowController.testArchive(_:)), keyEquivalent: "")))
         }
@@ -80,7 +87,8 @@ final class BrowserWindowTests: XCTestCase {
         table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         table.sortDescriptors = [NSSortDescriptor(key: "size", ascending: false)]
         XCTAssertEqual(table.selectedRow, 1, "Selection must stay on the folder after its row moves")
-        let search = try XCTUnwrap(descendants(window.contentView!).compactMap { $0 as? NSSearchField }.first)
+        XCTAssertTrue(window.toolbar === controller.browserToolbar, "The archive toolbar appears once an archive is open")
+        let search = controller.search
         search.stringValue = "folder"
         controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: search))
         XCTAssertEqual(table.numberOfRows, 2)

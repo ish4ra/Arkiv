@@ -1,5 +1,6 @@
 import AppKit
 import ArkivCore
+import ArkivThemes
 
 /// Passwords exist only in these controls and the active engine request, never preferences/IPC.
 final class PasswordEntryView: NSStackView {
@@ -69,6 +70,8 @@ enum ArchivePasswordPrompt {
         let alert = NSAlert()
         alert.messageText = retry ? "Wrong Password" : "Unlock archive"
         alert.informativeText = (retry ? "The password was incorrect or the encrypted archive is damaged. Try again.\n\n" : "") + archive.lastPathComponent + "\nYour password is not saved."
+        // The archive's own document icon says which archive is asking.
+        if let icon = DocumentIconProvider.shared.icon(forFileName: archive.lastPathComponent, points: 64) { alert.icon = icon }
         let fields = PasswordEntryView(confirm: false)
         fields.setFrameSize(NSSize(width: 320, height: 64))
         alert.accessoryView = fields
