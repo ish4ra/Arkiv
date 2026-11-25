@@ -197,8 +197,15 @@ class FakeGitHub:
     def __init__(self, files):
         self.releases, self.files, self.log = {}, files, []
         self.fail_upload, self.corrupt_upload, self.serve = set(), set(), {}
+        # GitHub's eventual consistency: after a draft is created, this many
+        # lookups still miss it (None hides it until the next creation only).
+        self.unlisted_after_create, self.hidden, self.lookups, self.lookups_at_create = 0, 0, 0, None
 
     def release(self, tag):
+        self.lookups += 1
+        if self.hidden:
+            self.hidden -= 1
+            return None
         r = self.releases.get(tag)
         if r is None:
             return None
@@ -209,6 +216,7 @@ class FakeGitHub:
         assert tag not in self.releases
         self.releases[tag] = {'draft': True, 'prerelease': True, 'assets': {}}
         self.log.append(('create-draft', tag))
+        self.hidden, self.lookups_at_create = self.unlisted_after_create, self.lookups
 
     def upload(self, tag, path):
         if path.name in self.fail_upload:
@@ -272,8 +280,12 @@ class PublicationRecoveryTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def run_publish(self):
-        self.publisher.time.sleep = lambda _: None
+        self.sleeps = []
+        self.publisher.time.sleep = self.sleeps.append
         return self.publisher.publish(self.dist, self.envelope, self.github, self.branch, lambda _: None, 'sha')
+
+    def drafts_created(self):
+        return [e for e in self.github.log if e[0] == 'create-draft']
 
     def test_fresh_publication_builds_a_draft_and_publishes_the_catalogue_last(self):
         self.assertEqual(self.run_publish(), ('document-icon-themes-v1', 'published'))
@@ -324,6 +336,64 @@ class PublicationRecoveryTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.run_publish()
         self.assertEqual(self.branch.pushes, [])
+
+    def test_delayed_draft_listing_is_retried_without_a_second_draft(self):
+        # Run 45578558002 attempt 1: the lookup right after creation returned None.
+        self.github.unlisted_after_create = 3
+        self.assertEqual(self.run_publish(), ('document-icon-themes-v1', 'published'))
+        self.assertEqual(len(self.drafts_created()), 1)
+        self.assertEqual(self.sleeps[:3], [2, 4, 8], 'Doubling wait between lookups')
+        self.assertEqual(self.branch.pushes, [self.envelope])
+
+    def test_draft_that_never_appears_stops_safely_and_the_rerun_resumes(self):
+        self.github.unlisted_after_create = 1000
+        with self.assertRaises(SystemExit) as stopped:
+            self.run_publish()
+        message = str(stopped.exception.code)
+        self.assertIn('document-icon-themes-v1', message)
+        self.assertIn('No further draft was created', message)
+        self.assertIn('Rerun', message)
+        self.assertEqual(len(self.drafts_created()), 1, 'Exactly one draft')
+        self.assertEqual(self.github.lookups - self.github.lookups_at_create, self.publisher.DISCOVERY_ATTEMPTS, 'Bounded lookups')
+        self.assertLessEqual(sum(self.sleeps), 2 * (2 ** (self.publisher.DISCOVERY_ATTEMPTS - 1)), 'Bounded wait')
+        self.assertNotIn('upload', [e[0] for e in self.github.log])
+        self.assertEqual(self.branch.pushes, [], 'No catalogue without a verified release')
+        self.assertTrue(self.github.releases['document-icon-themes-v1']['draft'])
+        # GitHub catches up; the rerun resumes the same draft (FakeGitHub refuses a second creation).
+        self.github.hidden = 0
+        self.assertEqual(self.run_publish()[1], 'published')
+        self.assertEqual(len(self.drafts_created()), 1)
+        self.assertEqual(self.branch.pushes, [self.envelope])
+
+    def test_draft_that_vanishes_during_uploads_stops_safely(self):
+        real = self.github.upload
+        def upload_then_hide(tag, path):
+            real(tag, path)
+            self.github.hidden = 1000
+        self.github.upload = upload_then_hide
+        with self.assertRaises(SystemExit):
+            self.run_publish()
+        self.assertEqual(self.branch.pushes, [])
+        self.assertNotIn('publish', [e[0] for e in self.github.log])
+
+    def test_github_lookup_refuses_ambiguous_drafts(self):
+        github = self.publisher.GitHub()
+        draft = lambda ident: {'id': ident, 'tag_name': 'document-icon-themes-v1', 'draft': True, 'prerelease': True, 'assets': []}
+        other = {'id': 9, 'tag_name': 'dev-30701', 'draft': False, 'prerelease': True, 'assets': []}
+        github._api = lambda *args, data=None: json.dumps([other, draft(1), draft(2)]).encode()
+        with self.assertRaises(SystemExit) as stopped:
+            github.release('document-icon-themes-v1')
+        self.assertIn('Delete the extra draft', str(stopped.exception.code))
+        github._api = lambda *args, data=None: json.dumps([other, draft(1)]).encode()
+        self.assertEqual(github.release('document-icon-themes-v1')['id'], 1)
+        self.assertIsNone(github.release('document-icon-themes-v2'))
+        # Pagination: a match on the second page is still found, and duplicates across pages are caught.
+        pages = {1: [other] * 100, 2: [draft(3)]}
+        github._api = lambda path, data=None: json.dumps(pages[int(path.rsplit('=', 1)[1])]).encode()
+        self.assertEqual(github.release('document-icon-themes-v1')['id'], 3)
+        pages = {1: [draft(4)] + [other] * 99, 2: [draft(5)]}
+        with self.assertRaises(SystemExit):
+            github.release('document-icon-themes-v1')
 
     def test_concurrent_or_repeated_publication_is_refused(self):
         self.run_publish()
