@@ -9,8 +9,9 @@
 > has no logged-in desktop:
 >
 > * the windows are never key, so selections show the **inactive** (grey)
->   colour instead of the accent; the Settings preview draws its selection as
->   active on purpose, which is where the accent is visible;
+>   colour instead of the accent, and default (Return) buttons such as Open
+>   Archive draw neutral; the Settings preview draws its selection as active
+>   on purpose, which is where the accent is visible;
 > * translucent materials (title bar, Settings sidebar) have no wallpaper
 >   behind them, and there are no window shadows;
 > * the runner reports the accessibility display settings recorded in
@@ -20,7 +21,7 @@
 >
 > Real-Mac screenshots remain on the [acceptance list](../ui-redesign.md#real-mac-acceptance).
 
-Source run: SOURCE_RUN_PLACEHOLDER
+Source: [run 45737861346](https://github.com/ish4ra/Arkiv/actions/runs/45737861346) (commit `c02d74b`, macOS 15 Apple Silicon runner; Reduce Transparency and Reduce Motion reported on). The application code is unchanged after that commit.
 
 ## Welcome window
 

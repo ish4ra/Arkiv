@@ -173,10 +173,18 @@ runners, drawing the real windows with the packaged app's own icon and Seal
 Dark resources, and uploaded as the `Arkiv-<arch>-ui-screenshots` artefact.
 They are **headless CI renderings**: the window server draws offscreen, so
 translucent materials (the Settings sidebar, the toolbar) show no desktop
-behind them, and there is no shadow or wallpaper. Theme-gallery screenshots
-with every real pack come from the theme workflow
-(`document-icon-theme-settings-screenshots-*`). See
-[`docs/media/redesign`](media/redesign/README.md) for the selected images.
+behind them, windows are never key (selections show the inactive colour) and
+there is no shadow or wallpaper. The runner reports Reduce Transparency and
+Reduce Motion on, so the welcome canvas draws its plain accessibility surface.
+Theme-gallery screenshots with every real pack come from the theme workflow
+(`document-icon-theme-settings-screenshots-*`). The selected images are in the
+[screenshot gallery](screenshots/README.md).
+
+Before and after: build 30701's interface is preserved in Git history
+(`5044993`), and its genuine theme-pane captures are in the theme workflow
+artefacts of run [45511900002](https://github.com/ish4ra/Arkiv/actions/runs/45511900002);
+the maintainer's original screenshots of 30701 were the starting point for the
+[root-cause table](#root-causes-of-the-reported-problems).
 
 ## Performance and size
 

@@ -87,11 +87,11 @@ The Seal Dark icons are included. Twenty preserved alternative themes are option
 </tr>
 </table>
 
-<!--
-  Screenshots: genuine real-Mac captures are pending. docs/media/README.md lists
-  exactly what to capture (archive browser, Create Archive, search, extraction,
-  Archive Info, Finder submenu, Appearance settings) and how to add them here.
--->
+<p align="center">
+<img src="docs/screenshots/05-browser-wide-dark.png" width="49%" alt="The redesigned archive window in Dark appearance">
+<img src="docs/screenshots/14-settings-appearance-dark.png" width="42%" alt="Settings → Appearance with the live preview">
+</p>
+<p align="center"><sub>Genuine captures of the redesigned windows, rendered on a headless macOS CI runner (not a real-Mac desktop). <a href="docs/screenshots/README.md">All screenshots</a></sub></p>
 
 ## Document icons
 
