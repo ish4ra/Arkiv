@@ -1,0 +1,62 @@
+<!doctype html>
+<!-- Design-time concept mockups for the Arkiv UI redesign. NOT application
+     screenshots and never bundled in Arkiv.app. Colours come from
+     scripts/render-icon.swift and design/readme/hero.html. -->
+<html><head><meta charset="utf-8"><title>Arkiv UI directions</title>
+<style>
+:root{--plum-hi:#703A47;--plum-lo:#301A2B;--midnight:#0C060A;--brass:#CDA66C;--brass-lo:#8C6538;--jade:#4A9C82;--ivory:#F5E9DE;--wine:#8E4A61}
+*{box-sizing:border-box}body{margin:0;background:#2a2629;font:13px -apple-system,"SF Pro Text","Helvetica Neue",Arial,sans-serif;color:#eee;padding:28px}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:0 0 2px}.note{color:#bbb;font-size:12px;margin:0 0 18px;max-width:1180px}
+.banner{display:inline-block;background:#b33;color:#fff;font-weight:700;font-size:11px;padding:3px 8px;border-radius:4px;letter-spacing:.04em;margin-bottom:12px}
+.row{display:flex;gap:26px;margin-bottom:28px;align-items:flex-start}.col{width:390px}
+.win{width:390px;height:250px;border-radius:10px;overflow:hidden;background:#1e1b1e;box-shadow:0 8px 30px #0008;border:1px solid #444;position:relative}
+.tb{height:38px;background:#2c282b;display:flex;align-items:center;padding:0 10px;gap:7px;border-bottom:1px solid #111}
+.dots i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:nth-child(3){background:#28c840}
+.ic{width:17px;height:15px;border-radius:4px;background:#5a5457}.ic.on{background:#8a8285}.sp{flex:1}.title{font-weight:600;font-size:12px}.sub{font-size:10px;color:#aaa}
+.search{width:86px;height:18px;border-radius:5px;background:#3a3538}
+.tbl div{height:17px;border-bottom:1px solid #262226;display:flex;align-items:center;padding:0 10px;font-size:10px;color:#ccc;gap:6px}
+.tbl .sel{background:var(--wine);color:#fff;border-radius:4px;margin:0 4px;border:0}.doc{width:9px;height:11px;border-radius:2px;background:var(--plum-hi)}.fold{width:11px;height:9px;border-radius:2px;background:#6b8fb3}
+.foot{position:absolute;bottom:0;left:0;right:0;height:22px;background:#252125;border-top:1px solid #111;font-size:9px;color:#aaa;display:flex;align-items:center;padding:0 10px;gap:6px}
+.side{position:absolute;top:38px;bottom:0;left:0;width:96px;background:#29242a;border-right:1px solid #111;padding:8px 6px;font-size:10px;color:#bbb}
+.side div{padding:3px 5px;border-radius:4px}.side .s{background:#4a3f48;color:#fff}
+.insp{position:absolute;top:38px;bottom:22px;right:0;width:104px;background:#252025;border-left:1px solid #111;padding:10px;font-size:9px;color:#aaa}
+.welcome{position:absolute;inset:0;background:radial-gradient(circle at 28% 40%,#3a2230 0,#1c161b 60%)}
+.btn{display:inline-block;padding:4px 9px;border-radius:5px;background:#4a4548;font-size:10px;margin:3px 3px 0 0}.btn.p{background:var(--wine);color:#fff}
+.seal{width:54px;height:54px;border-radius:13px;background:linear-gradient(200deg,var(--plum-hi),var(--plum-lo));position:relative}
+.seal:after{content:"";position:absolute;left:13px;top:21px;width:10px;height:10px;border-radius:50%;background:radial-gradient(#cff0d4,var(--jade))}
+.seal:before{content:"";position:absolute;left:22px;top:17px;width:26px;height:6px;border-radius:3px;background:linear-gradient(#fccf73,#c46e38);box-shadow:0 8px 0 #f4c062,0 16px 0 #e8ad55}
+.rec div{font-size:10px;color:#ccc;padding:4px 6px;border-radius:4px;display:flex;gap:6px;align-items:center}.rec div:first-child{background:#ffffff10}
+.verdict{font-size:12px;color:#ddd;line-height:1.45}.verdict b{color:var(--brass)}.chosen{outline:2px solid var(--brass);outline-offset:6px}
+.set{display:flex;position:absolute;inset:38px 0 0 0}.set .card{background:#ffffff0d;border-radius:8px;margin:6px 0;padding:7px;font-size:10px;color:#ccc}
+.sw{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:4px}
+</style></head><body>
+<div class="banner">CONCEPT MOCKUPS — NOT APPLICATION SCREENSHOTS</div>
+<h1>Arkiv redesign: three directions</h1>
+<p class="note">Lightweight, deliberately schematic previews used to choose a direction before implementation. Palette from the Tension Seal renderer: plum #703A47 → #301A2B, midnight #0C060A, brass #CDA66C, jade #4A9C82, ivory #F5E9DE. The chosen direction (A) is implemented natively in AppKit; genuine application screenshots come from macOS CI.</p>
+
+<div class="row chosen">
+ <div class="col"><h2>A · “Ledger” (chosen)</h2><p class="note">Unified toolbar: navigation beside the title, grouped actions and native search on the right. Title and subtitle carry the archive identity. Breadcrumb path and status share one bottom bar. Full-width dense table.</p>
+  <div class="win"><div class="tb"><span class="dots"><i></i><i></i><i></i></span><span class="ic"></span><span class="ic"></span><span><div class="title">Photos 2024.zip</div><div class="sub">ZIP archive · 1,204 items · 48 MB</div></span><span class="sp"></span><span class="ic on"></span><span class="ic on"></span><span class="ic on"></span><span class="ic"></span><span class="ic"></span><span class="search"></span></div>
+  <div class="tbl"><div><span class="fold"></span>Albums</div><div class="sel"><span class="doc"></span>raw-backup.7z</div><div><span class="doc"></span>exports.tar.gz</div><div><span class="fold"></span>Edits</div><div>IMG_0001.HEIC</div><div>IMG_0002.HEIC</div><div>IMG_0003.HEIC</div><div>notes.txt</div></div>
+  <div class="foot">▣ Photos 2024.zip › Albums › 2024 <span class="sp"></span>8 items · 1 selected (210 MB)</div></div></div>
+ <div class="col"><h2>A · Welcome</h2><p class="note">Two columns: identity and the two primary actions; recent archives (or a drop zone listing supported formats). One quiet footer line with shortcuts and an Appearance entry point. No toolbar until an archive is open.</p>
+  <div class="win"><div class="welcome"></div><div style="position:absolute;left:30px;top:52px"><div class="seal"></div><div style="font-size:19px;font-weight:600;margin-top:8px">Arkiv</div><div class="sub" style="margin:2px 0 10px">Browse, extract and create archives.</div><span class="btn p">Open Archive…</span><br><span class="btn">Create Archive…</span></div>
+  <div class="rec" style="position:absolute;left:200px;top:52px;width:170px"><div style="background:none;color:#999;font-weight:600">RECENT</div><div><span class="doc"></span>Photos 2024.zip</div><div><span class="doc"></span>backup.7z</div><div><span class="doc"></span>site.tar.xz</div><div><span class="doc"></span>fonts.rar</div></div>
+  <div class="foot" style="background:transparent;border:0">⤓ Drop an archive to open it · ⌘O · ⇧⌘N · ⌘,<span class="sp"></span>Appearance…</div></div></div>
+ <div class="col"><h2>A · Settings</h2><p class="note">Sidebar Settings with fixed window size; grouped cards; live preview using the real table cells; the theme gallery gets the full content area.</p>
+  <div class="win"><div class="tb"><span class="dots"><i></i><i></i><i></i></span><span class="title" style="margin-left:90px">Appearance</span></div>
+  <div class="set"><div class="side" style="position:static;top:auto;height:100%"><div>General</div><div class="s">Appearance</div><div>Document Icons</div><div>Updates</div></div>
+  <div style="flex:1;padding:8px 12px"><div class="card">Preview: <span class="tbl"><span style="display:inline-block;background:var(--wine);color:#fff;border-radius:3px;padding:0 6px">exports.tar.gz</span></span></div><div class="card">Appearance &nbsp;<span class="btn">System</span><span class="btn">Light</span><span class="btn p">Dark</span></div><div class="card">Accent &nbsp;<span class="sw" style="background:var(--wine)"></span><span class="sw" style="background:#3A876F"></span><span class="sw" style="background:#957035"></span><span class="sw" style="background:#6E6873"></span><span class="sw" style="background:conic-gradient(red,orange,yellow,green,blue,purple,red)"></span></div><div class="card">Density &nbsp;<span class="btn">Compact</span><span class="btn p">Standard</span><span class="btn">Comfortable</span></div></div></div></div></div>
+</div>
+
+<div class="row">
+ <div class="col"><h2>B · “Atelier” (three panes)</h2><p class="note">Folder-tree sidebar, table, permanent inspector. Strong overview, but the tree duplicates the path bar, costs width at 640 pt and adds work for 100,000-entry archives; the inspector duplicates Archive Info.</p>
+  <div class="win"><div class="tb"><span class="dots"><i></i><i></i><i></i></span><span class="sp"></span><span class="ic on"></span><span class="ic on"></span><span class="search"></span></div><div class="side"><div class="s">Photos 2024.zip</div><div>&nbsp;Albums</div><div>&nbsp;Edits</div><div>&nbsp;Raw</div></div>
+  <div class="tbl" style="margin-left:96px;margin-right:104px"><div class="sel"><span class="doc"></span>raw-backup.7z</div><div>exports.tar.gz</div><div>IMG_0001.HEIC</div></div><div class="insp"><div class="seal" style="width:34px;height:34px"></div><br>raw-backup.7z<br>7z · 210 MB<br>Modified …</div><div class="foot">8 items</div></div></div>
+ <div class="col"><h2>C · “Utility” (compact, classic)</h2><p class="note">Icon-only toolbar with an in-toolbar path control, classic toolbar-tab Settings. Lightest to build and closest to Archive Utility, but least distinctive; toolbar-tab Settings cannot fit the theme gallery without resizing.</p>
+  <div class="win"><div class="tb"><span class="dots"><i></i><i></i><i></i></span><span class="ic on"></span><span style="font-size:10px;color:#bbb">Photos 2024.zip › Albums</span><span class="sp"></span><span class="ic on"></span><span class="ic on"></span><span class="ic"></span><span class="search"></span></div><div class="tbl"><div>Albums</div><div style="background:#2d5fb0;color:#fff">raw-backup.7z</div><div>exports.tar.gz</div><div>IMG_0001.HEIC</div><div>IMG_0002.HEIC</div></div><div class="foot">8 items</div></div></div>
+ <div class="col verdict"><h2>Selection</h2>
+ <p><b>A · Ledger</b> scores best on the stated criteria. <b>Usability:</b> every operation stays one click or one shortcut away; navigation sits where macOS puts it (leading, beside the title). <b>Platform conventions:</b> NSToolbar unified style, NSSearchToolbarItem, NSPathControl, sidebar Settings like System Settings. <b>Visual quality:</b> the brand appears in the welcome canvas, selection and primary actions, not as decoration on every surface. <b>Cost and performance:</b> no tree sidebar to compute or keep in sync; the table stays a view-based NSTableView with reused cells.</p>
+ <p>B is rejected because the sidebar would have no purpose beyond the path bar. C is a good fallback but would leave Arkiv looking like a generic utility.</p></div>
+</div>
+</body></html>

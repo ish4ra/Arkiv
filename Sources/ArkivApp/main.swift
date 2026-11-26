@@ -28,6 +28,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         beginInteractiveSession()
         settings.present()
     }
+    func showSettings(pane: SettingsWindowController.Pane?) {
+        beginInteractiveSession()
+        settings.present(pane: pane)
+    }
     private lazy var finderSetup = FinderSetupWindowController()
     private let creation = ArchiveCreationController()
     private var handledLaunchRequest = false
@@ -72,16 +76,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     @objc func newWindow(_ sender: Any?) { makeWindow().showWindow(nil) }
     private func makeWindow() -> BrowserWindowController {
+        let recents = self.recents
         let controller = BrowserWindowController()
+        controller.preferences = preferences
+        controller.recentArchives = { recents.recentURLs }
         windows.append(controller)
+        controller.onOpenURLs = { [weak self, weak controller] urls in
+            for url in urls { self?.open(url, preferred: controller?.windowID) }
+        }
+        controller.onCreate = { [weak self] in self?.createArchive(nil) }
+        controller.onShowSettings = { [weak self] pane in self?.showSettings(pane: pane) }
         controller.onAcceptedArchive = { [weak self] url,nested in self?.recents.accepted(url,nested:nested) }
         controller.onClose = { [weak self, weak controller] in
             self?.windows.removeAll { $0 === controller }
         }
         controller.onOpen = { [weak self, weak controller] in self?.openArchive(controller) }
-        controller.onOpenNestedArchive = { [weak self] snapshot, source in
+        controller.onOpenNestedArchive = { [weak self, weak controller] snapshot, source in
             guard let self else { return }
             let child = self.makeWindow()
+            child.nestedParentName = controller?.window?.title
             child.adoptNestedArchive(snapshot, source: source)
             child.showWindow(nil)
             child.window?.makeKeyAndOrderFront(nil)
@@ -144,13 +157,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else if url.isFileURL { open(url) }
         }
     }
-    @objc private func createArchive(_ sender: Any?) {
+    @objc func createArchive(_ sender: Any?) {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true; panel.canChooseDirectories = true; panel.allowsMultipleSelection = true
         panel.prompt = "Add"; panel.message = "Choose files and folders for a new ZIP archive."
         guard panel.runModal() == .OK else { return }
         creation.present(panel.urls, parent: windows.first(where: { $0.window === NSApp.keyWindow })?.window)
     }
+
+    @objc private func showAppearanceSettings(_ sender: Any?) { showSettings(pane: .appearance) }
 
     @objc private func showFinderIntegration(_ sender: Any?) {
         finderSetup.showSetup()
@@ -224,11 +239,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         go.addItem(withTitle: "Back", action: #selector(BrowserWindowController.goBack(_:)), keyEquivalent: "[")
         go.addItem(withTitle: "Forward", action: #selector(BrowserWindowController.goForward(_:)), keyEquivalent: "]")
         go.addItem(withTitle: "Parent Folder", action: #selector(BrowserWindowController.goUp(_:)), keyEquivalent: String(UnicodeScalar(NSUpArrowFunctionKey)!))
+        let view = NSMenu(title: "View")
+        view.addItem(withTitle: "Show Toolbar", action: #selector(NSWindow.toggleToolbarShown(_:)), keyEquivalent: "t").keyEquivalentModifierMask = [.command, .option]
+        view.addItem(withTitle: "Customize Toolbar…", action: #selector(NSWindow.runToolbarCustomizationPalette(_:)), keyEquivalent: "")
+        view.addItem(.separator())
+        let appearance = view.addItem(withTitle: "Appearance Settings…", action: #selector(showAppearanceSettings(_:)), keyEquivalent: "")
+        appearance.target = self
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
         NSApp.windowsMenu = windowMenu
-        for (title, menu) in [("Arkiv", application), ("File", file), ("Edit", edit), ("Go", go), ("Window", windowMenu)] {
+        for (title, menu) in [("Arkiv", application), ("File", file), ("Edit", edit), ("View", view), ("Go", go), ("Window", windowMenu)] {
             let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             item.submenu = menu; main.addItem(item)
         }

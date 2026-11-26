@@ -12,6 +12,8 @@ binary="$app/Contents/MacOS/Arkiv"
 [[ -x "$binary" ]] || fail 'App executable is missing or not executable.'
 [[ -s "$app/Contents/Resources/Arkiv.icns" ]] || fail 'Original app icon is missing.'
 [[ -s "$app/Contents/Resources/ThirdPartyNotices.txt" ]] || fail 'Third-party notices are missing.'
+cmp -s LICENSE "$app/Contents/Resources/LICENSE.txt" || fail 'Arkiv GPL-3.0 licence is missing or differs from LICENSE.'
+grep -q 'GPL-3.0-or-later' "$app/Contents/Resources/NOTICE.txt" || fail 'Arkiv NOTICE is missing.'
 [[ -s "$app/Contents/Resources/licenses/zstd-LICENSE.txt" ]] || fail 'Zstandard BSD license is missing.'
 [[ -s "$app/Contents/Resources/licenses/libarchive-COPYING.txt" ]] || fail 'Libarchive license is missing.'
 python3 scripts/render-completion-sound.py --verify "$app/Contents/Resources/Arkiv-Extraction-Complete.wav"

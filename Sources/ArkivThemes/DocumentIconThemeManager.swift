@@ -466,6 +466,35 @@ public final class DocumentIconThemeManager {
         }
     }
 
+    /// A small list thumbnail from artwork already on this Mac: the bundled
+    /// icons, an installed theme, or a preview pack verified earlier. Never
+    /// starts a download; nil means "not available offline yet". Shares the
+    /// bounded preview cache.
+    public func localThumbnail(for id: String) -> NSImage? {
+        guard let entry = entry(id) else { return nil }
+        let name = entry.coverage.contains(.zip) ? DocumentIconName.zip : entry.coverage.first
+        guard let name else { return nil }
+        let artwork = DocumentIconArtwork.icon(name)
+        if let cached = previews.object(forKey: cacheKey(id, artwork)) { return cached }
+        var image: NSImage?
+        if entry.status == .bundled {
+            image = providerBundledIcon(name).flatMap { NSImage(contentsOf: $0) }
+            image?.size = NSSize(width: 128, height: 128)
+        } else if let local = entry.installed {
+            image = provider.previewImage(artwork, theme: local)
+        } else if let theme = entry.catalog, let file = theme.preview.files.first(where: { $0.name == Self.previewName(artwork) }) {
+            let url = store.previewDirectory(id: theme.id, version: theme.version).appendingPathComponent(file.name)
+            if let data = try? ThemePackValidator.read(url, limit: ThemeLimits.fileBytes), data.count == file.size,
+               ThemeHash.sha256(data) == file.sha256, let bitmap = NSBitmapImageRep(data: data) {
+                bitmap.size = NSSize(width: 128, height: 128)
+                let built = NSImage(size: bitmap.size); built.addRepresentation(bitmap)
+                image = built
+            }
+        }
+        if let image { previews.setObject(image, forKey: cacheKey(id, artwork), cost: 128 * 128 * 4) }
+        return image
+    }
+
     /// Cached preview files are re-checked against the signed catalogue on every read.
     private func readPreviewCache(_ theme: CatalogTheme, _ directory: URL) -> [DocumentIconArtwork: NSImage]? {
         var images = [DocumentIconArtwork: NSImage]()

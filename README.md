@@ -81,17 +81,17 @@ Sparkle verifies every update's EdDSA signature and always asks before installin
 <td valign="top">
 
 **Document icon themes**<br>
-The Seal Dark icons are included. Twenty preserved alternative themes are prepared as optional downloads.
+The Seal Dark icons are included. Twenty preserved alternative themes are optional signed downloads.
 
 </td>
 </tr>
 </table>
 
-<!--
-  Screenshots: genuine real-Mac captures are pending. docs/media/README.md lists
-  exactly what to capture (archive browser, Create Archive, search, extraction,
-  Archive Info, Finder submenu, Appearance settings) and how to add them here.
--->
+<p align="center">
+<img src="docs/screenshots/05-browser-wide-dark.png" width="49%" alt="The redesigned archive window in Dark appearance">
+<img src="docs/screenshots/14-settings-appearance-dark.png" width="42%" alt="Settings → Appearance with the live preview">
+</p>
+<p align="center"><sub>Genuine captures of the redesigned windows, rendered on a headless macOS CI runner (not a real-Mac desktop). <a href="docs/screenshots/README.md">All screenshots</a></sub></p>
 
 ## Document icons
 
@@ -111,7 +111,7 @@ Arkiv ships one document-icon family, **Seal Dark**, drawn in the same aubergine
 <img src="docs/media/artwork/seal-dark/TXZ-128.png" width="60" alt="TXZ">
 </p>
 
-Every earlier design is preserved as an **optional theme**, downloaded individually from **Settings → Appearance → Document Icon Theme** rather than bundled with the app. A representative selection, shown from the original archived artwork:
+Every earlier design is preserved as an **optional theme**, downloaded individually from **Settings → Document Icons** rather than bundled with the app. A representative selection, shown from the original archived artwork:
 
 <table>
 <tr>
@@ -130,12 +130,12 @@ Every earlier design is preserved as an **optional theme**, downloaded individua
 
 The full set is 20 themes: these eight, the original partial **Classic** icons (ZIP, 7z, TAR and RAR only) and 11 design variations. The [theme inventory](docs/document-icon-theme-inventory.md) lists each one's source and download size (0.54–8.86 MB).
 
-- **Inside Arkiv**, a selected theme changes archive rows, the window's proxy icon and Archive Info immediately.
-- **In Finder and Quick Look**, documents keep the bundled Seal Dark icons, shown while Arkiv is the default app for that type. macOS reads them from the signed app; Arkiv never modifies its bundle or changes your default apps.
+- **Inside Arkiv**, a selected theme changes archive rows, the window's proxy icon, the path bar, recent archives and Archive Info immediately, in every open window, without reopening anything.
+- **In Finder and Get Info**, documents keep the bundled Seal Dark icons, shown while Arkiv is the default app for that type. macOS reads them from the signed app; Arkiv never modifies its bundle or changes your default apps. A Quick Look thumbnail extension is being evaluated as a prototype ([feasibility report](docs/quicklook-thumbnail-feasibility.md)).
 - Themes are verified against a signed catalogue, stored outside the app, and keep working offline once installed.
 
-> [!IMPORTANT]
-> **Theme downloads are not live yet.** The signed catalogue has not been published, and current builds do not yet contain its production key. Until then, Settings reports that theme downloads are not configured in this build, and Seal Dark stays in use. [Details](docs/document-icon-themes.md).
+> [!NOTE]
+> **Theme downloads are live.** The signed production catalogue and all 20 packs are published, and development build 30701 contains the production key. The maintainer has loaded the catalogue and downloaded and applied Folio Dark on an Apple Silicon Mac; the complete real-Mac acceptance list is still open. [Details](docs/document-icon-themes.md).
 
 ## Supported formats
 
@@ -165,21 +165,21 @@ A format is listed only once automated fixture tests pass. Recognising an extens
 
 ## Download and install
 
-<p align="center"><a href="https://github.com/ish4ra/Arkiv/releases/tag/dev-30201"><b>Download Arkiv development build 30201</b></a> &nbsp;·&nbsp; Universal &nbsp;·&nbsp; macOS 13 or later</p>
+<p align="center"><a href="https://github.com/ish4ra/Arkiv/releases/tag/dev-30701"><b>Download Arkiv development build 30701</b></a> &nbsp;·&nbsp; Universal &nbsp;·&nbsp; macOS 13 or later<br><sub><a href="https://github.com/ish4ra/Arkiv/releases?q=Arkiv+Development&amp;expanded=true">All Arkiv application builds, newest first</a> (excludes document icon theme packs)</sub></p>
 
 There is no stable release yet. **Universal** builds run on both Apple Silicon and Intel Macs; **arm64** builds run on Apple Silicon only.
 
 | Option | Best for | Where |
 | --- | --- | --- |
-| **Signed development release** (Universal) | The quickest first install, on any supported Mac; no GitHub account needed | [Releases](https://github.com/ish4ra/Arkiv/releases): open the newest **Arkiv Development _build_** (currently [`dev-30201`](https://github.com/ish4ra/Arkiv/releases/tag/dev-30201)) and download `Arkiv-universal.zip` |
+| **Signed development release** (Universal) | The quickest first install, on any supported Mac; no GitHub account needed | [Arkiv application builds](https://github.com/ish4ra/Arkiv/releases?q=Arkiv+Development&expanded=true): open the newest **Arkiv Development _build_** (currently [`dev-30701`](https://github.com/ish4ra/Arkiv/releases/tag/dev-30701)) and download `Arkiv-universal.zip` |
 | **Development DMG** (arm64 or Universal) | A smaller Apple Silicon–only build, or a disk image | [macOS foundation runs on `main`](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml?query=branch%3Amain+is%3Asuccess) → **Artifacts** (sign in to GitHub): `Arkiv-arm64-development-dmg` or `Arkiv-universal-development-dmg`, each with a SHA-256 checksum |
 | **In-app updates** | Staying current after the first install | **Arkiv → Check for Updates…** |
 
-The Releases page also lists other prereleases, such as document icon theme packs. Those are not Arkiv builds: choose a release named **Arkiv Development**.
+The full Releases page also lists document icon theme packs (`document-icon-themes-v*`). Those are not Arkiv builds and cannot be installed as an app: choose a release named **Arkiv Development** (tag `dev-<build>`), or use the link above, which lists only application builds. GitHub's generic “latest release” link is not used because every Arkiv build is a prerelease. How these links are kept current: [download links](docs/release.md#download-links).
 
 **First installation**
 
-1. Unzip the download (for an Actions artifact, unzip GitHub's wrapper first, then optionally run `shasum -a 256 -c Arkiv-*-development.dmg.sha256`).
+1. Optionally check the download: the release page shows a SHA-256 digest next to each file; compare it with `shasum -a 256 Arkiv-universal.zip`. For an Actions artifact, unzip GitHub's wrapper first, then run `shasum -a 256 -c Arkiv-*-development.dmg.sha256`. Then unzip the download.
 2. Drag **Arkiv.app** to **Applications** and open it from there.
 3. These builds are ad-hoc signed, not Developer ID signed, and **not notarized**, so macOS may say it could not verify Arkiv. If you trust this repository, try to open Arkiv once, then choose **System Settings → Privacy & Security → Open Anyway**. Do not disable Gatekeeper globally. See [signing, notarization and Gatekeeper](docs/release.md#signing-notarization-and-gatekeeper).
 
@@ -194,7 +194,7 @@ The Releases page also lists other prereleases, such as document icon theme pack
 - **Passwords are never stored**, logged or passed through URLs. Opening an encrypted archive decodes it to a private temporary file that is deleted on normal cleanup; a crash can leave it behind, and deletion is not secure erasure.
 - **No account, telemetry or background service.** Arkiv contacts the network only for:
   - **Updates:** Sparkle's update checks (on request, or on a schedule only if you allow it) and update downloads.
-  - **Document icon themes:** the signed theme catalogue, requested only while **Settings → Appearance** is shown or when you choose Refresh Catalogue; preview images for the theme you are viewing; and a theme pack, only when you click Download. Installed themes work offline.
+  - **Document icon themes:** the signed theme catalogue, requested only while **Settings → Document Icons** is shown or when you choose Refresh Catalogue; preview images for the theme you are viewing (never for the whole list); and a theme pack, only when you click Download. Installed themes work offline.
 
 These protections have known limits. For example, the Finder extension's handoff does not authenticate its sender, and extended attributes and timestamps are not restored. See [security and known limits](docs/security.md).
 
@@ -202,10 +202,10 @@ These protections have known limits. For example, the Finder extension's handoff
 
 | State | What |
 | --- | --- |
-| **Published** in development build 30201 | Archive browser, search and Quick Look · extraction · ZIP, 7z, TAR and Zstandard creation · ZIP and 7z editing · split 7z · RAR reading · Finder integration · signed Sparkle updates · Settings · document icon theme manager (inactive until activation) |
-| **Awaiting production activation** | Optional document icon theme downloads: the maintainer must provision the theme signing key and publish the first signed catalogue ([launch guide](docs/document-icon-theme-launch.md)) |
-| **Awaiting real-Mac validation** | Broader Finder extension acceptance · Finder rendering of the document icons · the Appearance theme pane · app icon at Dock and Finder sizes · ZIP and TAR associations |
-| **Next** | 3 · Native Appearance settings and UI customization → 4 · Finder and Quick Look customization feasibility → 5 · RAR multipart reading → 6 · Split ZIP → 7 · Remaining archive-engine work |
+| **Published** in development build 30701 | Archive browser, search and Quick Look · extraction · ZIP, 7z, TAR and Zstandard creation · ZIP and 7z editing · split 7z · RAR reading · Finder integration · signed Sparkle updates · Settings · document icon themes with the production catalogue (20 themes) |
+| **In review** | Complete UI redesign: welcome window, archive window, sidebar Settings, theme gallery, accent and density customization ([design](docs/ui-redesign.md)) · Quick Look thumbnail prototype and Finder feasibility report |
+| **Awaiting real-Mac validation** | The redesigned interface · complete theme acceptance (persistence, offline, removal, every in-app icon) · broader Finder extension acceptance · Finder rendering of the document icons · app icon at Dock and Finder sizes · ZIP and TAR associations |
+| **Next** | Redesign acceptance and release → 5 · RAR multipart reading → 6 · Split ZIP → 7 · Public beta hardening → 8 · Community launch → remaining archive-engine work ([public beta plan](docs/public-beta-plan.md)) |
 | **Planned** | More RAR methods, encrypted ZIP editing, editing more formats, archive comments · checksums, split/combine, benchmark, command-line companion · a Quick Look extension for archives · Developer ID signing and notarization |
 
 The complete queue is in the [roadmap](docs/roadmap.md), the current state of every feature in the [feature matrix](docs/feature-matrix.md), and the full plan in the [specification](ARKIV_SPEC.md).
@@ -235,19 +235,23 @@ Arkiv is a Swift package: an AppKit app (`ArkivApp`) on a UI-independent engine 
 | **Formats** | [Format evidence](docs/archive-formats.md) · [Feature matrix](docs/feature-matrix.md) · [Creation](docs/creation.md) · [ZIP edits](docs/zip-edits.md) · [7z](docs/sevenzip.md) · [RAR](docs/rar-compatibility.md) · [Integrity](docs/integrity.md) |
 | **Document icons** | [Document icons](docs/document-icons.md) · [Themes](docs/document-icon-themes.md) · [Theme inventory](docs/document-icon-theme-inventory.md) · [Format icon coverage](docs/format-icon-coverage.md) · [Branding](branding/README.md) |
 | **Safety** | [Security and limits](docs/security.md) · [Extraction compatibility](docs/extraction-compatibility.md) |
-| **Development** | [Architecture](docs/architecture.md) · [Release and builds](docs/release.md) · [Roadmap](docs/roadmap.md) · [Specification](ARKIV_SPEC.md) · [README media](docs/media/README.md) |
+| **Development** | [Architecture](docs/architecture.md) · [Release and builds](docs/release.md) · [Roadmap](docs/roadmap.md) · [Specification](ARKIV_SPEC.md) · [README media](docs/media/README.md) · [UI redesign](docs/ui-redesign.md) |
+| **Releasing** | [Real-Mac acceptance](docs/real-mac-acceptance.md) · [Public beta plan](docs/public-beta-plan.md) · [Licensing](docs/licensing-assessment.md) · [Contributing](CONTRIBUTING.md) · [Quick Look feasibility](docs/quicklook-thumbnail-feasibility.md) |
 
 Found a problem? [Open an issue](https://github.com/ish4ra/Arkiv/issues) with your macOS version, Mac model, Arkiv build (Arkiv → About Arkiv) and the steps to reproduce it. Please never attach archives that contain private data or passwords.
 
 ## Licensing
 
-**Arkiv has not selected a project-wide licence yet**, and the repository has no root `LICENSE` file.
+**Arkiv is free and open-source software under the [GNU General Public License v3.0 or later](LICENSE)** (`GPL-3.0-or-later`). You may use it for any purpose, including commercially, and study, change, build and redistribute it. If you distribute a modified version, it must stay under the GPL with its complete source. The licence covers Arkiv's code and its original artwork: the app icon, document icons and theme packs ([`NOTICE`](NOTICE)).
+
+The name **Arkiv** and the **Tension Seal** icon identify official builds: forks are welcome under a different name and icon ([name and logo policy](TRADEMARKS.md)). Contributions are accepted under the same licence ([contributing](CONTRIBUTING.md)).
 
 Third-party components keep their own licences:
 
-- **7-Zip:** Arkiv bundles a library built from a pinned subset of the official 7-Zip 26.04 source, under LGPL-2.1-or-later (some files public domain), with no RAR code. Arkiv's bridge to this library is also LGPL-2.1-or-later. Source and rebuild instructions are in [`Vendor/7zip`](Vendor/7zip/README.md) and the [7z backend](docs/sevenzip.md) notes.
-- **libarchive:** Arkiv uses the macOS system copy. Its BSD-licensed headers are included for building.
-- **Sparkle 2.10.0:** bundled for updates. Its licence file is included in the app.
+- **7-Zip:** Arkiv bundles a library built from a pinned subset of the official 7-Zip 26.04 source, under LGPL-2.1-or-later (some files public domain), with no RAR code. Arkiv's bridge to this library is also LGPL-2.1-or-later, and you may replace the library with your own build. Source and rebuild instructions are in [`Vendor/7zip`](Vendor/7zip/README.md) and the [7z backend](docs/sevenzip.md) notes.
+- **libarchive, zlib, bzip2, liblzma:** Arkiv uses the macOS system copies. Their BSD-style headers are included for building.
+- **Zstandard 1.5.7:** built in under BSD-3-Clause.
+- **Sparkle 2.10.0:** bundled for updates (MIT). Its licence file is included in the app.
 - **Inter Display 4.0** (SIL Open Font License 1.1, [`OFL.txt`](design/document-icons/fonts/OFL.txt)) renders document-icon and README-banner lettering at design time; no font is bundled in the app.
 
 See [third-party notices](docs/third-party-licenses.md).

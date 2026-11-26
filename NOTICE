@@ -1,0 +1,40 @@
+Arkiv
+Copyright (C) 2026 Arkiv contributors
+
+SPDX-License-Identifier: GPL-3.0-or-later
+
+Arkiv is free software: you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. Arkiv is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU General Public License (LICENSE) for
+more details.
+
+Scope. Unless a file or directory says otherwise, this licence covers
+everything in the Arkiv repository written for Arkiv: source code, build and
+CI scripts, documentation, the app icon and Tension Seal artwork, the bundled
+and downloadable document-icon artwork and theme packs, and README artwork.
+
+Separately licensed components keep their own licences and are NOT relicensed:
+
+  * 7-Zip 26.04 source subset (Vendor/7zip) and Arkiv's 7-Zip bridge
+    (Sources/CArkivSeven, scripts/build-sevenzip.py): GNU LGPL-2.1-or-later,
+    some files BSD or public domain as marked. Built as the replaceable
+    library Contents/Frameworks/libArkivSeven.dylib. No RAR (unRAR-restricted)
+    source is included.
+  * Zstandard 1.5.7 (statically linked): BSD-3-Clause.
+  * Sparkle 2.10.0 (embedded framework): MIT, with its own notices.
+  * libarchive, zlib, bzip2, liblzma: macOS system libraries; vendored API
+    headers keep their BSD-2-Clause, bzip2 and 0BSD notices.
+  * Inter Display 4.0 fonts (design/document-icons/fonts, design time only,
+    not in the app): SIL Open Font License 1.1.
+  * Test fixtures from the libarchive and WinZip AES corpora: BSD notices in
+    licenses/.
+
+Full notices: docs/third-party-licenses.md (packaged in the app as
+ThirdPartyNotices.txt) and the files in licenses/.
+
+Trademarks. The GPL grants copyright permissions only. It does not grant
+rights to use the name "Arkiv" or the Tension Seal mark as the name or icon
+of a modified version (GPL-3.0 section 7(e)). See TRADEMARKS.md.

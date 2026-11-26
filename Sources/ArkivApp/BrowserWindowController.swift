@@ -32,17 +32,44 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         queue.qualityOfService = .userInitiated
         return queue
     }()
-    private let search = NSSearchField()
-    private let pathLabel = NSTextField(labelWithString: "Open an archive to begin")
-    private let status = NSTextField(labelWithString: "ZIP and TAR • Browse before extracting")
+    let search = NSSearchField()
+    private let status = NSTextField(labelWithString: "")
     private let spinner = NSProgressIndicator()
     private let cancelButton = NSButton(title: "Cancel", target: nil, action: nil)
-    private let emptyView = NSView()
+    let welcome = WelcomeView()
     private let browserView = NSView()
-    private let footer = NSStackView()
-    private let emptyOpenButton = NSButton(title: "Open Archive…", target: nil, action: nil)
+    private let footer = ArkivFooterBar()
+    let pathControl = NSPathControl()
+    private var pathControlPaths: [String] = []
     private let noResults = NSTextField(labelWithString: "")
-    private var navigationButtons: [NSButton] = []
+    private let noResultsIcon = NSImageView()
+    private lazy var noResultsStack = NSStackView(views: [noResultsIcon, noResults])
+    /// The archive-browsing toolbar; a second, empty toolbar keeps the
+    /// title bar height identical while the welcome canvas is shown.
+    let browserToolbar = NSToolbar(identifier: "ArkivBrowser.v2")
+    private let welcomeToolbar = NSToolbar(identifier: "ArkivWelcome")
+    private(set) var searchItem: NSSearchToolbarItem?
+    /// Presentation preferences (density, accent, alternating rows). Set
+    /// after creation; every window shares the app's instance.
+    var preferences = AppPreferences() {
+        didSet {
+            NotificationCenter.default.removeObserver(self, name: .arkivAppearancePreferencesDidChange, object: oldValue)
+            NotificationCenter.default.addObserver(self, selector: #selector(appearancePreferencesDidChange(_:)),
+                                                   name: .arkivAppearancePreferencesDidChange, object: preferences)
+        applyPresentation(density: preferences.density, accent: preferences.accent, alternatingRows: preferences.alternatingRows)
+            applyPresentation(density: preferences.density, accent: preferences.accent, alternatingRows: preferences.alternatingRows)
+        }
+    }
+    /// Recent archives for the welcome canvas (NSDocumentController history).
+    var recentArchives: () -> [URL] {
+        get { welcome.recentURLs }
+        set { welcome.recentURLs = newValue; welcome.reloadRecents() }
+    }
+    /// Set by the app for windows opened from inside another archive.
+    var nestedParentName: String? { didSet { updateSubtitle() } }
+    var onOpenURLs: (([URL]) -> Void)?
+    var onCreate: (() -> Void)?
+    var onShowSettings: ((SettingsWindowController.Pane?) -> Void)?
     private var snapshot: ArchiveSnapshot?
     private var zipAdditionAvailable = false
     private var additionCapability: ArchiveAdditionCapability = .readOnly("Open an archive to add items.")
@@ -67,6 +94,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     private let engine = LibArchiveEngine()
     private let worker: DispatchQueue
     private let documentIcons: DocumentIconProvider
+    private(set) var density: BrowserDensity
+    private var accent: NSColor?
 
     init(worker: DispatchQueue = DispatchQueue(label: "xyz.isharalakshan.arkiv.archive", qos: .userInitiated),
          columnPreferences: BrowserColumnPreferences = BrowserColumnPreferences(),
@@ -88,30 +117,48 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         self.openFileLauncher = openFileLauncher
         self.prepareOpenFile = prepareOpenFile
         self.requestArchivePassword = requestArchivePassword
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 920, height: 580),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        density = .standard
+        accent = ArkivStyle.customAccent(.arkiv)
+        // The table scrolls under the translucent unified toolbar; the welcome
+        // canvas runs up behind a transparent title bar.
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 940, height: 600),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         super.init(window: window)
         window.title = "Arkiv"
-        window.minSize = NSSize(width: 640, height: 360)
+        window.minSize = NSSize(width: 640, height: 400)
         window.center()
         window.delegate = self
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
+        window.toolbarStyle = .unified
+        welcome.documentIcons = documentIcons
+        welcome.reloadRecents()
         window.contentView = makeContent()
         NotificationCenter.default.addObserver(self, selector: #selector(documentIconThemeDidChange(_:)),
                                                name: .arkivDocumentIconThemeDidChange, object: nil)
-        let toolbar = NSToolbar(identifier: "ArkivBrowser")
-        toolbar.delegate = self
-        toolbar.displayMode = .iconAndLabel
-        toolbar.allowsUserCustomization = true
-        window.toolbar = toolbar
-        window.toolbarStyle = .unified
+        NotificationCenter.default.addObserver(self, selector: #selector(appearancePreferencesDidChange(_:)),
+                                               name: .arkivAppearancePreferencesDidChange, object: preferences)
+        applyPresentation(density: preferences.density, accent: preferences.accent, alternatingRows: preferences.alternatingRows)
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(accessibilityDisplayOptionsDidChange(_:)),
+                                               name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
+        browserToolbar.delegate = self
+        browserToolbar.displayMode = .iconOnly
+        browserToolbar.allowsUserCustomization = true
+        browserToolbar.autosavesConfiguration = true
+        welcomeToolbar.delegate = self
+        welcomeToolbar.displayMode = .iconOnly
+        welcomeToolbar.allowsUserCustomization = false
+        applyWindowState()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+    deinit {
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        quickLook.close(); openSession.close()
+    }
     private func makeContent() -> NSView {
         table.previewKeyHandler = { [weak self] event in self?.handlePreviewKey(event) ?? false }
-        table.usesAlternatingRowBackgroundColors = false
-        table.style = .plain
+        table.usesAlternatingRowBackgroundColors = preferences.alternatingRows
+        table.style = .fullWidth
         table.backgroundColor = .textBackgroundColor
         table.allowsMultipleSelection = true
         table.registerForDraggedTypes([.fileURL])
@@ -119,12 +166,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         table.setDraggingSourceOperationMask(.copy, forLocal: true)
         table.allowsColumnReordering = true
         table.columnAutoresizingStyle = .noColumnAutoresizing
-        table.rowHeight = 26
+        table.rowHeight = CGFloat(density.rowHeight)
         table.intercellSpacing = NSSize(width: 8, height: 0)
         table.dataSource = self; table.delegate = self
         table.target = self; table.doubleAction = #selector(activateRow(_:))
         table.setAccessibilityLabel("Archive contents")
-        for (id, title, width) in [("name", "Name", 500.0), ("size", "Size", 110.0), ("type", "Kind", 130.0), ("packed", "Packed Size", 110.0), ("ratio", "Ratio", 90.0), ("modified", "Modified", 175.0), ("method", "Method", 130.0), ("encrypted", "Encrypted", 90.0), ("crc", "CRC", 100.0), ("attributes", "Attributes", 110.0)] {
+        for (id, title, width) in [("name", "Name", 340.0), ("size", "Size", 110.0), ("type", "Kind", 130.0), ("packed", "Packed Size", 110.0), ("ratio", "Ratio", 90.0), ("modified", "Modified", 175.0), ("method", "Method", 130.0), ("encrypted", "Encrypted", 90.0), ("crc", "CRC", 100.0), ("attributes", "Attributes", 110.0)] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
             column.title = title; column.width = width; column.minWidth = id == "name" ? 180 : 80
             column.resizingMask = [.userResizingMask]
@@ -133,6 +180,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
             column.isHidden = columnPreferences.isHidden(id)
             column.headerCell.alignment = ["size","packed","ratio"].contains(id) ? .right : .left
             column.sortDescriptorPrototype = NSSortDescriptor(key: id, ascending: true)
+            column.headerToolTip = title
             table.addTableColumn(column)
         }
         let columns = NSMenu(title: "Columns")
@@ -146,126 +194,141 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         table.headerView?.menu = columns
         restoringColumns = false
         table.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
-        let menu = NSMenu()
-        menu.addItem(withTitle: "Open", action: #selector(openSelectedFile(_:)), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Open as Archive", action: #selector(openSelectedArchive(_:)), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Quick Look", action: #selector(quickLookSelectedFile(_:)), keyEquivalent: "").target = self
-        let contents = menu.addItem(withTitle: "Show Package Contents", action: #selector(showPackageContents(_:)), keyEquivalent: "")
-        contents.target = self
-        let extract = menu.addItem(withTitle: "Extract Selected…", action: #selector(extractSelected(_:)), keyEquivalent: "")
-        extract.target = self
-        let copy = menu.addItem(withTitle: "Copy Path", action: #selector(copyPath(_:)), keyEquivalent: "")
-        copy.target = self
-        menu.addItem(.separator())
-        for (title, action) in [("Add Files…", #selector(addFiles(_:))), ("Add Folder…", #selector(addFolder(_:)))] {
-            let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
-            item.target = self
-        }
-        menu.addItem(withTitle: "Replace File…", action: #selector(replaceSelected(_:)), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "New Folder…", action: #selector(newFolder(_:)), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Replace Folder…", action: #selector(replaceSelectedFolder(_:)), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Update Selected Files…", action: #selector(updateSelectedFiles(_:)), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Update Folder…", action: #selector(updateSelectedFolder(_:)), keyEquivalent: "").target = self
-        let rename = menu.addItem(withTitle: "Rename…", action: #selector(renameSelected(_:)), keyEquivalent: "")
-        rename.target = self
-        let delete = menu.addItem(withTitle: "Delete…", action: #selector(deleteSelected(_:)), keyEquivalent: "")
-        delete.target = self
-        table.menu = menu
+        table.menu = makeContextMenu()
         let scroll = NSScrollView()
         scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = true
         scroll.autohidesScrollers = true
+        scroll.automaticallyAdjustsContentInsets = true
         scroll.drawsBackground = true; scroll.backgroundColor = .textBackgroundColor
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+
         search.placeholderString = "Search archive"
-        search.controlSize = .small
-        search.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         search.delegate = self
         search.setAccessibilityLabel("Search archive paths")
-        search.toolTip = "Search all paths in this archive (⌘F)"
-        search.widthAnchor.constraint(equalToConstant: 180).isActive = true
-        pathLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        pathLabel.lineBreakMode = .byTruncatingMiddle
-        pathLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        pathLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        pathLabel.setAccessibilityLabel("Current folder")
-        let definitions: [(String, String, Selector)] = [
-            ("Back (⌘[)", "chevron.left", #selector(goBack(_:))),
-            ("Forward (⌘])", "chevron.right", #selector(goForward(_:))),
-            ("Up to parent folder (⌘↑)", "arrow.up", #selector(goUp(_:)))
-        ]
-        navigationButtons = definitions.map { title, symbol, action in
-            let button = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: title)!, target: self, action: action)
-            button.bezelStyle = .texturedRounded; button.controlSize = .small
-            button.toolTip = title; button.setAccessibilityLabel(title)
-            button.widthAnchor.constraint(equalToConstant: 28).isActive = true
-            return button
-        }
-        let navigation = NSStackView(views: navigationButtons + [pathLabel, search])
-        navigation.spacing = 6; navigation.edgeInsets = NSEdgeInsets(top: 7, left: 10, bottom: 7, right: 10)
-        let separator = NSBox(); separator.boxType = .separator
-        let browser = NSStackView(views: [navigation, separator, scroll])
-        browser.orientation = .vertical; browser.alignment = .leading; browser.spacing = 0
-        for child in [navigation, separator, scroll] { child.widthAnchor.constraint(equalTo: browser.widthAnchor).isActive = true }
-        pin(browser, inside: browserView)
-        noResults.font = .systemFont(ofSize: 13); noResults.textColor = .secondaryLabelColor
-        noResults.translatesAutoresizingMaskIntoConstraints = false
-        browserView.addSubview(noResults)
-        NSLayoutConstraint.activate([noResults.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
-            noResults.centerYAnchor.constraint(equalTo: scroll.centerYAnchor)])
+        search.toolTip = "Search every path in this archive (⌘F)"
+        search.sendsSearchStringImmediately = false
 
-        let icon = NSImageView(image: NSApp.applicationIconImage)
-        icon.imageScaling = .scaleProportionallyDown
-        icon.setAccessibilityElement(false)
-        icon.widthAnchor.constraint(equalToConstant: 64).isActive = true
-        icon.heightAnchor.constraint(equalToConstant: 64).isActive = true
-        let title = NSTextField(labelWithString: "Arkiv")
-        title.font = .systemFont(ofSize: 20, weight: .semibold)
-        let description = NSTextField(labelWithString: "Browse an archive and choose what to extract.")
-        description.font = .systemFont(ofSize: 13); description.textColor = .secondaryLabelColor
-        emptyOpenButton.target = self; emptyOpenButton.action = #selector(openArchive(_:))
-        emptyOpenButton.bezelStyle = .rounded
-        emptyOpenButton.toolTip = "Choose an archive to browse (⌘O)"
-        let hint = NSTextField(labelWithString: "⌘O to open an archive")
-        hint.font = .systemFont(ofSize: 11); hint.textColor = .secondaryLabelColor
-        let welcome = NSStackView(views: [icon, title, description, emptyOpenButton, hint])
-        welcome.orientation = .vertical; welcome.alignment = .centerX; welcome.spacing = 10
+        pathControl.pathStyle = .standard
+        pathControl.controlSize = .small
+        pathControl.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        pathControl.focusRingType = .none
+        pathControl.target = self; pathControl.action = #selector(pathControlClicked(_:))
+        pathControl.setAccessibilityLabel("Current folder")
+        pathControl.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        pathControl.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        browserView.translatesAutoresizingMaskIntoConstraints = false
+        browserView.addSubview(scroll)
+        NSLayoutConstraint.activate([
+            scroll.leadingAnchor.constraint(equalTo: browserView.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: browserView.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: browserView.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: browserView.bottomAnchor),
+        ])
+        noResults.font = .systemFont(ofSize: 13); noResults.textColor = .secondaryLabelColor
+        noResultsIcon.contentTintColor = .tertiaryLabelColor
+        noResultsIcon.setAccessibilityElement(false)
+        noResultsStack.orientation = .vertical; noResultsStack.spacing = 8
+        noResultsStack.translatesAutoresizingMaskIntoConstraints = false
+        browserView.addSubview(noResultsStack)
+        NSLayoutConstraint.activate([noResultsStack.centerXAnchor.constraint(equalTo: scroll.centerXAnchor),
+            noResultsStack.centerYAnchor.constraint(equalTo: scroll.centerYAnchor, constant: 20)])
+
         welcome.translatesAutoresizingMaskIntoConstraints = false
-        emptyView.addSubview(welcome)
-        NSLayoutConstraint.activate([welcome.centerXAnchor.constraint(equalTo: emptyView.centerXAnchor),
-            welcome.centerYAnchor.constraint(equalTo: emptyView.centerYAnchor)])
-        let body = NSView()
-        pin(browserView, inside: body); pin(emptyView, inside: body)
+        welcome.onOpen = { [weak self] in self?.openArchive(nil) }
+        welcome.onCreate = { [weak self] in self?.onCreate?() }
+        welcome.onOpenURLs = { [weak self] urls in self?.openDropped(urls) }
+        welcome.onAppearance = { [weak self] in self?.onShowSettings?(.appearance) }
+
         spinner.style = .spinning; spinner.controlSize = .small; spinner.isDisplayedWhenStopped = false
         cancelButton.target = self; cancelButton.action = #selector(cancel(_:)); cancelButton.isHidden = true
         cancelButton.bezelStyle = .rounded; cancelButton.controlSize = .small
         status.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         status.textColor = .secondaryLabelColor
         status.lineBreakMode = .byTruncatingTail
-        status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        status.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        footer.addArrangedSubview(status); footer.addArrangedSubview(spinner); footer.addArrangedSubview(cancelButton)
-        footer.edgeInsets = NSEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
-        let content = NSStackView(views: [body, footer])
-        content.orientation = .vertical; content.alignment = .leading; content.spacing = 0
-        for child in [body, footer] { child.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true }
-        body.heightAnchor.constraint(greaterThanOrEqualToConstant: 240).isActive = true
-        updateControls()
+        status.alignment = .right
+        status.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(260), for: .horizontal)
+        status.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        status.setAccessibilityLabel("Status")
+        footer.stack.setViews([pathControl, status, spinner, cancelButton], in: .leading)
+        footer.stack.setCustomSpacing(12, after: pathControl)
+
+        let content = NSView()
+        for view in [browserView, welcome, footer] as [NSView] { content.addSubview(view) }
+        NSLayoutConstraint.activate([
+            welcome.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            welcome.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            welcome.topAnchor.constraint(equalTo: content.topAnchor),
+            welcome.bottomAnchor.constraint(equalTo: footer.topAnchor),
+            browserView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            browserView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            browserView.topAnchor.constraint(equalTo: content.topAnchor),
+            browserView.bottomAnchor.constraint(equalTo: footer.topAnchor),
+            footer.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            footer.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            footer.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+        ])
+        footerHeight = footer.heightAnchor.constraint(equalToConstant: ArkivFooterBar.height)
+        footerHeight?.isActive = true
         return content
     }
-    private func pin(_ child: NSView, inside parent: NSView) {
-        child.translatesAutoresizingMaskIntoConstraints = false; parent.addSubview(child)
-        NSLayoutConstraint.activate([child.leadingAnchor.constraint(equalTo: parent.leadingAnchor),
-            child.trailingAnchor.constraint(equalTo: parent.trailingAnchor),
-            child.topAnchor.constraint(equalTo: parent.topAnchor), child.bottomAnchor.constraint(equalTo: parent.bottomAnchor)])
+    private var footerHeight: NSLayoutConstraint?
+    private func makeContextMenu() -> NSMenu {
+        let menu = NSMenu()
+        func add(_ title: String, _ action: Selector, _ symbol: String? = nil) {
+            let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
+            item.target = self
+            if let symbol { item.image = ArkivStyle.symbol(symbol, title) }
+        }
+        add("Open", #selector(openSelectedFile(_:)), "arrow.up.forward.app")
+        add("Open as Archive", #selector(openSelectedArchive(_:)), "archivebox")
+        add("Quick Look", #selector(quickLookSelectedFile(_:)), "eye")
+        add("Show Package Contents", #selector(showPackageContents(_:)), "shippingbox")
+        menu.addItem(.separator())
+        add("Extract Selected…", #selector(extractSelected(_:)), "arrow.down.doc")
+        add("Copy Path", #selector(copyPath(_:)), "doc.on.doc")
+        menu.addItem(.separator())
+        add("Add Files…", #selector(addFiles(_:)), "doc.badge.plus")
+        add("Add Folder…", #selector(addFolder(_:)), "folder.badge.plus")
+        add("Replace File…", #selector(replaceSelected(_:)))
+        add("New Folder…", #selector(newFolder(_:)))
+        add("Replace Folder…", #selector(replaceSelectedFolder(_:)))
+        add("Update Selected Files…", #selector(updateSelectedFiles(_:)))
+        add("Update Folder…", #selector(updateSelectedFolder(_:)))
+        add("Rename…", #selector(renameSelected(_:)), "pencil")
+        menu.addItem(.separator())
+        add("Delete…", #selector(deleteSelected(_:)), "trash")
+        return menu
     }
     @objc func openArchive(_ sender: Any?) { onOpen?() }
+    @objc func createArchive(_ sender: Any?) { onCreate?() }
+    @objc func showSettings(_ sender: Any?) { onShowSettings?(nil) }
+    private func openDropped(_ urls: [URL]) {
+        guard !isBusy, window?.attachedSheet == nil else { return }
+        if let onOpenURLs { onOpenURLs(urls) } else if let first = urls.first { load(first) }
+    }
+    /// Welcome canvas or archive browser. Same title-bar height in both, so
+    /// nothing jumps when an archive opens.
+    private var showsBrowser: Bool { snapshot != nil }
+    private func applyWindowState() {
+        guard let window else { return }
+        let browsing = showsBrowser
+        welcome.isHidden = browsing
+        browserView.isHidden = !browsing
+        footer.isHidden = !browsing && !isBusy
+        footerHeight?.constant = footer.isHidden ? 0 : ArkivFooterBar.height
+        pathControl.isHidden = !browsing
+        let toolbar = browsing ? browserToolbar : welcomeToolbar
+        if window.toolbar !== toolbar { window.toolbar = toolbar }
+        window.titlebarAppearsTransparent = !browsing
+        window.titleVisibility = browsing ? .visible : .hidden
+        window.titlebarSeparatorStyle = browsing ? .automatic : .none
+        if !browsing { window.title = "Arkiv"; window.subtitle = "" }
+    }
     private func updateControls() {
-        emptyView.isHidden = snapshot != nil
-        browserView.isHidden = snapshot == nil
-        footer.isHidden = snapshot == nil && !isBusy
-        emptyOpenButton.isEnabled = !isBusy
-        for button in navigationButtons {
-            button.isEnabled = validateMenuItem(NSMenuItem(title: "", action: button.action, keyEquivalent: ""))
-        }
+        applyWindowState()
+        welcome.setEnabled(!isBusy)
+        updateToolbarState()
         window?.toolbar?.validateVisibleItems()
     }
     func load(_ url: URL, password: String? = nil, browsingFolder: String = "", selectingPath: String? = nil, selectingPaths: Set<String> = []) {
@@ -299,6 +362,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                     self.currentPath = value.index.row(at: browsingFolder)?.isDirectory == true ? browsingFolder : ""; self.back = []; self.forward = []
                     self.window?.title = url.lastPathComponent
                     self.window?.representedURL = url
+                    self.updateSubtitle()
                     self.applyDocumentIcon()
                     self.reload()
                     let wanted = selectingPaths.union(selectingPath.map { [$0] } ?? [])
@@ -329,6 +393,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         zipAdditionAvailable = additionCapability == .zip
         window?.title = value.url.lastPathComponent
         window?.representedURL = value.url
+        updateSubtitle()
         applyDocumentIcon()
         reload()
         window?.makeFirstResponder(table)
@@ -346,7 +411,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         updateControls()
     }
     @objc func cancel(_ sender: Any?) { cancellation?.cancel(); status.stringValue = "Cancelling…" }
-    @objc func focusSearch(_ sender: Any?) { window?.makeFirstResponder(search) }
+    @objc func focusSearch(_ sender: Any?) {
+        if let searchItem, window?.toolbar === browserToolbar, browserToolbar.items.contains(where: { $0 === searchItem }) {
+            searchItem.beginSearchInteraction()
+        } else { window?.makeFirstResponder(search) }
+    }
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         guard !isBusy, let snapshot, rows.indices.contains(row) else { return nil }
         if dragSession == nil {
@@ -443,6 +512,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
                     status.stringValue = "Test Archive — " + value.state.rawValue
                     let alert = NSAlert(); alert.messageText = status.stringValue; alert.informativeText = value.detail
                     alert.alertStyle = value.state == .ok ? .informational : .warning
+                    let ok = value.state == .ok
+                    let symbol = NSImage(systemSymbolName: ok ? "checkmark.seal.fill" : "exclamationmark.triangle.fill", accessibilityDescription: ok ? "Passed" : "Problem found")
+                    alert.icon = symbol?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 48, weight: .regular)
+                        .applying(NSImage.SymbolConfiguration(paletteColors: [ok ? ArkivStyle.success : .systemOrange])))
                     if let window { alert.beginSheetModal(for: window) }
                 case .failure(let error):
                     if ArchivePasswordPrompt.isPasswordFailure(error) {
@@ -1101,7 +1174,6 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         cancellation?.cancel(); openSession.close()
         snapshot = nil; index = nil; archiveSource = nil; dragSession = nil
     }
-    deinit { quickLook.close(); openSession.close() }
     private var selectedPackage: BrowserRow? {
         guard table.selectedRowIndexes.count == 1, rows.indices.contains(table.selectedRow),
               BrowserPresentation.packageKind(rows[table.selectedRow]) != nil else { return nil }
@@ -1128,14 +1200,114 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         if let image = documentIcons.icon(forFileName: url.lastPathComponent, points: 16) { button.image = image }
         else { window?.representedURL = nil; window?.representedURL = url }
     }
+    /// A theme change redraws only what shows document icons: the title-bar
+    /// proxy icon, the Name column of visible rows, the path bar's archive
+    /// item, the welcome list and an open Archive Info sheet. The archive is
+    /// not reread and selection, scrolling and sorting are untouched.
     @objc private func documentIconThemeDidChange(_ notification: Notification) {
         applyDocumentIcon()
-        table.reloadData()
+        reloadNameColumn()
+        updatePathControl()
+        if snapshot == nil { welcome.reloadRecents() }
+        archiveInspector?.refreshIcon()
+    }
+    private func reloadNameColumn() {
+        let column = table.column(withIdentifier: NSUserInterfaceItemIdentifier("name"))
+        let visible = table.rows(in: table.visibleRect)
+        guard column >= 0, visible.length > 0 else { return }
+        table.reloadData(forRowIndexes: IndexSet(integersIn: visible.location..<(visible.location + visible.length)), columnIndexes: IndexSet(integer: column))
+    }
+    /// Density, accent and alternating rows apply to every open window at once.
+    @objc private func appearancePreferencesDidChange(_ notification: Notification) {
+        guard let changed = notification.object as? AppPreferences else { return }
+        applyPresentation(density: changed.density, accent: changed.accent, alternatingRows: changed.alternatingRows)
+    }
+    func applyPresentation(density: BrowserDensity, accent: AppAccent, alternatingRows: Bool) {
+        let densityChanged = density != self.density
+        self.density = density
+        self.accent = ArkivStyle.customAccent(accent)
+        ArkivStyle.stylePrimary(welcome.openButton, accent: accent)
+        table.usesAlternatingRowBackgroundColors = alternatingRows
+        if densityChanged {
+            table.rowHeight = CGFloat(density.rowHeight)
+            table.noteHeightOfRows(withIndexesChanged: IndexSet(integersIn: 0..<rows.count))
+        }
+        table.enumerateAvailableRowViews { rowView, row in
+            (rowView as? ArchiveRowView)?.accent = self.accent
+            if densityChanged {
+                for column in 0..<rowView.numberOfColumns {
+                    if let cell = rowView.view(atColumn: column) as? ArchiveCellView, self.rows.indices.contains(row),
+                       let id = cell.identifier?.rawValue {
+                        cell.configure(self.rows[row], column: id, searching: !self.search.stringValue.isEmpty, documentIcons: self.documentIcons, density: density)
+                    }
+                }
+            }
+        }
+        table.needsDisplay = true
+    }
+    @objc private func accessibilityDisplayOptionsDidChange(_ notification: Notification) { welcome.needsDisplay = true }
+    /// Title shows the archive; the subtitle carries its identity.
+    func updateSubtitle() {
+        guard let window else { return }
+        guard let snapshot else { window.subtitle = ""; return }
+        var parts: [String] = []
+        if let parent = nestedParentName { parts.append("Inside \(parent)") }
+        let metadata = snapshot.metadata
+        if let format = metadata?.format { parts.append(format) }
+        let files = metadata?.fileCount ?? snapshot.entries.filter { $0.kind == .file }.count
+        parts.append(files == 1 ? "1 file" : "\(Self.number(files)) files")
+        if let size = metadata?.physicalSize {
+            parts.append(ByteCountFormatter.string(fromByteCount: Int64(clamping: size), countStyle: .file))
+        }
+        window.subtitle = parts.joined(separator: " · ")
+    }
+    private static func number<T: BinaryInteger>(_ value: T) -> String {
+        NumberFormatter.localizedString(from: NSNumber(value: Int64(value)), number: .decimal)
+    }
+    /// Archive name, then each folder; clicking an item navigates there.
+    private func updatePathControl() {
+        guard let snapshot else { pathControl.pathItems = []; pathControlPaths = []; return }
+        var items: [NSPathControlItem] = []
+        var paths: [String] = []
+        let root = NSPathControlItem()
+        root.title = snapshot.url.lastPathComponent
+        root.image = documentIcons.icon(forFileName: snapshot.url.lastPathComponent, points: 16) ?? NSWorkspace.shared.icon(for: .archive)
+        items.append(root); paths.append("")
+        if !search.stringValue.isEmpty {
+            let results = NSPathControlItem()
+            results.title = "Search results"
+            results.image = ArkivStyle.symbol("magnifyingglass", "Search results", pointSize: 11)
+            items.append(results); paths.append(currentPath)
+        } else {
+            var partial: [Substring] = []
+            for component in currentPath.split(separator: "/") {
+                partial.append(component)
+                let item = NSPathControlItem()
+                item.title = String(component)
+                item.image = Self.folderIcon
+                items.append(item); paths.append(partial.joined(separator: "/"))
+            }
+        }
+        pathControl.pathItems = items
+        pathControlPaths = paths
+        pathControl.toolTip = snapshot.url.lastPathComponent + ": /" + currentPath
+    }
+    private static let folderIcon: NSImage = {
+        let image = NSWorkspace.shared.icon(for: .folder)
+        image.size = NSSize(width: 16, height: 16)
+        return image
+    }()
+    @objc func pathControlClicked(_ sender: Any?) {
+        guard let item = pathControl.clickedPathItem, let index = pathControl.pathItems.firstIndex(where: { $0 === item }),
+              pathControlPaths.indices.contains(index) else { return }
+        let path = pathControlPaths[index]
+        if path != currentPath || !search.stringValue.isEmpty { navigate(path) }
     }
     private var archiveInspector: ArchiveInspector?
     @objc func showInfo(_ sender: Any?) {
         guard let metadata = snapshot?.metadata, let window, window.attachedSheet == nil else { return }
-        let inspector = ArchiveInspector(metadata:metadata, icon: documentIcons.icon(forFileName: metadata.url.lastPathComponent, points: 64))
+        let icons = documentIcons
+        let inspector = ArchiveInspector(metadata: metadata, iconProvider: { icons.icon(forFileName: metadata.url.lastPathComponent, points: 64) })
         archiveInspector = inspector
         if let panel = inspector.window {
             window.beginSheet(panel) { [weak self] _ in self?.archiveInspector = nil }
@@ -1150,22 +1322,25 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         let paths = preservingSelection ? selectedPaths() : []
         rows = search.stringValue.isEmpty ? index?.children(of: currentPath) ?? [] : index?.search(search.stringValue) ?? []
         sortRows()
-        pathLabel.stringValue = currentPath.isEmpty ? (snapshot?.url.lastPathComponent ?? "") : "/" + currentPath
-        pathLabel.toolTip = (snapshot?.url.lastPathComponent ?? "") + ": /" + currentPath
+        updatePathControl()
         table.reloadData()
         table.selectRowIndexes(BrowserPresentation.selection(paths, in: rows), byExtendingSelection: false)
         if !preservingSelection { table.scroll(.zero) }
         noResults.stringValue = !search.stringValue.isEmpty ? "No matching entries"
             : snapshot?.entries.isEmpty == true ? "This archive is empty" : "This folder is empty"
-        noResults.isHidden = !rows.isEmpty
+        noResultsIcon.image = ArkivStyle.symbol(!search.stringValue.isEmpty ? "magnifyingglass" : snapshot?.entries.isEmpty == true ? "archivebox" : "folder",
+                                                "", pointSize: 30, weight: .light)
+        noResultsStack.isHidden = !rows.isEmpty
         updateStatus(); updateControls()
     }
     private func updateStatus() {
         guard !isBusy, let snapshot else { return }
-        var text = "\(rows.count) shown · \(snapshot.entries.count) archive entries"
+        var text = rows.count == 1 ? "1 item" : "\(Self.number(rows.count)) items"
+        if !search.stringValue.isEmpty { text += " found" }
+        text += " · \(Self.number(snapshot.entries.count)) in archive"
         let selected = table.selectedRowIndexes.compactMap { rows.indices.contains($0) ? rows[$0] : nil }
         if !selected.isEmpty {
-            text += " · \(selected.count) selected"
+            text += " · \(Self.number(selected.count)) selected"
             if let bytes = BrowserPresentation.selectedSize(selected) {
                 text += " (\(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)))"
             }
@@ -1187,12 +1362,19 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
-    func tableViewSelectionDidChange(_ notification: Notification) { if !dragIsActive { dragSession = nil }; updateStatus(); window?.toolbar?.validateVisibleItems() }
+    func tableViewSelectionDidChange(_ notification: Notification) { if !dragIsActive { dragSession = nil }; updateStatus(); updateToolbarState(); window?.toolbar?.validateVisibleItems() }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let id = tableColumn?.identifier ?? NSUserInterfaceItemIdentifier("name")
         let cell = tableView.makeView(withIdentifier: id, owner: self) as? ArchiveCellView ?? ArchiveCellView(column: id.rawValue)
-        cell.configure(rows[row], column: id.rawValue, searching: !search.stringValue.isEmpty, documentIcons: documentIcons)
+        cell.configure(rows[row], column: id.rawValue, searching: !search.stringValue.isEmpty, documentIcons: documentIcons, density: density)
         return cell
+    }
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        let view = tableView.makeView(withIdentifier: ArchiveRowView.identifier, owner: self) as? ArchiveRowView ?? {
+            let view = ArchiveRowView(); view.identifier = ArchiveRowView.identifier; return view
+        }()
+        view.accent = accent
+        return view
     }
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         let paths = selectedPaths()
@@ -1224,6 +1406,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         case #selector(goBack(_:)): return !isBusy && !back.isEmpty
         case #selector(goForward(_:)): return !isBusy && !forward.isEmpty
         case #selector(focusSearch(_:)): return !isBusy && snapshot != nil
+        case #selector(showSettings(_:)): return true
+        case #selector(createArchive(_:)): return onCreate != nil
         default: return !isBusy
         }
     }
@@ -1237,27 +1421,100 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         return true
     }
     func windowWillClose(_ notification: Notification) { endArchiveSession(); onClose?() }
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [NSToolbarItem.Identifier("open"), .flexibleSpace, NSToolbarItem.Identifier("extract"), NSToolbarItem.Identifier("all"), NSToolbarItem.Identifier("test"), NSToolbarItem.Identifier("info")]
+    func windowDidBecomeKey(_ notification: Notification) { if snapshot == nil && !isBusy { welcome.reloadRecents() } }
+    // MARK: Toolbar
+
+    enum ToolbarID {
+        static let navigation = NSToolbarItem.Identifier("navigation")
+        static let up = NSToolbarItem.Identifier("up")
+        static let open = NSToolbarItem.Identifier("open")
+        static let extract = NSToolbarItem.Identifier("extract")
+        static let all = NSToolbarItem.Identifier("all")
+        static let add = NSToolbarItem.Identifier("add")
+        static let quickLook = NSToolbarItem.Identifier("quicklook")
+        static let test = NSToolbarItem.Identifier("test")
+        static let info = NSToolbarItem.Identifier("info")
+        static let search = NSToolbarItem.Identifier("search")
+        static let create = NSToolbarItem.Identifier("create")
+        static let settings = NSToolbarItem.Identifier("settings")
     }
+    /// Navigation sits beside the title; actions are grouped by what they do
+    /// (open, extract, edit, inspect) and search ends the row. Settings is
+    /// available from the customization palette rather than by default:
+    /// macOS already gives it a menu item and ⌘, in every window.
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        guard toolbar === browserToolbar else { return [] }
+        return [ToolbarID.navigation, .flexibleSpace, ToolbarID.open, .space, ToolbarID.extract, ToolbarID.all, .space,
+                ToolbarID.add, ToolbarID.test, ToolbarID.info, ToolbarID.search]
+    }
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        guard toolbar === browserToolbar else { return [] }
+        return [ToolbarID.navigation, ToolbarID.up, ToolbarID.open, ToolbarID.create, ToolbarID.extract, ToolbarID.all, ToolbarID.add,
+                ToolbarID.quickLook, ToolbarID.test, ToolbarID.info, ToolbarID.search, ToolbarID.settings, .space, .flexibleSpace]
+    }
+    private static let toolbarDefinitions: [String: (label: String, symbol: String, action: Selector, tip: String)] = [
+        "up": ("Enclosing Folder", "arrow.up", #selector(BrowserWindowController.goUp(_:)), "Go to the enclosing folder (⌘↑)"),
+        "open": ("Open", "folder", #selector(BrowserWindowController.openArchive(_:)), "Open another archive (⌘O)"),
+        "create": ("Create", "plus.rectangle.on.folder", #selector(BrowserWindowController.createArchive(_:)), "Create a new archive (⇧⌘N)"),
+        "extract": ("Extract", "arrow.down.doc", #selector(BrowserWindowController.extractSelected(_:)), "Extract selected files and folders (⌘E)"),
+        "all": ("Extract All", "square.and.arrow.down.on.square", #selector(BrowserWindowController.extractAll(_:)), "Extract the entire archive (⇧⌘E)"),
+        "quicklook": ("Quick Look", "eye", #selector(BrowserWindowController.quickLookSelectedFile(_:)), "Preview the selected file (Space)"),
+        "test": ("Test", "checkmark.shield", #selector(BrowserWindowController.testArchive(_:)), "Test archive data and integrity (⌘T)"),
+        "info": ("Info", "info.circle", #selector(BrowserWindowController.showInfo(_:)), "Show archive information (⌘I)"),
+        "settings": ("Settings", "gearshape", #selector(BrowserWindowController.showSettings(_:)), "Open Arkiv Settings (⌘,)"),
+    ]
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        let definitions: [String: (String, String, Selector)] = [
-            "open": ("Open Archive", "folder", #selector(openArchive(_:))),
-            "extract": ("Extract Selected", "arrow.down.doc", #selector(extractSelected(_:))),
-            "all": ("Extract All", "square.and.arrow.down", #selector(extractAll(_:))),
-            "test": ("Test Archive", "checkmark.shield", #selector(testArchive(_:))),
-            "info": ("Info", "info.circle", #selector(showInfo(_:)))
-        ]
-        guard let (title, symbol, action) = definitions[id.rawValue] else { return nil }
+        switch id {
+        case ToolbarID.navigation:
+            let back = makeToolbarItem(NSToolbarItem.Identifier("back"), label: "Back", symbol: "chevron.left", action: #selector(goBack(_:)), tip: "Go back (⌘[)")
+            let forward = makeToolbarItem(NSToolbarItem.Identifier("forward"), label: "Forward", symbol: "chevron.right", action: #selector(goForward(_:)), tip: "Go forward (⌘])")
+            let group = NSToolbarItemGroup(itemIdentifier: id)
+            group.subitems = [back, forward]
+            group.label = "Back/Forward"; group.paletteLabel = "Back/Forward"
+            group.isNavigational = true
+            return group
+        case ToolbarID.add:
+            let item = NSMenuToolbarItem(itemIdentifier: id)
+            item.label = "Add"; item.paletteLabel = "Add"
+            item.image = ArkivStyle.symbol("plus", "Add")
+            item.toolTip = "Add files or folders to this archive"
+            let menu = NSMenu()
+            for (title, action) in [("Add Files…", #selector(addFiles(_:))), ("Add Folder…", #selector(addFolder(_:))), ("New Folder…", #selector(newFolder(_:)))] {
+                menu.addItem(withTitle: title, action: action, keyEquivalent: "").target = self
+            }
+            item.menu = menu
+            item.showsIndicator = true
+            item.autovalidates = false
+            item.isEnabled = canAddItems || canCreateFolder
+            return item
+        case ToolbarID.search:
+            let item = NSSearchToolbarItem(itemIdentifier: id)
+            item.searchField = search
+            item.label = "Search"; item.paletteLabel = "Search"
+            item.toolTip = search.toolTip
+            item.preferredWidthForSearchField = 200
+            item.resignsFirstResponderWithCancel = true
+            searchItem = item
+            return item
+        default:
+            guard let definition = Self.toolbarDefinitions[id.rawValue] else { return nil }
+            return makeToolbarItem(id, label: definition.label, symbol: definition.symbol, action: definition.action, tip: definition.tip)
+        }
+    }
+    private func makeToolbarItem(_ id: NSToolbarItem.Identifier, label: String, symbol: String, action: Selector, tip: String) -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: id)
-        item.label = title; item.paletteLabel = title
-        let tips = ["open": "Open an archive (⌘O)", "extract": "Extract selected files and folders (⌘E)",
-            "all": "Extract the entire archive (⇧⌘E)", "test": "Test archive data and integrity", "info": "Show archive information (⌘I)"]
-        item.toolTip = tips[id.rawValue]
-        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+        item.label = label; item.paletteLabel = label
+        item.toolTip = tip
+        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
         item.target = self; item.action = action
+        item.isBordered = true
         return item
+    }
+    /// Items without their own action (the Add menu) are enabled explicitly.
+    private func updateToolbarState() {
+        for item in browserToolbar.items where item.itemIdentifier == ToolbarID.add {
+            item.isEnabled = canAddItems || canCreateFolder
+        }
     }
 }
 private final class ProgressThrottle: @unchecked Sendable {

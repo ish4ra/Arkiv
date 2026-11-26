@@ -19,7 +19,11 @@ Run by the manual `publish` job of .github/workflows/document-icon-themes.yml
     - a draft release with missing or wrong assets is completed or repaired;
     - a published release is accepted only if it is already complete and
       identical (published releases are immutable; never rewritten);
-    - a catalogue push that failed is simply retried.
+    - a catalogue push that failed is simply retried;
+    - a draft GitHub has created but does not list yet is looked up again
+      with a bounded, doubling wait. It is never created twice in one run,
+      two releases with the theme tag stop publication, and if the draft
+      never appears the run stops with instructions instead of crashing.
 * The catalogue version must increase, and a theme version that was already
   published must keep exactly the same pack and preview.
 
@@ -43,6 +47,11 @@ RAW = f'https://raw.githubusercontent.com/{REPO}/{BRANCH}/catalog.json'
 VERIFY = ['swift', 'scripts/document-icon-theme-catalog.swift', 'verify']
 FORBIDDEN_REFS = {'updates', 'development-updates'}
 SUPPORTED_SCHEMA = 1
+# GitHub can take a moment to list a draft it has just created (run 45578558002,
+# attempt 1: the lookup right after `gh release create` returned nothing). The
+# lookup is retried with a doubling wait: 2 + 4 + 8 + 16 + 32 s, about a minute.
+DISCOVERY_ATTEMPTS = 6
+DISCOVERY_WAIT = 2
 
 
 class PublicationError(SystemExit):
@@ -114,19 +123,27 @@ class GitHub:
         return subprocess.run(['gh', 'api', *args], check=True, capture_output=True, input=data).stdout
 
     def release(self, tag):
-        """{'id', 'draft', 'prerelease', 'assets': {name: {'id', 'size', 'sha256'}}} or None (drafts included)."""
-        page = 1
+        """{'id', 'draft', 'prerelease', 'assets': {name: {'id', 'size', 'sha256'}}} or None (drafts included).
+
+        Drafts have no tag yet, so GitHub allows several with one tag name.
+        Publication never works on an ambiguous release: two matches stop it."""
+        page, matches = 1, []
         while True:
             items = json.loads(self._api(f'repos/{self.repo}/releases?per_page=100&page={page}'))
-            for release in items:
-                if release['tag_name'] == tag:
-                    return {'id': release['id'], 'draft': release['draft'], 'prerelease': release['prerelease'],
-                            'assets': {a['name']: {'id': a['id'], 'size': a['size'],
-                                                   'sha256': (a.get('digest') or '').removeprefix('sha256:')}
-                                       for a in release['assets']}}
+            matches += [release for release in items if release['tag_name'] == tag]
             if len(items) < 100:
-                return None
+                break
             page += 1
+        if len(matches) > 1:
+            raise PublicationError(f'{len(matches)} releases are named {tag} (ids {sorted(r["id"] for r in matches)}). '
+                                   'Delete the extra draft by hand, then rerun; nothing was changed.')
+        if not matches:
+            return None
+        release = matches[0]
+        return {'id': release['id'], 'draft': release['draft'], 'prerelease': release['prerelease'],
+                'assets': {a['name']: {'id': a['id'], 'size': a['size'],
+                                       'sha256': (a.get('digest') or '').removeprefix('sha256:')}
+                           for a in release['assets']}}
 
     def create_draft(self, tag, target, title, notes):
         subprocess.run(['gh', 'release', 'create', tag, '--repo', self.repo, '--draft', '--prerelease',
@@ -146,12 +163,40 @@ class GitHub:
             return response.read()
 
 
+def discover_release(github, tag, attempts=DISCOVERY_ATTEMPTS, wait=DISCOVERY_WAIT):
+    """Look the release up until GitHub lists it: bounded, with a doubling wait. None if it never appears."""
+    delay = wait
+    for attempt in range(1, attempts + 1):
+        release = github.release(tag)
+        if release is not None:
+            if attempt > 1:
+                print(f'Release {tag} listed after {attempt} lookups', file=sys.stderr)
+            return release
+        if attempt < attempts:
+            print(f'Release {tag} is not listed by GitHub yet (lookup {attempt}/{attempts}); retrying in {delay} s', file=sys.stderr)
+            time.sleep(delay)
+            delay *= 2
+    return None
+
+
+def require_release(github, tag, stage, attempts=DISCOVERY_ATTEMPTS, wait=DISCOVERY_WAIT):
+    """The release, or a clear stop. Never creates anything, so a rerun cannot duplicate a draft."""
+    release = discover_release(github, tag, attempts, wait)
+    if release is None:
+        total = sum(wait * 2 ** i for i in range(attempts - 1))
+        raise PublicationError(f'Release {tag} could not be found {stage} after {attempts} lookups over about {total} s. '
+                               'No further draft was created and the catalogue was not published. Rerun the publish job '
+                               'once GitHub lists the draft: it resumes the existing draft.')
+    return release
+
+
 def complete_release(github, tag, own, title, notes, target):
     """Create or resume the draft until it holds exactly `own`, verified by digest; then publish it."""
     release = github.release(tag)
     if release is None:
         github.create_draft(tag, target, title, notes)
-        release = github.release(tag)
+        # Created exactly once per run; from here the draft is only looked up.
+        release = require_release(github, tag, 'after creating its draft')
     if not release['draft']:
         # Published: immutable. Accept only a complete, identical release.
         problems = sorted(set(own) ^ set(release['assets']))
@@ -167,11 +212,11 @@ def complete_release(github, tag, own, title, notes, target):
         path = own.get(name)
         if path is None or asset['size'] != path.stat().st_size or asset['sha256'] != sha256(path.read_bytes()):
             github.delete_asset(asset['id'])  # interrupted or unexpected upload in our own draft
-    present = github.release(tag)['assets']
+    present = require_release(github, tag, 'after checking its draft assets')['assets']
     for name, path in sorted(own.items()):
         if name not in present:
             github.upload(tag, path)
-    final = github.release(tag)
+    final = require_release(github, tag, 'after uploading its assets')
     for name, path in own.items():
         asset = final['assets'].get(name)
         if not asset or asset['size'] != path.stat().st_size or asset['sha256'] != sha256(path.read_bytes()):

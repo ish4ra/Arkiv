@@ -66,6 +66,9 @@ python3 scripts/package-document-icons.py Resources/DocumentIcons "$app/Contents
 ditto Resources/DocumentIconsInApp "$app/Contents/Resources/DocumentIconsInApp"
 rm "$app/Contents/Resources/DocumentIconsInApp/SHA256SUMS" "$app/Contents/Resources/DocumentIconsInApp/PIXELS.sha256"
 cp docs/third-party-licenses.md "$app/Contents/Resources/ThirdPartyNotices.txt"
+# Arkiv's own licence (GPL-3.0-or-later) and notice, next to the third-party notices.
+cp LICENSE "$app/Contents/Resources/LICENSE.txt"
+cp NOTICE "$app/Contents/Resources/NOTICE.txt"
 mkdir -p "$app/Contents/Resources/licenses"
 cp Sources/CArkiv/vendor/bzip2-LICENSE "$app/Contents/Resources/licenses/"
 cp Sources/CArkiv/vendor/xz/COPYING.0BSD "$app/Contents/Resources/licenses/xz-0BSD.txt"

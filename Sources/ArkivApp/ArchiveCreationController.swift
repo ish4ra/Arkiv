@@ -1,6 +1,7 @@
 import AppKit
 import ArkivCore
 import ArkivFinderIntegration
+import ArkivPresentation
 
 /// Owns creation UI/operation lifetime; all archive work is delegated to Core.
 final class ArchiveCreationController {
@@ -267,6 +268,7 @@ final class CreateArchiveSheet: NSWindowController, NSWindowDelegate, NSTextFiel
 
         let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelCreate)); cancel.keyEquivalent = "\u{1b}"
         createButton.target = self; createButton.action = #selector(createArchive); createButton.keyEquivalent = "\r"
+        ArkivStyle.stylePrimary(createButton, accent: AppPreferencesAccess.accent)
         for button in [cancel, createButton] {
             button.widthAnchor.constraint(greaterThanOrEqualToConstant: 80).isActive = true
             buttons.addArrangedSubview(button)

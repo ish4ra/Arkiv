@@ -40,8 +40,7 @@ final class BrowserCustomizationTests: XCTestCase {
         let restored = try XCTUnwrap(descendants(reopened.window!.contentView!).compactMap { $0 as? NSTableView }.first)
         XCTAssertTrue(restored.tableColumns[1].isHidden)
         XCTAssertEqual(restored.tableColumns[1].width, 240)
-        let toolbar = try XCTUnwrap(window.toolbar)
-        let test = try XCTUnwrap(controller.toolbar(toolbar, itemForItemIdentifier: .init("test"), willBeInsertedIntoToolbar: false))
+        let test = try XCTUnwrap(controller.toolbar(controller.browserToolbar, itemForItemIdentifier: .init("test"), willBeInsertedIntoToolbar: false))
         XCTAssertNotNil(test.toolTip)
         XCTAssertFalse(controller.validateToolbarItem(test))
     }
@@ -68,7 +67,7 @@ final class BrowserCustomizationTests: XCTestCase {
         table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         table.sortDescriptors = [NSSortDescriptor(key: "size", ascending: false)]
         XCTAssertEqual(table.selectedRow, 1)
-        let search = try XCTUnwrap(views.compactMap { $0 as? NSSearchField }.first)
+        let search = controller.search
         search.stringValue = "folder"
         controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: search))
         XCTAssertEqual(table.selectedRow, 1)

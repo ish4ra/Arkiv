@@ -1,4 +1,5 @@
 import AppKit
+import ArkivThemes
 import ArkivCore
 import ArkivFinderIntegration
 
@@ -198,10 +199,23 @@ final class FinderOperationWindow: NSWindowController, NSWindowDelegate {
         spinner.startAnimation(nil)
         let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelOperation(_:)))
         cancel.bezelStyle = .rounded; cancel.keyEquivalent = "\u{1b}"
-        let footer = NSStackView(views: [spinner, status, cancel]); footer.spacing = 10
-        let content = NSStackView(views: [name, footer]); content.orientation = .vertical
-        content.alignment = .leading; content.spacing = 16
+        status.lineBreakMode = .byTruncatingTail
+        status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let footer = NSStackView(views: [spinner, status, NSView(), cancel]); footer.spacing = 10
+        let texts = NSStackView(views: [name, footer]); texts.orientation = .vertical
+        texts.alignment = .leading; texts.spacing = 12
+        footer.widthAnchor.constraint(equalTo: texts.widthAnchor).isActive = true
+        // The archive's document icon from the selected theme, when it has one.
+        let icon = NSImageView(image: DocumentIconProvider.shared.icon(forFileName: archive.lastPathComponent, points: 48)
+            ?? NSWorkspace.shared.icon(for: .archive))
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        icon.setAccessibilityElement(false)
+        icon.widthAnchor.constraint(equalToConstant: 48).isActive = true
+        icon.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        let content = NSStackView(views: [icon, texts]); content.orientation = .horizontal
+        content.alignment = .centerY; content.spacing = 14
         content.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
+        texts.widthAnchor.constraint(equalToConstant: 360).isActive = true
         window.contentView = content
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }

@@ -75,6 +75,52 @@ jobs:
           (cd branding && shasum -a 256 -c SHA256SUMS)
       - name: Build and verify development application
         run: scripts/ci-check.sh app scripts/build-app.sh
+      - name: Genuine UI screenshots of the redesigned windows (headless CI rendering)
+        env:
+          ARKIV_UI_SCREENSHOTS: ${{ github.workspace }}/build/ui-screenshots
+          ARKIV_APP: ${{ github.workspace }}/build/Arkiv.app
+        run: scripts/ci-check.sh ui-screenshots swift test --filter UIScreenshotTests -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: Arkiv-${{ matrix.architecture }}-ui-screenshots
+          path: build/ui-screenshots
+          if-no-files-found: warn
+      - name: Quick Look thumbnail prototype feasibility (informational; app copy on this runner only)
+        # Builds prototypes/quicklook-thumbnail into a copy of build/Arkiv.app,
+        # registers that copy on this ephemeral runner and asks qlmanage for
+        # thumbnails. The shipped app, DMG and ZIP never contain the prototype.
+        continue-on-error: true
+        timeout-minutes: 6
+        run: prototypes/quicklook-thumbnail/diagnose.sh build/Arkiv.app
+      - uses: actions/upload-artifact@v6
+        if: always()
+        continue-on-error: true
+        with:
+          name: Arkiv-${{ matrix.architecture }}-quicklook-prototype-report
+          path: |
+            build/thumbnail-prototype/report
+            build/thumbnail-prototype/*.txt
+            build/thumbnail-prototype/*.log
+          if-no-files-found: warn
+      - name: Isolated Quick Look prototype test host (real-Mac evaluation only; never shipped)
+        # A renamed copy with its own bundle identifier and no document types,
+        # URL schemes, Services, Finder Sync or Sparkle feed, hosting the
+        # prototype extension. Separate artefact; the DMG, ZIP and update are unchanged.
+        if: matrix.architecture == 'arm64'
+        continue-on-error: true
+        timeout-minutes: 5
+        run: prototypes/quicklook-thumbnail/make-isolated-test-app.sh build/Arkiv.app build/thumbnail-test
+      - uses: actions/upload-artifact@v6
+        if: matrix.architecture == 'arm64'
+        continue-on-error: true
+        with:
+          name: Arkiv-Thumbnail-Test-arm64-PROTOTYPE-not-for-daily-use
+          path: |
+            build/thumbnail-test/Arkiv-Thumbnail-Test-arm64.zip
+            build/thumbnail-test/Arkiv-Thumbnail-Test-arm64.zip.sha256
+          if-no-files-found: warn
+          compression-level: 0
       - name: Finder action URL delivery diagnostic (packaged app)
         run: scripts/ci-check.sh finder-handoff swift scripts/diagnose-finder-handoff.swift build/Arkiv.app
       - name: Finder Sync system registration diagnostic (packaged extension)

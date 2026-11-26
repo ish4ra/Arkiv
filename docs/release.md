@@ -20,6 +20,38 @@ Arkiv is an early development/testing build, not a production release. macOS 13+
 
 The ZIP alternatives contain the same app; unzip the outer Actions wrapper, then unzip the inner app ZIP and drag Arkiv.app to Applications. Artifacts expire according to the repository's GitHub Actions retention policy. No GitHub Release is published by this workflow.
 
+## Download links
+
+Application builds are published as GitHub prereleases named
+**Arkiv Development _build_** with tag `dev-<build>` (assets
+`Arkiv-universal.zip` and `appcast.xml`). Document icon theme packs are
+separate prereleases named **Arkiv document icon themes _N_** with tag
+`document-icon-themes-v<N>`; they are never Arkiv builds.
+
+| Link | Behaviour | Maintenance |
+| --- | --- | --- |
+| `https://github.com/ish4ra/Arkiv/releases/tag/dev-<build>` (README button) | Exactly one verified, published build | Update the README button when a build is accepted for users (currently `dev-30701`) |
+| `https://github.com/ish4ra/Arkiv/releases?q=Arkiv+Development&expanded=true` | GitHub's public release search: application builds only, newest first; drafts never appear; no login | None |
+| `https://github.com/ish4ra/Arkiv/releases/latest` | **Not used.** GitHub's "latest" ignores prereleases, so it returns 404 for Arkiv; theme releases would also compete if one were ever made a full release | — |
+| Sparkle feed (`updates` branch) | In-app updates; unchanged | Published by the release workflow |
+
+The search link was checked on 2026-11-26: it listed `dev-30701`, `dev-30601`,
+`dev-30201` … and not `document-icon-themes-v1`. Release search is GitHub's
+index, so a brand-new release can take a short time to appear, and the
+behaviour is GitHub's, not a documented API. That is why the README also
+keeps an explicit, verified build link.
+
+**Proposed automatic option (not implemented).** The existing publish job
+already writes the signed appcast to the `updates` branch after a build is
+published, so the newest application build is known at that moment. The same
+job could also write a small static `latest.html` (a plain link to that
+release, no scripts or tracking) to the `updates` branch, served by free
+GitHub Pages, giving one permanent URL that can only ever point at a
+published, Sparkle-signed build. It needs Pages enabled on that branch and a
+few lines in the publisher, so it is left for a separate change rather than
+the redesign pull request. A moving Git tag (such as `latest-development`)
+is rejected: it would rewrite a tag on every release.
+
 ## Signing, notarization, and Gatekeeper
 
 The app has an **ad-hoc Hardened Runtime signature**, not a Developer ID signature. The DMG itself is **unsigned**. Neither the app nor the DMG is **notarized**, and there is no notarization ticket to staple. The scripts do not request or invent Apple credentials.
@@ -59,6 +91,31 @@ Separate Apple Silicon (`macos-15`) and Intel (`macos-15-intel`) jobs run the co
 Before packaging, `verify-app.sh` checks the executable, original icon, metadata, notices, architecture(s), and signature. Its per-slice dependency checks (system `libz`/`libbz2`/`liblzma`, no `/usr/local`, `/opt` or `libzstd` dependency, bundled 7z engine linked) capture `otool` output first and match it with here-strings in `scripts/verification-helpers.sh`. They never pipe into an early-exiting `grep -q`: under `pipefail`, that pattern could report a present library as missing, or let a forbidden one pass, depending on timing. `tests/test_ci_reliability.py` covers both cases and audits every `pipefail` script and the workflow for the pattern. The DMG script stages the verified app with an `/Applications` symlink, creates a compressed read-only HFS+ image named **Arkiv**, verifies its checksum, mounts it read-only, verifies its volume name/link/app, verifies the app again, and tests copying it out into a temporary installation directory. It detaches the image before publishing the final `.dmg` and SHA-256 file to `build/`. Temporary staging and mount directories are cleaned up after successful detach. If attachment/detachment fails and cleanup cannot establish a safe detach, the temporary workspace is retained for diagnosis. The workflow also uploads the existing ZIP alternative; build jobs have read-only permissions; the separate signed development publisher updates the Sparkle channel after all checks pass.
 
 Real-Mac release gates remain: first-launch/Gatekeeper behavior from an actual browser download, light/dark appearance, VoiceOver, keyboard navigation, table selection, resizing, cancel/close/quit during extraction, Finder routing, icon readability, large archives and case-insensitive APFS behavior. CI mounting/signature checks do not claim these interactive checks have happened.
+
+## Licence obligations for every release
+
+Arkiv is GPL-3.0-or-later and its 7-Zip library is LGPL-2.1-or-later
+([licensing](licensing-assessment.md)). Each published build must:
+
+* contain `LICENSE.txt`, `NOTICE.txt`, `ThirdPartyNotices.txt` and
+  `licenses/` in `Contents/Resources` (`verify-app.sh` fails the build
+  otherwise);
+* offer the **complete corresponding source**: the release is tagged on the
+  exact commit it was built from, and GitHub attaches that commit's source
+  archives to the release. Release notes should name the commit. Build
+  scripts (`scripts/`, `Package.swift`, `Package.resolved`, the workflow) are
+  part of that source. Keep old tags so the source stays available as long
+  as the binary is offered;
+* keep `libArkivSeven.dylib` replaceable by the user
+  ([replacement steps](sevenzip.md#build-and-replacement)). Development
+  builds disable library validation, so a rebuilt library can be swapped in
+  and the app re-signed ad hoc. A future Developer ID build with library
+  validation must either keep it disabled or document re-signing after
+  replacement;
+* not add terms that restrict GPL or LGPL rights (no EULA, no ban on
+  reverse engineering).
+
+Forks follow the same licence and the [name and logo policy](../TRADEMARKS.md).
 
 ## Future public distribution
 

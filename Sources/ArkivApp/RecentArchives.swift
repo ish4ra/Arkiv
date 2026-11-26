@@ -20,6 +20,8 @@ final class RecentArchives: NSObject, NSMenuDelegate {
             $0.hasPrefix("xyz.isharalakshan.arkiv.open-v1-") || $0.hasPrefix("arkiv-unlocked-") || $0.hasPrefix(".arkiv-")
         }
     }
+    /// Eligible recent archives, most recent first, for the welcome canvas.
+    var recentURLs: [URL] { urls().filter { Self.eligible($0, nested: false) } }
     func accepted(_ url: URL, nested: Bool = false) {
         guard Self.eligible(url,nested:nested) else { return }
         note(url)

@@ -6,8 +6,21 @@ The everyday guide. What each format supports is summarised in the
 
 ## Browse, open and extract
 
-Open an archive with **File → Open Archive…** (⌘O), from **File → Open Recent**,
-by double-clicking an archive once Arkiv handles its type, or through Finder.
+A new Arkiv window shows the **welcome** canvas: **Open Archive…** (⌘O),
+**Create Archive…** (⇧⌘N), your recent archives (click one to open it) and an
+**Appearance…** shortcut. Drop archives anywhere on it to open them.
+
+Open an archive with **File → Open Archive…** (⌘O), from **File → Open Recent**
+or the welcome window, by dropping it on the welcome window, by
+double-clicking an archive once Arkiv handles its type, or through Finder.
+
+The archive window's toolbar holds Back/Forward beside the title, then Open,
+Extract, Extract All, **Add** (Add Files, Add Folder, New Folder), Test and
+Info, and the search field. The subtitle shows the format, file count and
+size. The bar at the bottom shows where you are (click any part of the path to
+go there) and the item count, selection size or the progress of a running
+operation with Cancel. **View → Customize Toolbar…** adds Enclosing Folder,
+Create, Quick Look or Settings, or shows labels.
 Folders open on double-click. App and framework bundles appear as packages; use
 **Show Package Contents** to look inside.
 
@@ -141,11 +154,12 @@ and [Services](finder-integration.md), including real-Mac test steps.
 
 ## Settings
 
-**Arkiv → Settings…** (⌘,) has General, Updates, Finder Integration and
-Appearance tabs: System/Light/Dark appearance (Dark by default), recent-history
-clearing, Sparkle update controls, Finder setup guidance and
-**Document Icon Theme**. See [Settings](settings.md) and
-[document icon themes](document-icon-themes.md).
+**Arkiv → Settings…** (⌘,) has a sidebar with **General** (Finder
+Integration status and setup, clearing recent archives), **Appearance**
+(System/Light/Dark with Dark by default, accent colour, row density,
+alternating rows, toolbar customization, with a live preview), **Document
+Icons** (the theme gallery) and **Updates** (Sparkle). See
+[Settings](settings.md) and [document icon themes](document-icon-themes.md).
 
 ## Updates
 

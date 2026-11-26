@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>xyz.isharalakshan.arkiv.thumbnail-prototype</string>
+<key>CFBundleName</key><string>Arkiv Thumbnails (Prototype)</string>
+<key>CFBundleDisplayName</key><string>Arkiv Thumbnails (Prototype)</string>
+<key>CFBundleExecutable</key><string>ArkivThumbnail</string>
+<key>CFBundlePackageType</key><string>XPC!</string>
+<key>CFBundleShortVersionString</key><string>0.1.0</string>
+<key>CFBundleVersion</key><string>1</string>
+<key>LSMinimumSystemVersion</key><string>13.0</string>
+<key>NSExtension</key><dict>
+<key>NSExtensionAttributes</key><dict>
+<key>QLSupportedContentTypes</key><array>
+<string>public.zip-archive</string><string>org.7-zip.7-zip-archive</string><string>public.tar-archive</string>
+<string>com.rarlab.rar-archive</string><string>org.gnu.gnu-zip-archive</string><string>org.gnu.gnu-zip-tar-archive</string>
+<string>public.bzip2-archive</string><string>public.tar-bzip2-archive</string><string>org.tukaani.xz-archive</string>
+<string>org.tukaani.tar-xz-archive</string><string>org.zstandard.zstd</string>
+</array>
+<key>QLThumbnailMinimumDimension</key><integer>16</integer>
+</dict>
+<key>NSExtensionPointIdentifier</key><string>com.apple.quicklook.thumbnail</string>
+<key>NSExtensionPrincipalClass</key><string>ArkivThumbnail.ArkivThumbnailProvider</string>
+</dict>
+</dict></plist>

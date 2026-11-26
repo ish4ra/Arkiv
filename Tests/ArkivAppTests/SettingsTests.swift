@@ -53,13 +53,13 @@ final class SettingsTests: XCTestCase {
         owned.isReleasedWhenClosed = false
         defer { owned.close() }
         for (choice, expected) in [(AppAppearance.dark, NSAppearance.Name.darkAqua), (.light, .aqua)] {
-            controller.appearancePicker.selectItem(at: AppAppearance.allCases.firstIndex(of: choice)!)
+            controller.appearancePicker.selectedSegment = AppAppearance.allCases.firstIndex(of: choice)!
             controller.changeAppearance(nil)
             XCTAssertEqual(preferences.appearance, choice)
             XCTAssertEqual(NSApp.appearance?.name, expected)
             XCTAssertEqual(owned.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]), expected)
         }
-        controller.appearancePicker.selectItem(at: 0)
+        controller.appearancePicker.selectedSegment = 0
         controller.changeAppearance(nil)
         XCTAssertNil(NSApp.appearance)
         controller.clearRecents(nil); XCTAssertEqual(clears, 1)

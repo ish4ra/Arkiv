@@ -147,6 +147,11 @@ public final class DocumentIconProvider {
         damagedTheme = theme.id
         active = nil
         cache.removeAllObjects()
+        // Views that already drew this theme redraw with Seal Dark. Posted
+        // after the current icon request returns, never from inside it.
+        DispatchQueue.main.async { [weak self] in
+            NotificationCenter.default.post(name: .arkivDocumentIconThemeDidChange, object: self)
+        }
     }
 
     private func load(_ reps: [String: String], from theme: InstalledTheme, tier: Int, points: CGFloat, scales: [Int] = [1, 2]) -> NSImage? {

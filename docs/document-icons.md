@@ -172,8 +172,9 @@ bundled document-icon family. Every other design is preserved on
 [`archive/document-icon-concepts-v1`](https://github.com/ish4ra/Arkiv/tree/archive/document-icon-concepts-v1/design/document-icon-concepts-v1) and
 [`archive/document-icon-concepts-v2`](https://github.com/ish4ra/Arkiv/tree/archive/document-icon-concepts-v2/design/document-icon-concepts-v2).
 Every other preserved design is an optional, signed, download-on-demand
-theme (roadmap milestone 2, in review): Settings → Appearance → Document Icon
-Theme. Downloaded themes apply inside Arkiv; Finder keeps these bundled icons.
+theme (roadmap milestone 2, integrated and published): Settings → Document
+Icons. Downloaded themes apply inside Arkiv; Finder keeps these bundled icons
+([Quick Look feasibility](quicklook-thumbnail-feasibility.md)).
 See [document icon themes](document-icon-themes.md) and the
 [inventory](document-icon-theme-inventory.md).
 
