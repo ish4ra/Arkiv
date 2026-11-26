@@ -67,7 +67,22 @@ Source: [run 45737861346](https://github.com/ish4ra/Arkiv/actions/runs/457378613
 | --- | --- |
 | ![Settings, Appearance with Brass and Compact](18-settings-appearance-brass-compact-light.png) | ![Settings, Document Icons](16-settings-document-icons-unconfigured-dark.png) |
 
-The theme gallery with all 20 real theme packs (downloading, installed, in
-use, partial Classic coverage, variations, offline) is captured by the theme
-workflow's end-to-end test: artefact
-`document-icon-theme-settings-screenshots-<runner>`.
+## Document icon theme gallery (real theme packs)
+
+From the theme workflow's end-to-end test, [run 45739339528](https://github.com/ish4ra/Arkiv/actions/runs/45739339528)
+(Apple Silicon runner): the 20 real packs, built from the preserved design
+archives, served from an in-process fixture server with a catalogue signed by
+a throwaway CI key (never the production key), then downloaded, verified,
+installed and applied through the real pane. Same headless rendering notes
+as above.
+
+| Seal Wine installed and in use | Strata downloading, Seal Original variations unfolded |
+| --- | --- |
+| ![Seal Wine installed and in use](theme-03-installed-in-use-seal-wine-dark.png) | ![Strata downloading](theme-06-download-progress-strata-dark.png) |
+
+| Classic: partial coverage (system icons dimmed) | Folio in use, Light |
+| --- | --- |
+| ![Classic partial coverage](theme-04-classic-partial-coverage-dark.png) | ![Folio in use, Light](theme-08-installed-in-use-folio-light.png) |
+
+All captures of that test (including variations, offline and Restore Default)
+are in its `document-icon-theme-settings-screenshots-<runner>` artefacts.

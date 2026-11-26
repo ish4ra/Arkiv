@@ -148,15 +148,6 @@ jobs:
           ARKIV_THEME_SCREENSHOTS: ${{ github.workspace }}/build/theme-screenshots
           ARKIV_BUNDLED_ICONS: ${{ github.workspace }}/Resources/DocumentIcons
         run: scripts/ci-check.sh theme-e2e swift test --filter 'DocumentIconTheme(EndToEnd|Settings)Tests' -Xlinker -L"$PWD/.build/sevenzip" -Xlinker -rpath -Xlinker "$PWD/.build/sevenzip"
-      - name: TEMPORARY screenshot transfer for review (base64 in the log; removed before merge)
-        if: matrix.runner == 'macos-15'
-        continue-on-error: true
-        run: |
-          for f in build/theme-screenshots/02-*.png build/theme-screenshots/03-*.png build/theme-screenshots/04-*.png build/theme-screenshots/05-*.png build/theme-screenshots/06-*.png build/theme-screenshots/08-*.png build/theme-screenshots/09-*.png; do
-            [ -f "$f" ] || continue
-            echo "SHOT-BEGIN theme-$(basename "$f")"; base64 -i "$f" | tr -d '\n' | fold -w 3000; echo; echo "SHOT-END"
-          done
-          cat build/theme-screenshots/*.txt 2>/dev/null || true
       - uses: actions/upload-artifact@v6
         if: always()
         with:
