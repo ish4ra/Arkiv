@@ -92,6 +92,31 @@ Before packaging, `verify-app.sh` checks the executable, original icon, metadata
 
 Real-Mac release gates remain: first-launch/Gatekeeper behavior from an actual browser download, light/dark appearance, VoiceOver, keyboard navigation, table selection, resizing, cancel/close/quit during extraction, Finder routing, icon readability, large archives and case-insensitive APFS behavior. CI mounting/signature checks do not claim these interactive checks have happened.
 
+## Licence obligations for every release
+
+Arkiv is GPL-3.0-or-later and its 7-Zip library is LGPL-2.1-or-later
+([licensing](licensing-assessment.md)). Each published build must:
+
+* contain `LICENSE.txt`, `NOTICE.txt`, `ThirdPartyNotices.txt` and
+  `licenses/` in `Contents/Resources` (`verify-app.sh` fails the build
+  otherwise);
+* offer the **complete corresponding source**: the release is tagged on the
+  exact commit it was built from, and GitHub attaches that commit's source
+  archives to the release. Release notes should name the commit. Build
+  scripts (`scripts/`, `Package.swift`, `Package.resolved`, the workflow) are
+  part of that source. Keep old tags so the source stays available as long
+  as the binary is offered;
+* keep `libArkivSeven.dylib` replaceable by the user
+  ([replacement steps](sevenzip.md#build-and-replacement)). Development
+  builds disable library validation, so a rebuilt library can be swapped in
+  and the app re-signed ad hoc. A future Developer ID build with library
+  validation must either keep it disabled or document re-signing after
+  replacement;
+* not add terms that restrict GPL or LGPL rights (no EULA, no ban on
+  reverse engineering).
+
+Forks follow the same licence and the [name and logo policy](../TRADEMARKS.md).
+
 ## Future public distribution
 
 The bundle identifier is `xyz.isharalakshan.arkiv`. Configure legitimate Developer ID signing securely, sign all nested components with Hardened Runtime, submit with `notarytool`, staple and validate the app and distribution image, and test Gatekeeper on a clean Mac. Apple credentials belong in secure CI secrets/Keychain and are not part of this development workflow. App Sandbox/Mac App Store distribution remains a separate decision involving bookmarks, selected-folder access, extensions and codec licensing. Public release is not authorized by this task.

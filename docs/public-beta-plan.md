@@ -30,11 +30,11 @@ published build 30701).
    merge #8 and publish it through the normal signed channel.
 2. **Update path from 30701**: confirm Check for Updates from 30701 installs
    the redesign build and keeps preferences and themes (acceptance §1).
-3. **Project licence**: choose and add one, or state plainly that Arkiv is
-   source-available and not open source ([assessment](licensing-assessment.md)).
-   Communities that list free software expect a clear answer, and LGPL
-   obligations for the 7-Zip library must be met in every release (source
-   link per release).
+3. **Project licence: done.** Arkiv is GPL-3.0-or-later, with a separate
+   [name and logo policy](../TRADEMARKS.md) ([licensing](licensing-assessment.md)).
+   What remains is per release: every release must link its exact source
+   commit and keep the 7-Zip library replaceable
+   ([release obligations](release.md#licence-obligations-for-every-release)).
 4. **Clear first-install instructions on the release page itself**: today the
    release body is one line. Each beta release needs install, Gatekeeper,
    verification and known-limitation notes (template below), because many
@@ -119,7 +119,8 @@ Keep **one** update channel and **one** build-number sequence:
 * Signing statement: ad-hoc signed, **not notarized**; updates are
   EdDSA-signed by this project (not Apple notarization).
 * Privacy: no telemetry; network only for updates and the theme pane.
-* Source: link to the exact commit (LGPL source for the 7-Zip library).
+* Licence and source: GPL-3.0-or-later (7-Zip library LGPL-2.1-or-later);
+  link to the exact commit and its source archive.
 * How to report problems.
 
 **Tester guide** (`docs/testing-the-beta.md`, to write at beta time): a short
@@ -137,7 +138,7 @@ personal is sent), linked from the README and release notes.
 2. RAR multipart reading (milestone 5).
 3. Split ZIP support (milestone 6).
 4. Public beta hardening: the must-fix items above, templates, privacy and
-   security documents, licence.
+   security documents (licence done).
 5. Community launch.
 
 Every new archive format or volume scheme keeps the permanent

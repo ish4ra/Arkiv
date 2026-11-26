@@ -236,19 +236,22 @@ Arkiv is a Swift package: an AppKit app (`ArkivApp`) on a UI-independent engine 
 | **Document icons** | [Document icons](docs/document-icons.md) · [Themes](docs/document-icon-themes.md) · [Theme inventory](docs/document-icon-theme-inventory.md) · [Format icon coverage](docs/format-icon-coverage.md) · [Branding](branding/README.md) |
 | **Safety** | [Security and limits](docs/security.md) · [Extraction compatibility](docs/extraction-compatibility.md) |
 | **Development** | [Architecture](docs/architecture.md) · [Release and builds](docs/release.md) · [Roadmap](docs/roadmap.md) · [Specification](ARKIV_SPEC.md) · [README media](docs/media/README.md) · [UI redesign](docs/ui-redesign.md) |
-| **Releasing** | [Real-Mac acceptance](docs/real-mac-acceptance.md) · [Public beta plan](docs/public-beta-plan.md) · [Licence assessment](docs/licensing-assessment.md) · [Quick Look feasibility](docs/quicklook-thumbnail-feasibility.md) |
+| **Releasing** | [Real-Mac acceptance](docs/real-mac-acceptance.md) · [Public beta plan](docs/public-beta-plan.md) · [Licensing](docs/licensing-assessment.md) · [Contributing](CONTRIBUTING.md) · [Quick Look feasibility](docs/quicklook-thumbnail-feasibility.md) |
 
 Found a problem? [Open an issue](https://github.com/ish4ra/Arkiv/issues) with your macOS version, Mac model, Arkiv build (Arkiv → About Arkiv) and the steps to reproduce it. Please never attach archives that contain private data or passwords.
 
 ## Licensing
 
-**Arkiv has not selected a project-wide licence yet**, and the repository has no root `LICENSE` file.
+**Arkiv is free and open-source software under the [GNU General Public License v3.0 or later](LICENSE)** (`GPL-3.0-or-later`). You may use it for any purpose, including commercially, and study, change, build and redistribute it. If you distribute a modified version, it must stay under the GPL with its complete source. The licence covers Arkiv's code and its original artwork: the app icon, document icons and theme packs ([`NOTICE`](NOTICE)).
+
+The name **Arkiv** and the **Tension Seal** icon identify official builds: forks are welcome under a different name and icon ([name and logo policy](TRADEMARKS.md)). Contributions are accepted under the same licence ([contributing](CONTRIBUTING.md)).
 
 Third-party components keep their own licences:
 
-- **7-Zip:** Arkiv bundles a library built from a pinned subset of the official 7-Zip 26.04 source, under LGPL-2.1-or-later (some files public domain), with no RAR code. Arkiv's bridge to this library is also LGPL-2.1-or-later. Source and rebuild instructions are in [`Vendor/7zip`](Vendor/7zip/README.md) and the [7z backend](docs/sevenzip.md) notes.
-- **libarchive:** Arkiv uses the macOS system copy. Its BSD-licensed headers are included for building.
-- **Sparkle 2.10.0:** bundled for updates. Its licence file is included in the app.
+- **7-Zip:** Arkiv bundles a library built from a pinned subset of the official 7-Zip 26.04 source, under LGPL-2.1-or-later (some files public domain), with no RAR code. Arkiv's bridge to this library is also LGPL-2.1-or-later, and you may replace the library with your own build. Source and rebuild instructions are in [`Vendor/7zip`](Vendor/7zip/README.md) and the [7z backend](docs/sevenzip.md) notes.
+- **libarchive, zlib, bzip2, liblzma:** Arkiv uses the macOS system copies. Their BSD-style headers are included for building.
+- **Zstandard 1.5.7:** built in under BSD-3-Clause.
+- **Sparkle 2.10.0:** bundled for updates (MIT). Its licence file is included in the app.
 - **Inter Display 4.0** (SIL Open Font License 1.1, [`OFL.txt`](design/document-icons/fonts/OFL.txt)) renders document-icon and README-banner lettering at design time; no font is bundled in the app.
 
 See [third-party notices](docs/third-party-licenses.md).
