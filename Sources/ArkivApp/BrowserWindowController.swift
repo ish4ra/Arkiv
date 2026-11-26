@@ -171,7 +171,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         table.dataSource = self; table.delegate = self
         table.target = self; table.doubleAction = #selector(activateRow(_:))
         table.setAccessibilityLabel("Archive contents")
-        for (id, title, width) in [("name", "Name", 500.0), ("size", "Size", 110.0), ("type", "Kind", 130.0), ("packed", "Packed Size", 110.0), ("ratio", "Ratio", 90.0), ("modified", "Modified", 175.0), ("method", "Method", 130.0), ("encrypted", "Encrypted", 90.0), ("crc", "CRC", 100.0), ("attributes", "Attributes", 110.0)] {
+        for (id, title, width) in [("name", "Name", 340.0), ("size", "Size", 110.0), ("type", "Kind", 130.0), ("packed", "Packed Size", 110.0), ("ratio", "Ratio", 90.0), ("modified", "Modified", 175.0), ("method", "Method", 130.0), ("encrypted", "Encrypted", 90.0), ("crc", "CRC", 100.0), ("attributes", "Attributes", 110.0)] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
             column.title = title; column.width = width; column.minWidth = id == "name" ? 180 : 80
             column.resizingMask = [.userResizingMask]
@@ -1226,6 +1226,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate,
         let densityChanged = density != self.density
         self.density = density
         self.accent = ArkivStyle.customAccent(accent)
+        ArkivStyle.stylePrimary(welcome.openButton, accent: accent)
         table.usesAlternatingRowBackgroundColors = alternatingRows
         if densityChanged {
             table.rowHeight = CGFloat(density.rowHeight)

@@ -47,7 +47,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTa
             }
         }
     }
-    static let contentSize = NSSize(width: 880, height: 640)
+    static let contentSize = NSSize(width: 880, height: 700)
     static let sidebarWidth: CGFloat = 210
 
     private let preferences: AppPreferences
@@ -478,7 +478,7 @@ final class AppearancePreview: NSView, NSTableViewDataSource, NSTableViewDelegat
         let index = ArchiveIndex(entries: entries.enumerated().map { ArchiveEntry(id: Int64($0.offset), path: $0.element.0, size: $0.element.1, kind: $0.element.2) })
         return BrowserPresentation.sorted(index.children(of: ""), by: "name", ascending: true)
     }()
-    static var selectedSampleRow: Int { sampleRows.firstIndex { $0.name == "raw-backup.7z" } ?? 0 }
+    static var selectedSampleRow: Int { sampleRows.firstIndex { $0.name == "fonts.zip" } ?? 0 }
     init(documentIcons: DocumentIconProvider) {
         self.documentIcons = documentIcons
         super.init(frame: .zero)
@@ -526,7 +526,8 @@ final class AppearancePreview: NSView, NSTableViewDataSource, NSTableViewDelegat
         self.density = density; self.accent = accent
         table.rowHeight = CGFloat(density.rowHeight)
         table.usesAlternatingRowBackgroundColors = alternatingRows
-        height.constant = CGFloat(density.rowHeight) * CGFloat(Self.sampleRows.count) + 30
+        // Rows, the column header (28 pt) and the card's insets, so no row is clipped.
+        height.constant = CGFloat(density.rowHeight) * CGFloat(Self.sampleRows.count) + 28 + 9
         table.reloadData()
         table.selectRowIndexes(IndexSet(integer: Self.selectedSampleRow), byExtendingSelection: false)
     }

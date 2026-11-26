@@ -59,6 +59,11 @@ final class UIScreenshotTests: XCTestCase {
             try capture(window, output.appendingPathComponent(name + ".png"))
         }
         NSApp.appearance = NSAppearance(named: .darkAqua)
+        // Recorded so the captures can be read correctly: with either flag on,
+        // the welcome canvas deliberately draws a plain surface.
+        let flags = "increaseContrast=\(NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast) reduceTransparency=\(NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency) reduceMotion=\(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)\n"
+        try Data(flags.utf8).write(to: output.appendingPathComponent("accessibility-display-flags.txt"))
+        print("Runner accessibility display flags: " + flags)
 
         // Welcome
         let welcome = BrowserWindowController(documentIcons: icons)
@@ -129,7 +134,13 @@ final class UIScreenshotTests: XCTestCase {
         // Settings
         let settings = SettingsWindowController(preferences: preferences, recents: RecentArchives(urls: { recents }, note: { _ in }, clear: {}),
             updates: UpdateController(publicKey: { nil }, makeDriver: { fatalError("Keyless build") }), showFinder: {},
-            themeManager: { DocumentIconThemeManager(environment: sandbox.environment(keys: []), provider: icons) })
+            themeManager: {
+                let manager = DocumentIconThemeManager(environment: sandbox.environment(keys: []), provider: icons)
+                // The packaged app's own Seal Dark artwork, as the app finds it in its bundle.
+                manager.providerBundledIcon = { resources.appendingPathComponent("Arkiv-\($0.rawValue).icns") }
+                manager.providerBundledExtra = { resources.appendingPathComponent("DocumentIconsInApp/Arkiv-\($0.rawValue)", isDirectory: true) }
+                return manager
+            })
         settings.finderEnabled = { false }
         settings.currentThemeName = { "Seal Dark (included with Arkiv)" }
         settings.preview.documentIcons = icons

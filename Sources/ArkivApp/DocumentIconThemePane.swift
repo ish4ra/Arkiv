@@ -59,7 +59,7 @@ final class DocumentIconThemePane: NSView, NSTableViewDataSource, NSTableViewDel
     /// Compound-suffix and split-volume artwork Arkiv uses in its own windows.
     private(set) var extraPreviewViews: [DocumentIconExtra: NSImageView] = [:]
     private var extraCaptions: [DocumentIconExtra: NSTextField] = [:]
-    let extrasHeading = NSTextField(wrappingLabelWithString: "Inside Arkiv only: .tar.gz, .tar.bz2, .tar.xz, .tar.zst, .tzst and split 7z volumes. Finder shows the family icon for these names. Dimmed artwork is not part of this theme; Arkiv uses the system icon (formats) or the family icon (extras) instead.")
+    let extrasHeading = NSTextField(wrappingLabelWithString: "Inside Arkiv only: .tar.gz, .tar.bz2, .tar.xz, .tar.zst, .tzst and split 7z volumes. Finder shows the family icon for these names.")
     private var previewTask: Task<Void, Never>?
     private(set) var previewsShownFor: String?
     private var active = false
@@ -70,7 +70,7 @@ final class DocumentIconThemePane: NSView, NSTableViewDataSource, NSTableViewDel
 
     init(manager: DocumentIconThemeManager) {
         self.manager = manager
-        super.init(frame: NSRect(x: 0, y: 0, width: 670, height: 588))
+        super.init(frame: NSRect(x: 0, y: 0, width: 670, height: 648))
         build()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
@@ -194,17 +194,15 @@ final class DocumentIconThemePane: NSView, NSTableViewDataSource, NSTableViewDel
 
         let previewGrid = makePreviewGrid()
         let extrasGrid = makeExtrasGrid()
+        // One caption above the in-app artwork; dimmed cells explain themselves in tooltips.
         extrasHeading.font = .systemFont(ofSize: NSFont.smallSystemFontSize - 1)
-        extrasHeading.textColor = .tertiaryLabelColor
+        extrasHeading.textColor = .secondaryLabelColor
         extrasHeading.preferredMaxLayoutWidth = 350
-        let extrasTitle = NSTextField(labelWithString: "Inside Arkiv only")
-        extrasTitle.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
-        extrasTitle.textColor = .secondaryLabelColor
         let separator = NSBox(); separator.boxType = .separator
-        let previewStack = NSStackView(views: [previewGrid, separator, extrasTitle, extrasGrid, extrasHeading])
+        let previewStack = NSStackView(views: [previewGrid, separator, extrasHeading, extrasGrid])
         previewStack.orientation = .vertical; previewStack.alignment = .leading; previewStack.spacing = 8
         previewStack.setCustomSpacing(12, after: previewGrid)
-        previewStack.setCustomSpacing(6, after: extrasGrid)
+        previewStack.setCustomSpacing(6, after: extrasHeading)
         previewStack.edgeInsets = NSEdgeInsets(top: 14, left: 13, bottom: 12, right: 13)
         previewStack.translatesAutoresizingMaskIntoConstraints = false
         separator.widthAnchor.constraint(equalTo: previewStack.widthAnchor, constant: -26).isActive = true
@@ -244,7 +242,7 @@ final class DocumentIconThemePane: NSView, NSTableViewDataSource, NSTableViewDel
         let footer = NSStackView(views: [refreshButton, catalogLabel])
         footer.orientation = .horizontal; footer.spacing = 10; footer.alignment = .centerY
 
-        let finder = NSTextField(wrappingLabelWithString: "Downloaded themes apply inside Arkiv: archive contents, the window title, the path bar, recent archives and Archive Info. Finder keeps Arkiv’s bundled Seal Dark document icons, and only when Arkiv is the default app for a file type. An optional Quick Look thumbnail setting is planned for Finder; it is being evaluated as a prototype. Arkiv never modifies its app bundle, your archives or your default apps.")
+        let finder = NSTextField(wrappingLabelWithString: "Downloaded themes apply inside Arkiv. Finder keeps Arkiv’s bundled Seal Dark document icons, and only when Arkiv is the default app for a file type; an optional Quick Look thumbnail setting is planned and being evaluated. Arkiv never modifies its app bundle, your archives or your default apps.")
         finder.font = .systemFont(ofSize: NSFont.smallSystemFontSize - 1)
         finder.textColor = .tertiaryLabelColor
         finder.preferredMaxLayoutWidth = 614
@@ -260,7 +258,7 @@ final class DocumentIconThemePane: NSView, NSTableViewDataSource, NSTableViewDel
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -28),
             stack.topAnchor.constraint(equalTo: topAnchor, constant: 6),
             stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -14),
-            body.heightAnchor.constraint(equalToConstant: 398),
+            body.heightAnchor.constraint(equalToConstant: 462),
         ])
         for view in [bannerCard, body, footer, finder] as [NSView] { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
     }
@@ -298,7 +296,7 @@ final class DocumentIconThemePane: NSView, NSTableViewDataSource, NSTableViewDel
         grid.rowSpacing = 10; grid.columnSpacing = 0
         var cells: [NSView] = []
         for name in DocumentIconName.allCases {
-            let (cell, image, caption) = previewCell(48, caption: name.label, accessibility: "\(name.label) document icon")
+            let (cell, image, caption) = previewCell(44, caption: name.label, accessibility: "\(name.label) document icon")
             previewViews[name] = image; previewCaptions[name] = caption
             cells.append(cell)
         }
@@ -313,7 +311,7 @@ final class DocumentIconThemePane: NSView, NSTableViewDataSource, NSTableViewDel
         grid.columnSpacing = 0
         var cells: [NSView] = []
         for extra in DocumentIconExtra.allCases {
-            let (cell, image, caption) = previewCell(34, caption: extra.label, accessibility: "\(extra.label) document icon inside Arkiv")
+            let (cell, image, caption) = previewCell(32, caption: extra.label, accessibility: "\(extra.label) document icon inside Arkiv")
             extraPreviewViews[extra] = image; extraCaptions[extra] = caption
             cells.append(cell)
         }
