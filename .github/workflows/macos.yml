@@ -91,6 +91,7 @@ jobs:
         # registers that copy on this ephemeral runner and asks qlmanage for
         # thumbnails. The shipped app, DMG and ZIP never contain the prototype.
         continue-on-error: true
+        timeout-minutes: 6
         run: prototypes/quicklook-thumbnail/diagnose.sh build/Arkiv.app
       - uses: actions/upload-artifact@v6
         if: always()

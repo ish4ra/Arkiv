@@ -36,11 +36,14 @@ lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchSe
 "$lsregister" -f -R -trusted "$copy"
 pluginkit -a "$appex"
 registered=no
-for attempt in 1 2 3 4 5 6; do
-  if pluginkit -m -v -p com.apple.quicklook.thumbnail | grep -q thumbnail-prototype; then registered=yes; break; fi
-  sleep 5
+# Same discovery form as scripts/diagnose-finder-extension.py: all versions,
+# duplicates included, by identifier, with a short backoff (pkd indexes
+# asynchronously).
+for wait in 1 2 3 5 8 10; do
+  if pluginkit -m -A -D -v -v -i xyz.isharalakshan.arkiv.thumbnail-prototype 2>&1 | grep -q "$appex"; then registered=yes; break; fi
+  sleep "$wait"
 done
-pluginkit -m -v -p com.apple.quicklook.thumbnail | grep -i arkiv
+pluginkit -m -A -D -v -v -i xyz.isharalakshan.arkiv.thumbnail-prototype 2>&1 | tee "$work/pluginkit.txt"
 echo "RESULT registered with PlugInKit (ad-hoc signed, no Developer ID): $registered"
 
 fixtures="$work/fixtures"; mkdir -p "$fixtures"
@@ -48,7 +51,18 @@ for name in sample.zip sample.tar.gz sample.gz sample.7z sample.7z.001 sample.ta
   printf 'arkiv thumbnail prototype fixture\n' > "$fixtures/$name"
 done
 measure() { swift prototypes/quicklook-thumbnail/measure.swift "$@"; }
-thumbs() { rm -f "$work/out/"*.png; qlmanage -t -s 256 -o "$work/out" "$fixtures"/sample.* > "$work/qlmanage-$1.log" 2>&1; ls "$work/out"; }
+# qlmanage can wait forever on a headless runner; every call gets 60 s.
+bounded() { perl -e 'alarm shift; exec @ARGV or die "exec: $!"' "$@"; }
+thumbs() {
+  rm -f "$work/out/"*.png
+  if bounded 60 qlmanage -t -s 256 -o "$work/out" "$fixtures"/sample.* > "$work/qlmanage-$1.log" 2>&1; then
+    echo "RESULT qlmanage ($1): finished"
+  else
+    echo "RESULT qlmanage ($1): did not finish within 60 s (exit $?)"
+  fi
+  pkill -x qlmanage 2>/dev/null || true
+  ls "$work/out"
+}
 
 thumbs bundled
 measure "$work/out" > "$work/bundled.txt"; cat "$work/bundled.txt"
