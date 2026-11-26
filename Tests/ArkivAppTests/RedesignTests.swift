@@ -257,9 +257,12 @@ final class RedesignTests: XCTestCase {
         let damaged = expectation(forNotification: .arkivDocumentIconThemeDidChange, object: relaunched)
         let folder = sandbox.store.directory(id: "folio", version: 1)
         for file in try FileManager.default.subpathsOfDirectory(atPath: folder.path) where file.hasSuffix(".png") {
-            var bytes = try Data(contentsOf: folder.appendingPathComponent(file))
+            let url = folder.appendingPathComponent(file)
+            var bytes = try Data(contentsOf: url)
             bytes[bytes.count - 1] ^= 0xFF
-            try bytes.write(to: folder.appendingPathComponent(file))
+            // Installed files are read-only; make this one writable first.
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            try bytes.write(to: url)
         }
         XCTAssertNil(relaunched.icon(forFileName: "b.zip", points: 128), "Damaged artwork is never drawn")
         XCTAssertEqual(relaunched.damagedTheme, "folio")
