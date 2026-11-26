@@ -165,21 +165,21 @@ A format is listed only once automated fixture tests pass. Recognising an extens
 
 ## Download and install
 
-<p align="center"><a href="https://github.com/ish4ra/Arkiv/releases/tag/dev-30201"><b>Download Arkiv development build 30201</b></a> &nbsp;·&nbsp; Universal &nbsp;·&nbsp; macOS 13 or later</p>
+<p align="center"><a href="https://github.com/ish4ra/Arkiv/releases/tag/dev-30701"><b>Download Arkiv development build 30701</b></a> &nbsp;·&nbsp; Universal &nbsp;·&nbsp; macOS 13 or later<br><sub><a href="https://github.com/ish4ra/Arkiv/releases?q=Arkiv+Development&amp;expanded=true">All Arkiv application builds, newest first</a> (excludes document icon theme packs)</sub></p>
 
 There is no stable release yet. **Universal** builds run on both Apple Silicon and Intel Macs; **arm64** builds run on Apple Silicon only.
 
 | Option | Best for | Where |
 | --- | --- | --- |
-| **Signed development release** (Universal) | The quickest first install, on any supported Mac; no GitHub account needed | [Releases](https://github.com/ish4ra/Arkiv/releases): open the newest **Arkiv Development _build_** (currently [`dev-30201`](https://github.com/ish4ra/Arkiv/releases/tag/dev-30201)) and download `Arkiv-universal.zip` |
+| **Signed development release** (Universal) | The quickest first install, on any supported Mac; no GitHub account needed | [Arkiv application builds](https://github.com/ish4ra/Arkiv/releases?q=Arkiv+Development&expanded=true): open the newest **Arkiv Development _build_** (currently [`dev-30701`](https://github.com/ish4ra/Arkiv/releases/tag/dev-30701)) and download `Arkiv-universal.zip` |
 | **Development DMG** (arm64 or Universal) | A smaller Apple Silicon–only build, or a disk image | [macOS foundation runs on `main`](https://github.com/ish4ra/Arkiv/actions/workflows/macos.yml?query=branch%3Amain+is%3Asuccess) → **Artifacts** (sign in to GitHub): `Arkiv-arm64-development-dmg` or `Arkiv-universal-development-dmg`, each with a SHA-256 checksum |
 | **In-app updates** | Staying current after the first install | **Arkiv → Check for Updates…** |
 
-The Releases page also lists other prereleases, such as document icon theme packs. Those are not Arkiv builds: choose a release named **Arkiv Development**.
+The full Releases page also lists document icon theme packs (`document-icon-themes-v*`). Those are not Arkiv builds and cannot be installed as an app: choose a release named **Arkiv Development** (tag `dev-<build>`), or use the link above, which lists only application builds. GitHub's generic “latest release” link is not used because every Arkiv build is a prerelease. How these links are kept current: [download links](docs/release.md#download-links).
 
 **First installation**
 
-1. Unzip the download (for an Actions artifact, unzip GitHub's wrapper first, then optionally run `shasum -a 256 -c Arkiv-*-development.dmg.sha256`).
+1. Optionally check the download: the release page shows a SHA-256 digest next to each file; compare it with `shasum -a 256 Arkiv-universal.zip`. For an Actions artifact, unzip GitHub's wrapper first, then run `shasum -a 256 -c Arkiv-*-development.dmg.sha256`. Then unzip the download.
 2. Drag **Arkiv.app** to **Applications** and open it from there.
 3. These builds are ad-hoc signed, not Developer ID signed, and **not notarized**, so macOS may say it could not verify Arkiv. If you trust this repository, try to open Arkiv once, then choose **System Settings → Privacy & Security → Open Anyway**. Do not disable Gatekeeper globally. See [signing, notarization and Gatekeeper](docs/release.md#signing-notarization-and-gatekeeper).
 
@@ -205,7 +205,7 @@ These protections have known limits. For example, the Finder extension's handoff
 | **Published** in development build 30701 | Archive browser, search and Quick Look · extraction · ZIP, 7z, TAR and Zstandard creation · ZIP and 7z editing · split 7z · RAR reading · Finder integration · signed Sparkle updates · Settings · document icon themes with the production catalogue (20 themes) |
 | **In review** | Complete UI redesign: welcome window, archive window, sidebar Settings, theme gallery, accent and density customization ([design](docs/ui-redesign.md)) · Quick Look thumbnail prototype and Finder feasibility report |
 | **Awaiting real-Mac validation** | The redesigned interface · complete theme acceptance (persistence, offline, removal, every in-app icon) · broader Finder extension acceptance · Finder rendering of the document icons · app icon at Dock and Finder sizes · ZIP and TAR associations |
-| **Next** | 5 · RAR multipart reading → 6 · Split ZIP → 7 · Remaining archive-engine work |
+| **Next** | Redesign acceptance and release → 5 · RAR multipart reading → 6 · Split ZIP → 7 · Public beta hardening → 8 · Community launch → remaining archive-engine work ([public beta plan](docs/public-beta-plan.md)) |
 | **Planned** | More RAR methods, encrypted ZIP editing, editing more formats, archive comments · checksums, split/combine, benchmark, command-line companion · a Quick Look extension for archives · Developer ID signing and notarization |
 
 The complete queue is in the [roadmap](docs/roadmap.md), the current state of every feature in the [feature matrix](docs/feature-matrix.md), and the full plan in the [specification](ARKIV_SPEC.md).
@@ -235,7 +235,8 @@ Arkiv is a Swift package: an AppKit app (`ArkivApp`) on a UI-independent engine 
 | **Formats** | [Format evidence](docs/archive-formats.md) · [Feature matrix](docs/feature-matrix.md) · [Creation](docs/creation.md) · [ZIP edits](docs/zip-edits.md) · [7z](docs/sevenzip.md) · [RAR](docs/rar-compatibility.md) · [Integrity](docs/integrity.md) |
 | **Document icons** | [Document icons](docs/document-icons.md) · [Themes](docs/document-icon-themes.md) · [Theme inventory](docs/document-icon-theme-inventory.md) · [Format icon coverage](docs/format-icon-coverage.md) · [Branding](branding/README.md) |
 | **Safety** | [Security and limits](docs/security.md) · [Extraction compatibility](docs/extraction-compatibility.md) |
-| **Development** | [Architecture](docs/architecture.md) · [Release and builds](docs/release.md) · [Roadmap](docs/roadmap.md) · [Specification](ARKIV_SPEC.md) · [README media](docs/media/README.md) |
+| **Development** | [Architecture](docs/architecture.md) · [Release and builds](docs/release.md) · [Roadmap](docs/roadmap.md) · [Specification](ARKIV_SPEC.md) · [README media](docs/media/README.md) · [UI redesign](docs/ui-redesign.md) |
+| **Releasing** | [Real-Mac acceptance](docs/real-mac-acceptance.md) · [Public beta plan](docs/public-beta-plan.md) · [Licence assessment](docs/licensing-assessment.md) · [Quick Look feasibility](docs/quicklook-thumbnail-feasibility.md) |
 
 Found a problem? [Open an issue](https://github.com/ish4ra/Arkiv/issues) with your macOS version, Mac model, Arkiv build (Arkiv → About Arkiv) and the steps to reproduce it. Please never attach archives that contain private data or passwords.
 

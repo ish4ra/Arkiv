@@ -20,6 +20,38 @@ Arkiv is an early development/testing build, not a production release. macOS 13+
 
 The ZIP alternatives contain the same app; unzip the outer Actions wrapper, then unzip the inner app ZIP and drag Arkiv.app to Applications. Artifacts expire according to the repository's GitHub Actions retention policy. No GitHub Release is published by this workflow.
 
+## Download links
+
+Application builds are published as GitHub prereleases named
+**Arkiv Development _build_** with tag `dev-<build>` (assets
+`Arkiv-universal.zip` and `appcast.xml`). Document icon theme packs are
+separate prereleases named **Arkiv document icon themes _N_** with tag
+`document-icon-themes-v<N>`; they are never Arkiv builds.
+
+| Link | Behaviour | Maintenance |
+| --- | --- | --- |
+| `https://github.com/ish4ra/Arkiv/releases/tag/dev-<build>` (README button) | Exactly one verified, published build | Update the README button when a build is accepted for users (currently `dev-30701`) |
+| `https://github.com/ish4ra/Arkiv/releases?q=Arkiv+Development&expanded=true` | GitHub's public release search: application builds only, newest first; drafts never appear; no login | None |
+| `https://github.com/ish4ra/Arkiv/releases/latest` | **Not used.** GitHub's "latest" ignores prereleases, so it returns 404 for Arkiv; theme releases would also compete if one were ever made a full release | — |
+| Sparkle feed (`updates` branch) | In-app updates; unchanged | Published by the release workflow |
+
+The search link was checked on 2026-11-26: it listed `dev-30701`, `dev-30601`,
+`dev-30201` … and not `document-icon-themes-v1`. Release search is GitHub's
+index, so a brand-new release can take a short time to appear, and the
+behaviour is GitHub's, not a documented API. That is why the README also
+keeps an explicit, verified build link.
+
+**Proposed automatic option (not implemented).** The existing publish job
+already writes the signed appcast to the `updates` branch after a build is
+published, so the newest application build is known at that moment. The same
+job could also write a small static `latest.html` (a plain link to that
+release, no scripts or tracking) to the `updates` branch, served by free
+GitHub Pages, giving one permanent URL that can only ever point at a
+published, Sparkle-signed build. It needs Pages enabled on that branch and a
+few lines in the publisher, so it is left for a separate change rather than
+the redesign pull request. A moving Git tag (such as `latest-development`)
+is rejected: it would rewrite a tag on every release.
+
 ## Signing, notarization, and Gatekeeper
 
 The app has an **ad-hoc Hardened Runtime signature**, not a Developer ID signature. The DMG itself is **unsigned**. Neither the app nor the DMG is **notarized**, and there is no notarization ticket to staple. The scripts do not request or invent Apple credentials.

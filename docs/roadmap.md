@@ -15,9 +15,11 @@ feature is finished. Nothing below is in current builds unless the
 | 4 | **Safe Finder and Quick Look customization feasibility** | **Prototype and report in review.** A sandboxed, ad-hoc-signed `QLThumbnailProvider` is built into a copy of the app on CI runners only; nothing ships. Finder icons and Get Info cannot follow a theme through supported mechanisms; thumbnails are the only supported route: the extension builds, signs ad hoc and registers on CI, but drawing and refresh timing need a real Mac; [feasibility report](quicklook-thumbnail-feasibility.md). Real-Mac Finder evaluation is next |
 | 5 | **RAR multipart reading** | Read-only, evidence-gated like RAR Phase 1; [RAR matrix](rar-compatibility.md) |
 | 6 | **Split ZIP support** | `.z01`/`.zip.001` sets; [multipart](multipart.md) |
-| 7 | **Remaining archive-engine features** | The rest of the queue below, in its existing relative order |
+| 7 | **Public beta hardening** | The must-fix items in the [public beta plan](public-beta-plan.md): real-Mac acceptance and release of the redesign, verified update from 30701, project licence decision, release-page install notes, issue templates, `SECURITY.md`/`PRIVACY.md` |
+| 8 | **Community launch** | FMHY, Reddit, Discord, after milestone 7 |
+| 9 | **Remaining archive-engine features** | The rest of the queue below, in its existing relative order |
 
-**Permanent rule for every format milestone (5, 6 and 7 included):** a new
+**Permanent rule for every format milestone (5, 6 and 9 included):** a new
 archive format, alias or volume scheme ships only with its document-icon
 coverage: bundled default artwork, coverage in every theme family, extension
 and alias mapping, safe registration where macOS can type it, in-app icons,
