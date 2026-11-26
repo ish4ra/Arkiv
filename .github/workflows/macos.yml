@@ -103,6 +103,24 @@ jobs:
             build/thumbnail-prototype/*.txt
             build/thumbnail-prototype/*.log
           if-no-files-found: warn
+      - name: Isolated Quick Look prototype test host (real-Mac evaluation only; never shipped)
+        # A renamed copy with its own bundle identifier and no document types,
+        # URL schemes, Services, Finder Sync or Sparkle feed, hosting the
+        # prototype extension. Separate artefact; the DMG, ZIP and update are unchanged.
+        if: matrix.architecture == 'arm64'
+        continue-on-error: true
+        timeout-minutes: 5
+        run: prototypes/quicklook-thumbnail/make-isolated-test-app.sh build/Arkiv.app build/thumbnail-test
+      - uses: actions/upload-artifact@v6
+        if: matrix.architecture == 'arm64'
+        continue-on-error: true
+        with:
+          name: Arkiv-Thumbnail-Test-arm64-PROTOTYPE-not-for-daily-use
+          path: |
+            build/thumbnail-test/Arkiv-Thumbnail-Test-arm64.zip
+            build/thumbnail-test/Arkiv-Thumbnail-Test-arm64.zip.sha256
+          if-no-files-found: warn
+          compression-level: 0
       - name: Finder action URL delivery diagnostic (packaged app)
         run: scripts/ci-check.sh finder-handoff swift scripts/diagnose-finder-handoff.swift build/Arkiv.app
       - name: Finder Sync system registration diagnostic (packaged extension)

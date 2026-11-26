@@ -140,19 +140,84 @@ after a theme change; Desktop and list-view behaviour; memory and CPU of the
 extension process; and Gatekeeper behaviour of the ad-hoc signed extension in
 a downloaded build. Until then the current system stays as it is.
 
-## Real-Mac evaluation steps
+## Real-Mac evaluation
 
-1. Build the prototype into a copy of a development build
-   (`prototypes/quicklook-thumbnail/diagnose.sh build/Arkiv.app` on a Mac
-   whose state you are willing to change, or the manual steps in that
-   script), launch the copy once, and check
-   `pluginkit -m -p com.apple.quicklook.thumbnail -v | grep arkiv`.
-2. In Finder icon view, look at ZIP, 7z, `.tar.gz` and `.gz` files: Seal Dark
-   artwork, and different artwork for `.tar.gz` and `.gz`.
-3. Apply a different theme in Arkiv. Note when each already-visible archive
-   changes (immediately, after reopening the folder, after logout), without
-   running `qlmanage -r`.
-4. Check the Desktop, list view with and without icon previews, Get Info and
-   Quick Look (Space).
-5. Install another archiver with a thumbnail extension and see which one macOS uses.
-6. Remove the copy and confirm the registration disappears.
+Uses an **isolated test host**, never the installed Arkiv:
+`Arkiv Thumbnail Test.app` is a renamed copy of a CI-built Arkiv with its own
+bundle identifier (`xyz.isharalakshan.arkiv-thumbnail-test`), and without
+document types, type declarations, URL schemes, Services, Finder Sync and the
+Sparkle feed. It cannot become a default app, open archives from Finder, or
+update itself; it only hosts the prototype extension
+(`xyz.isharalakshan.arkiv-thumbnail-test.thumbnails`). The extension only
+**reads** the real Arkiv's theme selection and installed themes. Built by
+[`make-isolated-test-app.sh`](../prototypes/quicklook-thumbnail/make-isolated-test-app.sh)
+in the macOS workflow's Apple Silicon job, artefact
+`Arkiv-Thumbnail-Test-arm64-PROTOTYPE-not-for-daily-use` (sign in to GitHub
+to download; it is never part of the DMG, ZIP or Sparkle update).
+
+Nothing below changes `/Applications/Arkiv.app`, your archives, default apps,
+or system-wide caches.
+
+**1. Install the test host (reversible).**
+
+```bash
+mkdir -p ~/ArkivQLTest && cd ~/ArkivQLTest
+# Unzip GitHub's artefact wrapper here, then:
+shasum -a 256 -c Arkiv-Thumbnail-Test-arm64.zip.sha256
+ditto -x -k Arkiv-Thumbnail-Test-arm64.zip .
+# Register only this copy's extension (do not launch the app):
+pluginkit -a "$PWD/Arkiv Thumbnail Test.app/Contents/PlugIns/ArkivThumbnail.appex"
+pluginkit -m -A -D -v -i xyz.isharalakshan.arkiv-thumbnail-test.thumbnails
+```
+
+Record whether it is listed and whether it is enabled (`+` at the start of
+the line). If macOS blocks it because the download is quarantined, prefer
+downloading with `gh run download`, which does not quarantine; otherwise
+remove the quarantine attribute from **this test copy only**:
+`xattr -dr com.apple.quarantine "Arkiv Thumbnail Test.app"`. Never disable
+Gatekeeper globally.
+
+**2. Disposable test files.**
+
+```bash
+mkdir -p ~/ArkivQLTest/files && cd ~/ArkivQLTest/files
+for n in a.zip b.7z c.tar d.rar e.gz f.bz2 g.xz h.zst i.tgz j.tar.gz k.tar.xz l.tar.zst m.tzst n.7z.001 o.7z.002 p.001; do
+  head -c 4096 /dev/urandom > "$n"
+done
+```
+
+The contents are random: the prototype draws from the name only.
+
+**3. Evaluate, recording what you see (with screenshots).**
+
+| Check | How | Expected if it works |
+| --- | --- | --- |
+| Thumbnail generation | `qlmanage -t -s 256 -o ~/ArkivQLTest a.zip j.tar.gz e.gz` (Ctrl-C after 60 s if it hangs) | PNGs with Seal Dark artwork |
+| Finder icon view | Open `files` in Finder, icon view, large icons | Seal Dark artwork for every archive name |
+| Compound names | Compare `j.tar.gz` with `e.gz`, `k.tar.xz` with `g.xz` | Different artwork (TAR.GZ vs GZIP) |
+| Split volumes | `n.7z.001`, `o.7z.002`, `p.001` | Not drawn by Arkiv: macOS does not route `.001` names to it (no claim on `.001`) |
+| Desktop | Copy `a.zip` to the Desktop, then delete it after looking | Same artwork as Finder |
+| List / column view | View Options → Show icon preview on and off | Artwork only with previews on |
+| Get Info | ⌘I on `a.zip` | Header icon stays the document icon (expected); note the Preview section |
+| Reading the selected theme | In the real Arkiv, apply a downloaded theme (e.g. Folio). Create a **new** file `q.zip` and look at it | `q.zip` shows Folio artwork |
+| Theme-switch refresh | Look at `a.zip` (already thumbnailed) after the switch: immediately, after reopening the window, after logging out and in | Records the real refresh timing; no cache reset is done |
+| Which provider wins | If another archiver with thumbnails is installed, note which artwork appears | Informational |
+| Resource use | `ps -o rss=,command= -p $(pgrep -f ArkivThumbnail)` while thumbnails render | Small, short-lived process |
+
+**4. Remove everything.**
+
+```bash
+pluginkit -r "$HOME/ArkivQLTest/Arkiv Thumbnail Test.app/Contents/PlugIns/ArkivThumbnail.appex"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -u "$HOME/ArkivQLTest/Arkiv Thumbnail Test.app"
+rm -rf ~/ArkivQLTest
+pluginkit -m -A -D -i xyz.isharalakshan.arkiv-thumbnail-test.thumbnails   # expect no output
+```
+
+Thumbnails Finder already cached for the deleted test files expire with the
+files; no global cache command is needed or recommended.
+
+**Decision after the evaluation.** Ship nothing to Finder unless thumbnails
+render with Seal Dark and a selected theme, compound names differ, `.001` is
+untouched, and the refresh behaviour is acceptable to explain in Settings.
+If adopted, it ships as an opt-in setting (off by default). The public beta
+does not depend on it.
