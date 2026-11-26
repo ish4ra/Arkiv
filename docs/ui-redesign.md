@@ -213,5 +213,25 @@ System, at 1× and 2×:
 
 ## Measurements
 
-Filled from CI on the pull request; see the pull request description for the
-exact numbers and their source.
+**Measured (macOS CI).** Size of the packaged development artefacts, build
+30701 (`main`, run [45597975229](https://github.com/ish4ra/Arkiv/actions/runs/45597975229))
+against this branch (run [45732925626](https://github.com/ish4ra/Arkiv/actions/runs/45732925626)),
+same packaging pipeline (Actions artefact sizes, bytes):
+
+| Artefact | Build 30701 | Redesign | Change |
+| --- | ---: | ---: | ---: |
+| Apple Silicon update ZIP | 9,452,454 | 9,548,992 | +96,538 (+1.0%) |
+| Apple Silicon DMG | 9,706,104 | 9,783,031 | +76,927 (+0.8%) |
+| Universal update ZIP (the Sparkle archive) | 10,977,923 | 11,179,157 | +201,234 (+1.8%) |
+| Universal DMG | 11,359,632 | 11,577,643 | +218,011 (+1.9%) |
+
+The increase is compiled code only: no images, fonts, frameworks or theme
+packs were added, and the Quick Look prototype is not in these artefacts.
+
+**Not measured.** Launch time, resident memory and idle CPU were not measured:
+headless CI runners give no reliable figures for an interactive AppKit app,
+and no real-Mac measurement was possible here. By construction, launch does
+no new work beyond building the welcome view and reading at most six recent
+URLs; nothing animates, polls or uses timers, and the Settings window, theme
+manager and theme previews are still created only on demand. These remain
+items on the real-Mac acceptance list.

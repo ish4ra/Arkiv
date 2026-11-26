@@ -69,7 +69,30 @@ Sparkle update.
 
 ### Proven on macOS CI runners
 
-*Pending: the CI diagnostic for this branch has not completed yet. This section is filled from its report, with the run linked.*
+Run [45732925626](https://github.com/ish4ra/Arkiv/actions/runs/45732925626)
+(macOS 15, Apple Silicon and Intel runners), step “Quick Look thumbnail
+prototype feasibility”:
+
+| Check | Apple Silicon | Intel |
+| --- | --- | --- |
+| Prototype compiles with `swiftc` and `QuickLookThumbnailing`; extension size | yes, 160 KiB | yes, 128 KiB |
+| Ad-hoc signature of the app copy with the embedded, sandboxed extension verifies (`codesign --verify --strict`) | yes | yes |
+| PlugInKit registers the ad-hoc signed extension (no Developer ID, no paid membership), found by identifier | yes | yes |
+| `qlmanage -t` returns thumbnails | **no: did not finish within 60 s** (both requests) | **no: same** |
+| `.zip` drawn with Arkiv artwork / `.tar.gz` differs from `.gz` / new theme drawn on the next request | **not observed** (no thumbnails were produced) | **not observed** |
+| `.7z.001` routed to the extension | no; by construction it is not claimed | no |
+
+In an earlier run without a time limit, `qlmanage -t` was still running after
+19 minutes and the job was stopped at its 25-minute limit; the diagnostic now
+bounds every request. On these headless runners, Quick Look thumbnail
+generation does not complete, for Arkiv's extension or otherwise, so CI
+**cannot** show whether the extension draws, whether it reads the theme
+through its read-only exceptions, or how fast a theme change appears. Those
+need a real Mac.
+
+What CI does establish: an ad-hoc signed, sandboxed thumbnail extension with
+read-only temporary exceptions builds, signs and registers alongside Arkiv's
+existing signing model, at 128–160 KiB per architecture slice.
 
 ### Reasoned, not proven here
 
@@ -103,7 +126,7 @@ Sparkle update.
 
 | Goal | Verdict |
 | --- | --- |
-| Finder icon view and Desktop show the selected theme | **Feasible** with an opt-in thumbnail extension, using supported APIs, ad-hoc signing and no paid membership; switching is **not immediate** for already-cached files |
+| Finder icon view and Desktop show the selected theme | **Plausible, not yet proven.** Supported API; the extension builds, signs ad hoc and registers without paid membership (CI). Drawing, theme reading under the sandbox exceptions and refresh timing are unverified (no thumbnails are generated on headless CI). Switching would **not** be immediate for already-cached files |
 | Compound suffixes (`.tar.gz`) and split 7z volumes in Finder | Compound suffixes: feasible through thumbnails (name-based). `.7z.001`: **not feasible** without claiming `.001`, which is forbidden |
 | List/column views | Only with “Show icon preview” on |
 | Get Info header, Dock, Open/Save panels | **Not feasible** safely |
